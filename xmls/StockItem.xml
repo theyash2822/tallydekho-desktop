@@ -1,0 +1,138 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ENVELOPE>
+    <HEADER>
+        <VERSION>1</VERSION>
+        <TALLYREQUEST>Export</TALLYREQUEST>
+        <TYPE>Data</TYPE>
+        <ID>MyReportLedgerTable</ID>
+    </HEADER>
+
+    <BODY>
+        <DESC>
+            <STATICVARIABLES>
+                <SVEXPORTFORMAT>XML (Data Interchange)</SVEXPORTFORMAT>
+                <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
+                <SVFROMDATE>$$FROM_DATE</SVFROMDATE>
+                <SVTODATE>$$TO_DATE</SVTODATE>
+            </STATICVARIABLES>
+            <TDL>
+                <TDLMESSAGE>
+                    <REPORT NAME='MyReportLedgerTable'>
+                        <FORMS>MyForm</FORMS>
+                    </REPORT>
+                    <FORM NAME='MyForm'>
+                        <PARTS>MyPart01</PARTS>
+                    </FORM>
+
+                    <PART NAME='MyPart01'>
+                        <LINES>MyLine01</LINES>
+                        <REPEAT>MyLine01 : MyCollection</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
+                    </PART>
+                    <LINE NAME='MyLine01'>
+                        <FIELDS>
+                            Fld01,Fld02,Fld03,Fld04,Fld05,Fld06,Fld07,Fld08,Fld09,Fld10,Fld11,Fld12,Fld13,Fld14,Fld15,Fld16,Fld17,Fld18,Fld19,Fld20
+                        </FIELDS>
+                    </LINE>
+                    <FIELD NAME='Fld01'>
+                        <SET>$Guid</SET>
+                        <XMLTAG>Guid</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld02'>
+                        <SET>if $$IsEmpty:$AlterId then '0' else $$String:$AlterId</SET>
+                        <XMLTAG>AlterId</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld03'>
+                        <SET>$Name</SET>
+                        <XMLTAG>Name</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld04'>
+                        <SET>if $$IsEqual:$Parent:$$SysName:Primary then '' else $Parent</SET>
+                        <XMLTAG>Parent</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld05'>
+                        <SET>if $$IsEqual:$Parent:$$SysName:Primary then '' else $Guid:StockGroup:$Parent</SET>
+                        <XMLTAG>ParentGuid</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld19'>
+                        <SET>$Category</SET>
+                        <XMLTAG>Category</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld20'>
+                        <SET>$Guid:StockCategory:$Category</SET>
+                        <XMLTAG>CategoryGuid</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld06'>
+                        <SET>$OnlyAlias</SET>
+                        <XMLTAG>OnlyAlias</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld07'>
+                        <SET>$BaseUnits</SET>
+                        <XMLTAG>BaseUnits</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld08'>
+                        <SET>$Guid:Unit:$BaseUnits</SET>
+                        <XMLTAG>UnitGuid</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld09'>
+                        <SET>$$StringFindAndReplace:($$Number:$$String:$OpeningBalance):'(-)':'-'</SET>
+                        <XMLTAG>OpeningBalance</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld10'>
+                        <SET>if $$IsEmpty:$OpeningRate then 0 else $$Number:$OpeningRate</SET>
+                        <XMLTAG>OpeningRate</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld11'>
+                        <SET>$$StringFindAndReplace:(if $$IsDebit:$OpeningValue then -$$NumValue:$OpeningValue else
+                            $$NumValue:$OpeningValue):'(-)':'-'</SET>
+                        <XMLTAG>OpeningValue</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld12'>
+                        <SET>if ($$IsEqual:$GstApplicable:($$SysName:Applicable) AND NOT
+                            $$IsEmpty:$GstDetails[Last].Natureofgoods) then $GstDetails[Last].Natureofgoods else ''
+                        </SET>
+                        <XMLTAG>Natureofgoods</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld13'>
+                        <SET>if $$IsEmpty:$GstDetails[Last].Hsncode then $HSNDetails[Last].HSNCode else
+                            $GstDetails[Last].Hsncode</SET>
+                        <XMLTAG>Hsncode</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld14'>
+                        <SET>if ($$IsEqual:$GstApplicable:($$SysName:Applicable) AND NOT
+                            $$IsEmpty:$GstDetails[Last].Taxability) then $GstDetails[Last].Taxability else ''</SET>
+                        <XMLTAG>Taxability</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld15'>
+                        <SET>$GSTDetails[Last].StatewiseDetails[1, @@IsAnyState].RateDetails[1, @@IsIGST].GSTRate</SET>
+                        <XMLTAG>IGSTRate</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld16'>
+                        <SET>$GSTDetails[Last].StatewiseDetails[1, @@IsAnyState].RateDetails[1, @@IsCGST].GSTRate</SET>
+                        <XMLTAG>CGSTRate</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld17'>
+                        <SET>$GSTDetails[Last].StatewiseDetails[1, @@IsAnyState].RateDetails[1,
+                            ($$IsSysNameEqual:SGST:$GSTRateDutyHead)or($GSTRateDutyHead contains 'SGST /
+                            UTGST')].GSTRate</SET>
+                        <XMLTAG>SGSTRate</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld18'>
+                        <SET>$GSTDetails[Last].StatewiseDetails[1, @@IsAnyState].RateDetails[1, @@IsAddlCess].GSTRate
+                        </SET>
+                        <XMLTAG>CESSRate</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='FldBlank'>
+                        <SET>''</SET>
+                    </FIELD>
+                    <COLLECTION NAME='MyCollection'>
+                        <TYPE>StockItem</TYPE>
+                        <FETCH>GstDetails</FETCH>
+                        <Filter>Fltr01</Filter>
+                    </COLLECTION>
+                    <SYSTEM TYPE='Formulae' NAME='Fltr01'>$AlterID > $$ALTER_ID</SYSTEM>
+                </TDLMESSAGE>
+            </TDL>
+        </DESC>
+    </BODY>
+</ENVELOPE>

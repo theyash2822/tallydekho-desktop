@@ -1,0 +1,52 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ENVELOPE>
+    <HEADER>
+        <VERSION>1</VERSION>
+        <TALLYREQUEST>Export</TALLYREQUEST>
+        <TYPE>Data</TYPE>
+        <ID>MyReportLedgerTable</ID>
+    </HEADER>
+
+    <BODY>
+        <DESC>
+            <STATICVARIABLES>
+                <SVEXPORTFORMAT>XML (Data Interchange)</SVEXPORTFORMAT>
+                <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
+            </STATICVARIABLES>
+            <TDL>
+                <TDLMESSAGE>
+                    <REPORT NAME='MyReportLedgerTable'>
+                        <FORMS>MyForm</FORMS>
+                    </REPORT>
+                    <FORM NAME='MyForm'>
+                        <PARTS>MyPart01</PARTS>
+                    </FORM>
+                    <PART NAME='MyPart01'>
+                        <LINES>MyLine01</LINES>
+                        <REPEAT>MyLine01 : MyCollection</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
+                    </PART>
+                    <LINE NAME='MyLine01'>
+                        <FIELDS>
+                            Fld01,Fld02
+                        </FIELDS>
+                    </LINE>
+                    <FIELD NAME='Fld01'>
+                        <SET>$Guid</SET>
+                        <XMLTAG>Guid</XMLTAG>
+                    </FIELD>
+                     <FIELD NAME='Fld02'>
+                        <SET>$Name</SET>
+                        <XMLTAG>Name</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='FldBlank'>
+                        <SET>''</SET>
+                    </FIELD>
+                    <COLLECTION NAME='MyCollection'>
+                        <TYPE>Ledger</TYPE>
+                    </COLLECTION>
+                </TDLMESSAGE>
+            </TDL>
+        </DESC>
+    </BODY>
+</ENVELOPE>

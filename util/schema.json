@@ -1,0 +1,157 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "App config",
+  "type": "object",
+  "definitions": {
+    "yearItem": {
+      "type": "object",
+      "properties": {
+        "finYear": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{4}$" },
+        "begin": { "type": "string", "pattern": "^[0-9]{8}$" },
+        "end": { "type": "string", "pattern": "^[0-9]{8}$" }
+      },
+      "required": ["finYear", "begin", "end"],
+      "additionalProperties": false
+    },
+    "company": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": { "type": "string" },
+        "guid": {
+          "type": "string"
+        },
+        "path": { "type": "string" },
+        "years": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/yearItem" },
+          "minItems": 0
+        },
+        "isCurrentCompany": { "type": "boolean" },
+        "allYears": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/yearItem" },
+          "minItems": 0
+        },
+        "ledgersCount": { "type": "integer", "minimum": 0 }
+      },
+      "required": [
+        "id",
+        "name",
+        "guid",
+        "path",
+        "years",
+        "isCurrentCompany",
+        "allYears",
+        "ledgersCount"
+      ],
+      "additionalProperties": false
+    },
+    "backupItem": {
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "format": "date-time" },
+        "size": { "type": "string" },
+        "path": { "type": "string" }
+      },
+      "required": ["date", "size", "path"],
+      "additionalProperties": false
+    },
+    "activityItem": {
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "format": "date-time" },
+        "message": { "type": "string" }
+      },
+      "required": ["date", "message"],
+      "additionalProperties": false
+    }
+  },
+  "properties": {
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "default": 9000
+    },
+
+    "selectedCompanies": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/company" },
+      "default": [],
+      "minItems": 0
+    },
+
+    "backup": {
+      "type": "object",
+      "properties": {
+        "dir": { "type": "string" }
+      },
+      "required": ["dir"],
+      "additionalProperties": false
+    },
+
+    "backups": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/backupItem" },
+      "default": [],
+      "minItems": 0
+    },
+
+    "backupAndRestoreActivity": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/activityItem" },
+      "default": [],
+      "minItems": 0
+    },
+
+    "backupInterval": { "type": "string", "default": "off" },
+    "appVersion": {
+      "type": "string",
+      "default": "0.0.0"
+    },
+    "isOnline": { "type": "boolean", "default": false },
+    "lastSync": { "type": "string", "format": "date-time" },
+    "destination": { "type": "string" },
+    "isSyncing": { "type": "boolean", "default": false },
+    "isRestoring": { "type": "boolean", "default": false },
+    "isBackingUp": { "type": "boolean", "default": false },
+    "syncMode": {
+      "type": "string",
+      "enum": ["normal", "hard"],
+      "default": "normal"
+    },
+    "isAutoSync": { "type": "boolean", "default": false },
+    "syncInterval": { "type": "integer", "minimum": 0, "default": 10 },
+    "autoSyncStartedAt": { "type": "integer", "minimum": 0 },
+    "savedVersion": {
+      "type": "string",
+      "default": "0.0.0"
+    },
+    "forceUpdate": {
+      "type": "boolean",
+      "default": false
+    },
+    "uploadId": {
+      "type": "string",
+      "default": "none"
+    }
+  },
+  "required": [
+    "port",
+    "selectedCompanies",
+    "backup",
+    "backups",
+    "backupAndRestoreActivity",
+    "backupInterval",
+    "appVersion",
+    "isOnline",
+    "syncInterval",
+    "savedVersion",
+    "forceUpdate",
+    "uploadId"
+  ],
+  "additionalProperties": false
+}

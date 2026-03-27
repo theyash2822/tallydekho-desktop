@@ -1,0 +1,7 @@
+node_modules/
+dist_electron/
+build/
+*.log
+.DS_Store
+renderer/node_modules/
+renderer/dist/

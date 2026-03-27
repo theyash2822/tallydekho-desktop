@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* :focus-visible {
+  outline: 3px solid #39947E; 
+  outline-offset: 2px;
+} */
+
+@layer base {
+  :where(input, textarea, select):focus {
+    @apply outline-none;
+  }
+
+  :where(button, a):focus-visible {
+    @apply outline outline-[3px] outline-[#39947E] outline-offset-2;
+  }
+}

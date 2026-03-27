@@ -1,0 +1,77 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ENVELOPE>
+    <HEADER>
+        <VERSION>1</VERSION>
+        <TALLYREQUEST>Export</TALLYREQUEST>
+        <TYPE>Data</TYPE>
+        <ID>MyReportLedgerTable</ID>
+    </HEADER>
+
+    <BODY>
+        <DESC>
+            <STATICVARIABLES>
+                <SVEXPORTFORMAT>XML (Data Interchange)</SVEXPORTFORMAT>
+                <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
+            </STATICVARIABLES>
+            <TDL>
+                <TDLMESSAGE>
+                    <REPORT NAME='MyReportLedgerTable'>
+                        <FORMS>MyForm</FORMS>
+                    </REPORT>
+                    <FORM NAME='MyForm'>
+                        <PARTS>MyPart01</PARTS>
+                    </FORM>
+
+                    <PART NAME='MyPart01'>
+                        <LINES>MyLine01</LINES>
+                        <REPEAT>MyLine01 : MyCollection</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
+                    </PART>
+                    <LINE NAME='MyLine01'>
+                        <FIELDS>Fld01,Fld02,Fld03,Fld04,Fld05,Fld06,Fld07,Fld08</FIELDS>
+                    </LINE>
+                    <FIELD NAME='Fld01'>
+                        <SET>$Guid</SET>
+                        <XMLTAG>Guid</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld02'>
+                        <SET>if $$IsEmpty:$AlterId then '0' else $$String:$AlterId</SET>
+                        <XMLTAG>AlterId</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld03'>
+                        <SET>$Symbol</SET>
+                        <XMLTAG>Symbol</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld04'>
+                        <SET>$FormalName</SET>
+                        <XMLTAG>FormalName</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld05'>
+                        <SET>if $IsSimpleUnit then 1 else 0</SET>
+                        <XMLTAG>IsSimpleUnit</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld06'>
+                        <SET>$BaseUnits</SET>
+                        <XMLTAG>BaseUnits</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld07'>
+                        <SET>$AdditionalUnits</SET>
+                        <XMLTAG>AdditionalUnits</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld08'>
+                        <SET>if $$IsEmpty:$Conversion then '0' else $$String:$Conversion</SET>
+                        <XMLTAG>Conversion</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='FldBlank'>
+                        <SET>''</SET>
+                    </FIELD>
+                    <COLLECTION NAME='MyCollection'>
+                        <TYPE>Unit</TYPE>
+                        <Filter>Fltr01</Filter>
+                    </COLLECTION>
+                    <SYSTEM TYPE='Formulae' NAME='Fltr01'>$AlterID > $$ALTER_ID</SYSTEM>
+                </TDLMESSAGE>
+            </TDL>
+        </DESC>
+    </BODY>
+</ENVELOPE>

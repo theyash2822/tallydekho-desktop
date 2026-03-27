@@ -1,0 +1,65 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ENVELOPE>
+    <HEADER>
+        <VERSION>1</VERSION>
+        <TALLYREQUEST>Export</TALLYREQUEST>
+        <TYPE>Data</TYPE>
+        <ID>MyReportLedgerTable</ID>
+    </HEADER>
+
+    <BODY>
+        <DESC>
+            <STATICVARIABLES>
+                <SVEXPORTFORMAT>XML (Data Interchange)</SVEXPORTFORMAT>
+                <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
+            </STATICVARIABLES>
+            <TDL>
+                <TDLMESSAGE>
+                    <REPORT NAME='MyReportLedgerTable'>
+                        <FORMS>MyForm</FORMS>
+                    </REPORT>
+                    <FORM NAME='MyForm'>
+                        <PARTS>MyPart01</PARTS>
+                    </FORM>
+
+                    <PART NAME='MyPart01'>
+                        <LINES>MyLine01</LINES>
+                        <REPEAT>MyLine01 : MyCollection</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
+                    </PART>
+                    <LINE NAME='MyLine01'>
+                        <FIELDS>Fld01,Fld02,Fld03,Fld04,Fld05</FIELDS>
+                    </LINE>
+                    <FIELD NAME='Fld01'>
+                        <SET>$Guid</SET>
+                        <XMLTAG>Guid</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld02'>
+                        <SET>if $$IsEmpty:$AlterId then '0' else $$String:$AlterId</SET>
+                        <XMLTAG>AlterId</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld03'>
+                        <SET>$Name</SET>
+                        <XMLTAG>Name</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld04'>
+                        <SET>if $AllocateRevenue then 1 else 0</SET>
+                        <XMLTAG>AllocateRevenue</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld05'>
+                        <SET>if $AllocateNonRevenue then 1 else 0</SET>
+                        <XMLTAG>AllocateNonRevenue</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='FldBlank'>
+                        <SET>''</SET>
+                    </FIELD>
+                    <COLLECTION NAME='MyCollection'>
+                        <TYPE>CostCategory</TYPE>
+                        <Filter>Fltr01</Filter>
+                    </COLLECTION>
+                    <SYSTEM TYPE='Formulae' NAME='Fltr01'>$AlterID > $$ALTER_ID</SYSTEM>
+                </TDLMESSAGE>
+            </TDL>
+        </DESC>
+    </BODY>
+</ENVELOPE>

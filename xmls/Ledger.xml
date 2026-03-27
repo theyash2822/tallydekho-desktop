@@ -1,0 +1,163 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ENVELOPE>
+    <HEADER>
+        <VERSION>1</VERSION>
+        <TALLYREQUEST>Export</TALLYREQUEST>
+        <TYPE>Data</TYPE>
+        <ID>MyReportLedgerTable</ID>
+    </HEADER>
+
+    <BODY>
+        <DESC>
+            <STATICVARIABLES>
+                <SVEXPORTFORMAT>XML (Data Interchange)</SVEXPORTFORMAT>
+                <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
+            </STATICVARIABLES>
+            <TDL>
+                <TDLMESSAGE>
+                    <REPORT NAME='MyReportLedgerTable'>
+                        <FORMS>MyForm</FORMS>
+                    </REPORT>
+                    <FORM NAME='MyForm'>
+                        <PARTS>MyPart01</PARTS>
+                    </FORM>
+                    <PART NAME='MyPart01'>
+                        <LINES>MyLine01</LINES>
+                        <REPEAT>MyLine01 : MyCollection</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
+                    </PART>
+                    <LINE NAME='MyLine01'>
+                        <FIELDS>
+                            Fld01,Fld02,Fld03,Fld04,Fld05,Fld06,Fld07,Fld08,Fld09,Fld10,Fld11,Fld12,Fld13,Fld14,Fld15,Fld16,Fld17,Fld18,Fld19,Fld20,Fld21,Fld22,Fld23,Fld24,Fld25,Fld26,Fld27,Fld28,Fld29
+                        </FIELDS>
+                    </LINE>
+                    <FIELD NAME='Fld01'>
+                        <SET>$Guid</SET>
+                        <XMLTAG>Guid</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld02'>
+                        <SET>if $$IsEmpty:$AlterId then '0' else $$String:$AlterId</SET>
+                        <XMLTAG>AlterId</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld03'>
+                        <SET>$Name</SET>
+                        <XMLTAG>Name</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld04'>
+                        <SET>if $$IsEqual:$Parent:$$SysName:Primary then '' else $Parent</SET>
+                        <XMLTAG>Parent</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld05'>
+                        <SET>if $$IsEqual:$Parent:$$SysName:Primary then '' else $Guid:Group:$Parent</SET>
+                        <XMLTAG>PrimaryGuid</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld06'>
+                        <SET>$OnlyAlias</SET>
+                        <XMLTAG>OnlyAlias</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld07'>
+                        <SET>if $IsRevenue then 1 else 0</SET>
+                        <XMLTAG>IsRevenue</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld08'>
+                        <SET>if $IsDeemedPositive then 1 else 0</SET>
+                        <XMLTAG>IsDeemedPositive</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld09'>
+                        <SET>if $$IsDebit:$OpeningBalance then -$$NumValue:$OpeningBalance else
+                            $$NumValue:$OpeningBalance</SET>
+                        <XMLTAG>OpeningBalance</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld10'>
+                        <SET>$Description</SET>
+                        <XMLTAG>Description</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld11'>
+                        <SET>$MailingName</SET>
+                        <XMLTAG>MailingName</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld12'>
+                        <SET>if $$IsEmpty:$Address then '' else $$FullList:Address:$Address</SET>
+                        <XMLTAG>Address</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld13'>
+                        <SET>$LedStateName</SET>
+                        <XMLTAG>LedStateName</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld14'>
+                        <SET>$CountryName</SET>
+                        <XMLTAG>CountryName</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld15'>
+                        <SET>$PinCode</SET>
+                        <XMLTAG>PinCode</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld16'>
+                        <SET>$Email</SET>
+                        <XMLTAG>Email</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld17'>
+                        <SET>$IncomeTaxNumber</SET>
+                        <XMLTAG>IncomeTaxNumber</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld18'>
+                        <SET>$Partygstin</SET>
+                        <XMLTAG>Partygstin</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld19'>
+                        <SET>$Gstregistrationtype</SET>
+                        <XMLTAG>Gstregistrationtype</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld20'>
+                        <SET>$Gsttypeofsupply</SET>
+                        <XMLTAG>Gsttypeofsupply</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld21'>
+                        <SET>$Gstdutyhead</SET>
+                        <XMLTAG>Gstdutyhead</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld22'>
+                        <SET>if $$IsEmpty:$RateOfTaxCalculation then '0' else $$String:$RateOfTaxCalculation</SET>
+                        <XMLTAG>RateOfTaxCalculation</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld23'>
+                        <SET>$Bankaccholdername</SET>
+                        <XMLTAG>Bankaccholdername</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld24'>
+                        <SET>$BankDetails</SET>
+                        <XMLTAG>BankDetails</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld25'>
+                        <SET>$Ifscode</SET>
+                        <XMLTAG>Ifscode</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld26'>
+                        <SET>$Swiftcode</SET>
+                        <XMLTAG>Swiftcode</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld27'>
+                        <SET>$Bankingconfigbank</SET>
+                        <XMLTAG>Bankingconfigbank</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld28'>
+                        <SET>$BankBranchname</SET>
+                        <XMLTAG>BankBranchname</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld29'>
+                        <SET>$LedgerMobile</SET>
+                        <XMLTAG>LedgerMobile</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='FldBlank'>
+                        <SET>''</SET>
+                    </FIELD>
+                    <COLLECTION NAME='MyCollection'>
+                        <TYPE>Ledger</TYPE>
+                        <Filter>Fltr01</Filter>
+                    </COLLECTION>
+                    <SYSTEM TYPE='Formulae' NAME='Fltr01'>$AlterID > $$ALTER_ID</SYSTEM>
+                </TDLMESSAGE>
+            </TDL>
+        </DESC>
+    </BODY>
+</ENVELOPE>

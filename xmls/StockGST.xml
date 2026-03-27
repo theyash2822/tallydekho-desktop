@@ -1,0 +1,101 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ENVELOPE>
+    <HEADER>
+        <VERSION>1</VERSION>
+        <TALLYREQUEST>Export</TALLYREQUEST>
+        <TYPE>Data</TYPE>
+        <ID>MyReportLedgerTable</ID>
+    </HEADER>
+
+    <BODY>
+        <DESC>
+            <STATICVARIABLES>
+                <SVEXPORTFORMAT>XML (Data Interchange)</SVEXPORTFORMAT>
+                <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
+            </STATICVARIABLES>
+            <TDL>
+                <TDLMESSAGE>
+                    <REPORT NAME='MyReportLedgerTable'>
+                        <FORMS>MyForm</FORMS>
+                    </REPORT>
+                    <FORM NAME='MyForm'>
+                        <PARTS>MyPart01</PARTS>
+                    </FORM>
+
+                    <PART NAME='MyPart01'>
+                        <LINES>MyLine01</LINES>
+                        <REPEAT>MyLine01 : MyCollection</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
+                    </PART>
+                    <PART NAME='MyPart02'>
+                        <LINES>MyLine02</LINES>
+                        <REPEAT>MyLine02 : GstDetails</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
+                    </PART>
+                    <LINE NAME='MyLine01'>
+                        <FIELDS>FldBlank</FIELDS>
+                        <EXPLODE>MyPart02</EXPLODE>
+                    </LINE>
+                    <LINE NAME='MyLine02'>
+                        <FIELDS>Fld01,Fld02,Fld03,Fld04,Fld05,Fld06,Fld07,Fld08,Fld09,Fld10,Fld11</FIELDS>
+                    </LINE>
+                    <FIELD NAME='Fld01'>
+                        <SET>$Name</SET>
+                        <XMLTAG>Name</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld02'>
+                        <SET>$Guid:StockItem:$Name</SET>
+                        <XMLTAG>StockItemGuid</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld03'>
+                        <SET>if $$IsEmpty:$Applicablefrom then $$StrByCharCode:241 else
+                            $$PyrlYYYYMMDDFormat:$Applicablefrom:'-'</SET>
+                        <XMLTAG>Applicablefrom</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld04'>
+                        <SET>$Hsn</SET>
+                        <XMLTAG>Hsn</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld05'>
+                        <SET>$HsnCode</SET>
+                        <XMLTAG>HsnCode</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld06'>
+                        <SET>if NOT $$IsEmpty:$StateWiseDetails then $StateWiseDetails[First].RateDetails[3].GstRate
+                            else 0</SET>
+                        <XMLTAG>GstRate</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld07'>
+                        <SET>if $IsReverseChargeApplicable then 1 else 0</SET>
+                        <XMLTAG>IsReverseChargeApplicable</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld08'>
+                        <SET>$GstNatureOfTransaction</SET>
+                        <XMLTAG>GstNatureOfTransaction</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld09'>
+                        <SET>$NatureOfGoods</SET>
+                        <XMLTAG>NatureOfGoods</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld10'>
+                        <SET>$SupplyType</SET>
+                        <XMLTAG>SupplyType</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld11'>
+                        <SET>$Taxability</SET>
+                        <XMLTAG>Taxability</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='FldBlank'>
+                        <SET>''</SET>
+                    </FIELD>
+                    <COLLECTION NAME='MyCollection'>
+                        <TYPE>StockItem</TYPE>
+                        <FILTER>Fltr01</FILTER>
+                    </COLLECTION>
+                    <SYSTEM TYPE='Formulae' NAME='Fltr01'>NOT $$IsEmpty:$GstApplicable</SYSTEM>
+
+                </TDLMESSAGE>
+            </TDL>
+        </DESC>
+    </BODY>
+</ENVELOPE>

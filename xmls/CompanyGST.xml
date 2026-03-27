@@ -1,0 +1,28 @@
+<ENVELOPE>
+    <HEADER>
+        <VERSION>1</VERSION>
+        <TALLYREQUEST>EXPORT</TALLYREQUEST>
+        <TYPE>Collection</TYPE>
+        <ID>CMP GST Fetch</ID>
+    </HEADER>
+
+    <BODY>
+        <DESC>
+            <STATICVARIABLES>
+                <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+                <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
+            </STATICVARIABLES>
+            <TDL>
+                <TDLMESSAGE>
+                    <COLLECTION NAME='CMP GST Fetch' ISMODIFY='No'>
+                        <TYPE> Tax Unit </TYPE>
+                        <NATIVEMETHOD> IsEwayBillApplicable, IsGSTeInvApplicable, GSTRegistrationType,
+                            GSTRegistrationDetails.*</NATIVEMETHOD>
+                        <NATIVEMETHOD> UsedFor, IsAnyGSTRegularTaxUnit, IsAnyGSTRegSEZTaxUnit,
+                            IsAnyGSTKFCRegularTaxUnit, IsAnyGSTSEZTaxUnit,GSTRegNumber </NATIVEMETHOD>
+                    </COLLECTION>
+                </TDLMESSAGE>
+            </TDL>
+        </DESC>
+    </BODY>
+</ENVELOPE>

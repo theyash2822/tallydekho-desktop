@@ -148,7 +148,13 @@ const registerTallySync = (windowContent) => {
       info(`Foreground [sync status]: ${syncStatus.status}`);
       info(`Foreground [sync status data]:`, syncStatus.data);
 
-      // store.set("isSyncing", false);
+      store.set("isSyncing", false);
+      windowContent.send("window:listener", { key: "isSyncing", value: false });
+      windowContent.send("window:listener", { key: "syncProgress", value: 0 });
+      if (syncStatus.status) {
+        windowContent.send("window:listener", { key: "syncMessage", value: "Sync Complete" });
+        windowContent.send("window:listener", { key: "lastSync", value: new Date() });
+      }
 
       if (!syncStatus.status) {
         windowContent.send("window:listener", {
@@ -189,24 +195,15 @@ const startAutoSync = async (windowContent) => {
     info(`Background [sync status]: ${syncStatus.status}`);
     info(`Background [sync status data]:`, syncStatus.data);
 
-    // store.set("isSyncing", false);
-    // windowContent.send("window:listener", {
-    //   key: "isSyncing",
-    //   value: false,
-    // });
-    // windowContent.send("window:listener", {
-    //   key: "syncProgress",
-    //   value: 0,
-    // });
-
-    // if (syncStatus.status) {
-    //   const date = new Date();
-    //   store.set("lastSync", date);
-    //   windowContent.send("window:listener", {
-    //     key: "lastSync",
-    //     value: date,
-    //   });
-    // }
+    store.set("isSyncing", false);
+    windowContent.send("window:listener", { key: "isSyncing", value: false });
+    windowContent.send("window:listener", { key: "syncProgress", value: 0 });
+    if (syncStatus.status) {
+      const date = new Date();
+      store.set("lastSync", date);
+      windowContent.send("window:listener", { key: "lastSync", value: date });
+      windowContent.send("window:listener", { key: "syncMessage", value: "Sync Complete" });
+    }
 
     if (!syncStatus.status) {
       windowContent.send("window:listener", {

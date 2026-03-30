@@ -59,10 +59,15 @@ module.exports = (window, socket) => {
         };
       } else {
         body.key = "syncMessage";
-        body.value = "Data Synced";
+        body.value = "Sync Complete";
       }
       info("[sync status body]: ", body);
       window.webContents.send("window:listener", body);
+      // Reset syncing state after completion
+      if (payload.status) {
+        window.webContents.send("window:listener", { key: "isSyncing", value: false });
+        window.webContents.send("window:listener", { key: "syncProgress", value: 100 });
+      }
     }
   });
 

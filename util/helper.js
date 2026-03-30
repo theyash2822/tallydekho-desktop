@@ -14,7 +14,7 @@ const store = require("./store");
 const execFileAsync = promisify(execFile);
 const MS_PER_DAY = 86_400_000;
 
-const baseURL = "http://192.168.29.13:3001"; // Local backend — change to your server IP
+const baseURL = "http://192.168.29.39:3001"; // Local backend — change to your server IP
 // const baseURL = "https://test.tallydekho.com"; // Production
 
 const axiosInstance = axios.create({

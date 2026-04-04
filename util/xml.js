@@ -676,13 +676,12 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
     "CostCategory.xml",
     "CostCentre.xml",
     "Godown.xml",
-    "Group.xml",
+    "GroupMaster.xml",       // Full group masters with nature/revenue flags
     "StockGroup.xml",
     "Unit.xml",
     "VoucherType.xml",
-    "Ledger.xml",
+    "FullLedger.xml",        // Full ledger with bank, TDS, credit limit, bill-wise
     "StockCategory.xml",
-    // "StockGST.xml",
     "StockOpeningBalance.xml",
   ];
 
@@ -869,6 +868,30 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
       });
 
       promises.push(ledgerTransactionResponse);
+
+      // Voucher inventory line items (qty, rate, item, batch, godown)
+      const voucherInventoryResponse = await syncHelperWithDate({
+        xml: "VoucherInventoryDetail.xml",
+        companyName: name,
+        alterId: voucherAlterId,
+        fromDate: year.begin,
+        toDate: year.end,
+        companyGuid,
+        yearId,
+      });
+      promises.push(voucherInventoryResponse);
+
+      // GST voucher-level details (CGST/SGST/IGST, taxable amount, IRN)
+      const gstDetailsResponse = await syncHelperWithDate({
+        xml: "GSTDetails.xml",
+        companyName: name,
+        alterId: voucherAlterId,
+        fromDate: year.begin,
+        toDate: year.end,
+        companyGuid,
+        yearId,
+      });
+      promises.push(gstDetailsResponse);
 
       const ledgerOpeningBalanceResponse = await syncHelperWithDate({
         xml: "LedgerOpeningBalance.xml",

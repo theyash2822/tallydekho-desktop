@@ -1,0 +1,69 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- Extracts inventory line items from vouchers: item, qty, rate, discount, godown, batch -->
+<ENVELOPE>
+    <HEADER>
+        <VERSION>1</VERSION>
+        <TALLYREQUEST>Export</TALLYREQUEST>
+        <TYPE>Data</TYPE>
+        <ID>MyReportLedgerTable</ID>
+    </HEADER>
+    <BODY>
+        <DESC>
+            <STATICVARIABLES>
+                <SVEXPORTFORMAT>XML (Data Interchange)</SVEXPORTFORMAT>
+                <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
+                <SVFROMDATE TYPE="Date">$$FROM_DATE</SVFROMDATE>
+                <SVTODATE TYPE="Date">$$TO_DATE</SVTODATE>
+            </STATICVARIABLES>
+            <TDL>
+                <TDLMESSAGE>
+                    <REPORT NAME='MyReportLedgerTable'>
+                        <FORMS>MyForm</FORMS>
+                    </REPORT>
+                    <FORM NAME='MyForm'>
+                        <PARTS>MyPart01</PARTS>
+                    </FORM>
+                    <PART NAME='MyPart01'>
+                        <LINES>MyLine01</LINES>
+                        <REPEAT>MyLine01 : MyCollection</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
+                    </PART>
+                    <PART NAME='MyPart02'>
+                        <LINES>MyLine02</LINES>
+                        <REPEAT>MyLine02 : AllInventoryEntries</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
+                    </PART>
+                    <LINE NAME='MyLine01'>
+                        <FIELDS>FldBlank</FIELDS>
+                        <EXPLODE>MyPart02</EXPLODE>
+                    </LINE>
+                    <LINE NAME='MyLine02'>
+                        <FIELDS>Fld01,Fld02,Fld03,Fld04,Fld05,Fld06,Fld07,Fld08,Fld09,Fld10,Fld11,Fld12,Fld13</FIELDS>
+                    </LINE>
+                    <FIELD NAME='Fld01'><SET>$Guid</SET><XMLTAG>VoucherGuid</XMLTAG></FIELD>
+                    <FIELD NAME='Fld02'><SET>$StockItemName</SET><XMLTAG>StockItemName</XMLTAG></FIELD>
+                    <FIELD NAME='Fld03'><SET>if $$IsEmpty:$StockItemName then '' else $Guid:StockItem:$StockItemName</SET><XMLTAG>StockItemGuid</XMLTAG></FIELD>
+                    <FIELD NAME='Fld04'><SET>if $$IsInwards:$ActualQty then $$Number:$$String:$ActualQty:'TailUnits' else -$$Number:$$String:$ActualQty:'TailUnits'</SET><XMLTAG>ActualQty</XMLTAG></FIELD>
+                    <FIELD NAME='Fld05'><SET>if $$IsInwards:$BilledQty then $$Number:$$String:$BilledQty:'TailUnits' else -$$Number:$$String:$BilledQty:'TailUnits'</SET><XMLTAG>BilledQty</XMLTAG></FIELD>
+                    <FIELD NAME='Fld06'><SET>$Rate</SET><XMLTAG>Rate</XMLTAG></FIELD>
+                    <FIELD NAME='Fld07'><SET>if $$IsDebit:$Amount then -$$NumValue:$Amount else $$NumValue:$Amount</SET><XMLTAG>Amount</XMLTAG></FIELD>
+                    <FIELD NAME='Fld08'><SET>$Discount</SET><XMLTAG>Discount</XMLTAG></FIELD>
+                    <FIELD NAME='Fld09'><SET>$GodownName</SET><XMLTAG>GodownName</XMLTAG></FIELD>
+                    <FIELD NAME='Fld10'><SET>$BatchName</SET><XMLTAG>BatchName</XMLTAG></FIELD>
+                    <FIELD NAME='Fld11'><SET>$BaseUnits</SET><XMLTAG>Unit</XMLTAG></FIELD>
+                    <FIELD NAME='Fld12'><SET>$$String:$HSNDetail[1].HSNCode</SET><XMLTAG>HSN</XMLTAG></FIELD>
+                    <FIELD NAME='Fld13'><SET>if $$IsEmpty:$AlterId then '0' else $$String:$AlterId</SET><XMLTAG>AlterId</XMLTAG></FIELD>
+                    <FIELD NAME='FldBlank'><SET>''</SET></FIELD>
+                    <COLLECTION NAME='MyCollection'>
+                        <TYPE>Voucher</TYPE>
+                        <FETCH>AllInventoryEntries</FETCH>
+                        <FILTER>Fltr01,Fltr02,Fltr03</FILTER>
+                    </COLLECTION>
+                    <SYSTEM TYPE='Formulae' NAME='Fltr01'>NOT $IsCancelled</SYSTEM>
+                    <SYSTEM TYPE='Formulae' NAME='Fltr02'>NOT $IsOptional</SYSTEM>
+                    <SYSTEM TYPE='Formulae' NAME='Fltr03'>$AlterID > $$ALTER_ID</SYSTEM>
+                </TDLMESSAGE>
+            </TDL>
+        </DESC>
+    </BODY>
+</ENVELOPE>

@@ -14,8 +14,12 @@ const store = require("./store");
 const execFileAsync = promisify(execFile);
 const MS_PER_DAY = 86_400_000;
 
-const baseURL = process.env.BACKEND_URL || "https://api.tallydekho.com"; // Production — override with BACKEND_URL env var for dev/staging
-// Dev: set BACKEND_URL=http://192.168.29.39:3001 in your .env or launch config
+const isDev = !!process.env.ELECTRON_DEV;
+const baseURL = process.env.BACKEND_URL ||
+  (isDev ? "http://192.168.29.39:3001" : "https://api.tallydekho.com");
+// In dev mode (npm run dev), automatically uses local backend
+// In production build, uses https://api.tallydekho.com
+// Override anytime with BACKEND_URL env var
 
 const axiosInstance = axios.create({
   baseURL,

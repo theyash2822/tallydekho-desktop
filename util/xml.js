@@ -683,7 +683,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
     "Ledger.xml",
     "StockCategory.xml",
     // "StockGST.xml",
-    // "StockOpeningBalance.xml",
+    "StockOpeningBalance.xml",
   ];
 
   for (let i = 0; i < companies.length; i++) {

@@ -404,14 +404,15 @@ ipcMain.handle("api:paired_device", async () => {
     return { status: true, data: null };
   }
 
-  response = response.data.pairing;
+  const pairing = response.data.pairing;
 
   return {
     status: true,
     data: {
-      name: `${response.MANUFACTURER} - ${response.MODEL}`,
-      os: response.IS_ANDROID ? "Android" : "iOS",
-      last: response.LAST_SYNC_AT,
+      name: pairing.USER_NAME || pairing.NAME || pairing.MOBILE || 'Paired Account',
+      os: pairing.IS_ANDROID ? 'Android' : (pairing.IS_PAIRED ? 'Mobile' : 'Unknown'),
+      last: pairing.LAST_SYNC_AT,
+      mobile: pairing.MOBILE || '',
     },
   };
 });

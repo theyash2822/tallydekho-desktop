@@ -51,6 +51,7 @@ export default function Devices() {
     closeRemoveDeviceModal();
     if (response.status) {
       updateState("pairedDevice", null);
+      setUserProfile(null);
     } else {
       openAlertModal(
         "Something went wrong while removing paired device. If this message persists, please contact the support team.",
@@ -177,7 +178,7 @@ export default function Devices() {
       {/* <Deployer /> */}
       {isRemoveDeviceModalOpen && (
         <RemovePairedDeviceModal
-          device={pairedDevice.name}
+          device={pairedDevice?.name || 'this device'}
           onClose={closeRemoveDeviceModal}
           onConfirm={removeDeviceHandler}
         />

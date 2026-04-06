@@ -458,10 +458,10 @@ ipcMain.handle("api:ai_chat", async (event, { messages }) => {
   }
 });
 
-// Fetch real user profile from backend
+// Fetch real user profile from backend via device-id (no token needed)
 ipcMain.handle("api:user_profile", async () => {
   try {
-    const response = await axiosInstance.get("/app/me");
+    const response = await axiosInstance.get("/desktop/me");
     return { status: true, data: response.data?.data || null };
   } catch (err) {
     error(err?.message, "api:user_profile");

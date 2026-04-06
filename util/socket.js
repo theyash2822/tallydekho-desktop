@@ -1,7 +1,8 @@
 const getDeviceProfile = require("./deviceProfile");
 const { checkForUpdates } = require("./helper");
-const { info } = require("./logger");
+const { info, error } = require("./logger");
 const store = require("./store.js");
+const { postToTally } = require("./xml");
 
 module.exports = (window, socket) => {
   // const socketId = socket.id;
@@ -74,6 +75,34 @@ module.exports = (window, socket) => {
   socket.on("update_available", () => {
     info("[update_available socket]");
     window && window.webContents && checkForUpdates(window);
+  });
+
+  // tally:write - receive XML from backend and forward to Tally HTTP port
+  // Backend sends: { jobId, xml, companyName }
+  // Desktop POSTs to Tally and acks back with result
+  socket.on("tally:write", async (payload, callback) => {
+    const { jobId, xml } = payload || {};
+    info("[tally:write] received job", { jobId, xmlLength: xml?.length });
+
+    if (!xml) {
+      const result = { status: false, message: "No XML provided", jobId };
+      if (typeof callback === "function") callback(result);
+      socket.emit("tally:write:result", result);
+      return;
+    }
+
+    try {
+      const result = await postToTally(xml);
+      const response = { ...result, jobId };
+      info("[tally:write] result", { jobId, status: result.status });
+      if (typeof callback === "function") callback(response);
+      socket.emit("tally:write:result", response);
+    } catch (err) {
+      error(err?.message, "tally:write");
+      const response = { status: false, message: err?.message, jobId };
+      if (typeof callback === "function") callback(response);
+      socket.emit("tally:write:result", response);
+    }
   });
 
   const registerDevice = (socket) => {

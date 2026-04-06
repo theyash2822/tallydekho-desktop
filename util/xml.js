@@ -323,6 +323,37 @@ const getData = async (filePath, replacer = []) => {
   }
 };
 
+// postToTally - send a write XML directly to Tally's HTTP port
+// Used for data entry: create vouchers, masters etc.
+const postToTally = async (xmlBody) => {
+  const TALLY_URL = tallyUrl();
+  let attempt = 0;
+  while (true) {
+    try {
+      const response = await axios.post(TALLY_URL, xmlBody, {
+        headers: {
+          "Content-Type": "text/xml",
+          Accept: "application/xml, text/xml, */*",
+        },
+        timeout: 15000,
+      });
+      const data = response.data;
+      // Check if Tally returned an error
+      const hasError = typeof data === 'string' && (data.includes('LINEERROR') || data.includes('CANCELLED'));
+      const hasSuccess = typeof data === 'string' && (data.includes('Created') || data.includes('Altered') || data.includes('RESULT') || data.includes('1'));
+      info('[tally:write] response', { length: data?.length, hasError, hasSuccess });
+      if (hasError) return { status: false, message: 'Tally returned an error', data };
+      return { status: true, message: 'Success', data };
+    } catch (err) {
+      error(err?.message, 'postToTally');
+      if (++attempt >= 2) return { status: false, message: err?.message || 'Tally not reachable' };
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
+};
+
+module.exports.postToTally = postToTally;
+
 const getCompanyDestinations = async () => {
   const response = await getData("TallyDestination.xml");
 

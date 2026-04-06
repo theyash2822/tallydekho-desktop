@@ -1,0 +1,240 @@
+<ENVELOPE>
+    <HEADER>
+        <VERSION>1</VERSION>
+        <TALLYREQUEST>Export</TALLYREQUEST>
+        <TYPE>Data</TYPE>
+        <ID>MyReportLedgerTable</ID>
+    </HEADER>
+    <BODY>
+        <DESC>
+            <STATICVARIABLES>
+                <SVEXPORTFORMAT>XML (Data Interchange)</SVEXPORTFORMAT>
+                <SVCURRENTCOMPANY>Test Company Data</SVCURRENTCOMPANY>
+            </STATICVARIABLES>
+            <TDL>
+                <TDLMESSAGE>
+                    <REPORT NAME='MyReportLedgerTable'>
+                        <FORMS>MyForm</FORMS>
+                    </REPORT>
+                    <FORM NAME='MyForm'>
+                        <PARTS>MyPart01</PARTS>
+                    </FORM>
+                    <PART NAME='MyPart01'>
+                        <LINES>MyLine01</LINES>
+                        <REPEAT>MyLine01:MyCollection</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
+                    </PART>
+                    <PART NAME='MyPart02'>
+                        <LINES>MyLine02</LINES>
+                        <REPEAT>MyLine02:Allinventoryentries</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
+                       
+                    </PART>
+                    <PART NAME='MyPart03'>
+                        <LINES>MyLine03</LINES>
+                        <REPEAT>MyLine03:Batchallocations</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
+                        
+                    </PART>
+                    <PART NAME='MyPart04'>
+                        <LINES>MyLine04</LINES>
+                        <REPEAT>MyLine04:AllLedgerentries</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
+                        
+                    </PART>
+                    <PART NAME='MyPart05'>
+                        <LINES>MyLine05</LINES>
+                        <REPEAT>MyLine05:Basicuserdescription</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
+                       <XMLTAG>If $$IsEmpty:$Basicuserdescription then "" else "Basicuserdescription"</XMLTAG>
+                    </PART>
+                    <PART NAME='MyPart06'>
+                        <LINES>MyLine06</LINES>
+                        <REPEAT>MyLine06:Billallocations</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
+                        
+                    </PART>
+                    <LINE NAME='MyLine01'>
+                        <FIELDS>Fld01,Fld02,Fld03,Fld04,Fld05,Fld06,Fld07,Fld08,Fld09,Fld10,Fld11,Fld12,Fld13,Fld14,Fld15</FIELDS>
+                        <XMLTAG>Voucher</XMLTAG>
+                        <EXPLODE>MyPart02</EXPLODE>
+                        <EXPLODE>MyPart04</EXPLODE>
+                    </LINE>
+                    <FIELD NAME='Fld01'>
+                        <SET>$Guid</SET>
+                        <XMLTAG>guid</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld02'>
+                        <SET>$AlterId</SET>
+                        <XMLTAG>AlterId</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld03'>
+                        <SET>if ($$IsEmpty:$Date) then ($$StrByCharCode:241) else ($$PyrlYYYYMMDDFormat:$Date:'-')</SET>
+                        <XMLTAG>Date</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld04'>
+                        <SET>$VoucherTypeName</SET>
+                        <XMLTAG>VoucherType</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld05'>
+                        <SET>$Guid:VoucherType:$VoucherTypeName</SET>
+                        <XMLTAG>_VoucherType</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld06'>
+                        <SET>$VoucherNumber</SET>
+                        <XMLTAG>VoucherNumber</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld07'>
+                        <SET>$Reference</SET>
+                        <XMLTAG>Reference</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld08'>
+                        <SET>$Narration</SET>
+                        <XMLTAG>Narration</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld09'>
+                        <SET>$PartyLedgerName</SET>
+                        <XMLTAG>PartyName</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld10'>
+                        <SET>$Guid:Ledger:$PartyLedgerName</SET>
+                        <XMLTAG>_PartyName</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld11'>
+                        <SET>$PlaceOfSupply</SET>
+                        <XMLTAG>PlaceOfSupply</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld12'>
+                        <SET>if ($IsInvoice) then 1 else 0</SET>
+                        <XMLTAG>IsInvoice</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld13'>
+                        <SET>if ($$IsAccountingVch:$VoucherTypeName) then 1 else 0</SET>
+                        <XMLTAG>isAccountingVoucher</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld14'>
+                        <SET>if ($$IsInventoryVch:$VoucherTypeName) then 1 else 0</SET>
+                        <XMLTAG>isInventoryVoucher</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld15'>
+                        <SET>if ($$IsOrderVch:$VoucherTypeName) then 1 else 0</SET>
+                        <XMLTAG>isOrderVoucher</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='FldBlank'>
+                        <SET>''</SET>
+                    </FIELD>
+                    <LINE NAME='MyLine02'>
+                        <FIELDS>Fld01R,Fld02R,Fld03R,Fld04R,Fld05R</FIELDS>
+                         <XMLTAG>AllInventoryentries</XMLTAG>
+                        <EXPLODE>MyPart05</EXPLODE>
+                        <EXPLODE>MyPart03</EXPLODE>
+                    </LINE>
+                    <FIELD NAME='Fld01R'>
+                        <SET>$Stockitemname</SET>
+                        <XMLTAG>Stockitemname</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld02R'>
+                        <SET>$BilledQty</SET>
+                        <XMLTAG>BilledQty</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld03R'>
+                        <SET>$Rate</SET>
+                        <XMLTAG>Rate</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld04R'>
+                        <SET>$Discount</SET>
+                        <XMLTAG>Discount</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld05R'>
+                        <SET>$Amount</SET>
+                        <XMLTAG>Amount</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld06R'>
+                        <SET>$VoucherNumber</SET>
+                        <XMLTAG>VoucherNumber</XMLTAG>
+                    </FIELD>
+                    <LINE NAME='MyLine03'>
+                        <FIELDS>Fld01B,Fld02B,Fld03B,Fld04B,Fld05B,Fld06B</FIELDS>
+                        <XMLTAG>Batchallocations</XMLTAG>
+                    </LINE>
+                    <FIELD NAME='Fld01B'>
+                        <SET>$Godownname</SET>
+                        <XMLTAG>Godownname</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld02B'>
+                        <SET>$Batchname</SET>
+                        <XMLTAG>Batchname</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld03B'>
+                        <SET>$BilledQty</SET>
+                        <XMLTAG>BilledQty</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld04B'>
+                        <SET>$Rate</SET>
+                        <XMLTAG>Rate</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld05B'>
+                        <SET>$Discount</SET>
+                        <XMLTAG>Discount</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld06B'>
+                        <SET>$Amount</SET>
+                        <XMLTAG>Amount</XMLTAG>
+                    </FIELD>
+                    <LINE NAME='MyLine04'>
+                        <FIELDS>Fld01L,Fld02L</FIELDS>
+                      
+                        <XMLTAG>AllLedgerEntries</XMLTAG>
+                         <EXPLODE>MyPart06</EXPLODE>
+                    </LINE>
+                    <FIELD NAME='Fld01L'>
+                        <SET>$Ledgername</SET>
+                        <XMLTAG>Ledgername</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld02L'>
+                        <SET>if ($$IsDebit:$Amount) then (-$$NumValue:$Amount) else ($$NumValue:$Amount)</SET>
+                        <XMLTAG>Amount</XMLTAG>
+                    </FIELD>
+                     <LINE NAME='MyLine05'>
+                        <FIELDS>Fld01D</FIELDS>
+                        
+                    </LINE>
+                    <FIELD NAME='Fld01D'>
+                        <SET>$Basicuserdescription</SET>
+                        <XMLTAG>ItemDesc</XMLTAG>
+                    </FIELD>
+                    <LINE NAME='MyLine06'>
+                        <FIELDS>Fld01Bill,Fld02Bill,Fld03Bill,Fld04Bill</FIELDS>
+                       <XMLTAG>Billallocations</XMLTAG>
+                    </LINE>
+                   <FIELD NAME='Fld01Bill'>
+                        <SET>$Name</SET>
+                        <XMLTAG>Billname</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld02Bill'>
+                        <SET>$BillDate</SET>
+                        <XMLTAG>Billdate</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld03Bill'>
+                        <SET>if ($$IsDebit:$Amount) then (-$$NumValue:$Amount) else ($$NumValue:$Amount)</SET>
+                        <XMLTAG>BillAmount</XMLTAG>
+                    </FIELD>
+                     <FIELD NAME='Fld04Bill'>
+                        <SET>$BILLTYPE</SET>
+                        <XMLTAG>BILLTYPE</XMLTAG>
+                    </FIELD>
+                    <COLLECTION NAME='MyCollection'>
+                        <TYPE>Vouchers</TYPE>
+                        <Belongsto>Yes</Belongsto>
+                        <FETCH>AlterId,Narration,PartyLedgerName,PlaceOfSupply,Allinventoryentries.List,Basicuserdescription.List,AllLedgerEntries.List,Billallocations.List</FETCH>
+                        <FILTER>Fltr01,Fltr02,DeltaFilter</FILTER>
+                        <KeepSource>().</KeepSource>
+                    </COLLECTION>
+                    <SYSTEM TYPE='Formulae' NAME='Fltr01'>NOT$IsCancelled</SYSTEM>
+                    <SYSTEM TYPE='Formulae' NAME='Fltr02'>NOT$IsOptional</SYSTEM>
+                     <SYSTEM TYPE='Formulae' NAME='DeltaFilter'>$AlterId > $$Number:""</SYSTEM>
+                </TDLMESSAGE>
+            </TDL>
+        </DESC>
+    </BODY>
+</ENVELOPE>

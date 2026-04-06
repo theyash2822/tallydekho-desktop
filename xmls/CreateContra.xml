@@ -1,0 +1,45 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- CreateContra.xml — Create Contra Voucher in Tally (Cash <-> Bank transfer) -->
+<!-- ISOPTIONAL: Yes = Optional/Draft, No = Regular/Posted -->
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+        <STATICVARIABLES>
+          <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
+        </STATICVARIABLES>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <VOUCHER VCHTYPE="Contra" ACTION="Create">
+            <DATE>$$DATE</DATE>
+            <VOUCHERTYPENAME>Contra</VOUCHERTYPENAME>
+            <VOUCHERNUMBER>$$VOUCHER_NUMBER</VOUCHERNUMBER>
+            <NARRATION>$$NARRATION</NARRATION>
+            <ISOPTIONAL>$$IS_OPTIONAL</ISOPTIONAL>
+
+            <!-- Source account (where money comes FROM) — Cr side -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>$$FROM_LEDGER</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <ISPARTYLEDGER>No</ISPARTYLEDGER>
+              <AMOUNT>$$AMOUNT</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+
+            <!-- Destination account (where money goes TO) — Dr side -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>$$TO_LEDGER</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <ISPARTYLEDGER>No</ISPARTYLEDGER>
+              <AMOUNT>$$AMOUNT_NEGATIVE</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

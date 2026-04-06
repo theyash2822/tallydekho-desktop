@@ -675,14 +675,15 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
   const masterXmls = [
     "CostCategory.xml",
     "CostCentre.xml",
-    "Godown.xml",
-    "GroupMaster.xml",       // Full group masters with nature/revenue flags
-    "StockGroup.xml",
-    "Unit.xml",
-    "VoucherType.xml",
-    "FullLedger.xml",        // Full ledger with bank, TDS, credit limit, bill-wise
+    "Godown.xml",             // Warehouses/godowns
+    "GroupMaster.xml",        // Group masters with nature/revenue flags
+    "StockGroupFull.xml",     // StockGroup with ParentGuid (replaces StockGroup.xml)
+    "UnitFull.xml",           // Units with FormalName, IsSimpleUnit, Conversion
+    "VoucherTypeFull.xml",    // VoucherType with ParentGuid, AffectsStock
+    "LedgerFull.xml",         // Full ledger with bank, GSTIN, PAN, address
     "StockCategory.xml",
     "StockOpeningBalance.xml",
+    "CurrencyMaster.xml",     // Currency masters
   ];
 
   for (let i = 0; i < companies.length; i++) {
@@ -824,8 +825,9 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
 
       info(`[sync] Year Function`, { year, voucherAlterId });
 
+      // StockItemFull.xml replaces StockItem.xml — includes full GST rates, HSN, alias
       const stockresponse = await syncHelperWithDate({
-        xml: "StockItem.xml",
+        xml: "StockItemFull.xml",
         companyName: name,
         alterId: voucherAlterId == 0 ? 0 : masterAlterId,
         fromDate: year.begin,
@@ -846,8 +848,9 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
       });
       promises.push(stockTransactionResponse);
 
+      // AllVoucher.xml replaces Voucher.xml — includes inventory, batch, ledger entries, bill allocations
       const voucherResponse = await syncHelperWithDate({
-        xml: "Voucher.xml",
+        xml: "AllVoucher.xml",
         companyName: name,
         alterId: voucherAlterId,
         fromDate: year.begin,

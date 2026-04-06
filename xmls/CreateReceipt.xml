@@ -1,0 +1,47 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- CreateReceipt.xml — Create Receipt Voucher in Tally -->
+<!-- ISOPTIONAL: Yes = Optional/Draft, No = Regular/Posted -->
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+        <STATICVARIABLES>
+          <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
+        </STATICVARIABLES>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <VOUCHER VCHTYPE="Receipt" ACTION="Create">
+            <DATE>$$DATE</DATE>
+            <VOUCHERTYPENAME>Receipt</VOUCHERTYPENAME>
+            <VOUCHERNUMBER>$$VOUCHER_NUMBER</VOUCHERNUMBER>
+            <NARRATION>$$NARRATION</NARRATION>
+            <ISOPTIONAL>$$IS_OPTIONAL</ISOPTIONAL>
+            <PARTYLEDGERNAME>$$PARTY_LEDGER</PARTYLEDGERNAME>
+            <REFERENCE>$$REFERENCE</REFERENCE>
+
+            <!-- Party (Debtor/Customer) — Dr side -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>$$PARTY_LEDGER</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <ISPARTYLEDGER>Yes</ISPARTYLEDGER>
+              <AMOUNT>$$PARTY_AMOUNT</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+
+            <!-- Bank/Cash — Cr side (receipt mode) -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>$$BANK_LEDGER</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <ISPARTYLEDGER>No</ISPARTYLEDGER>
+              <AMOUNT>$$BANK_AMOUNT</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

@@ -1,0 +1,48 @@
+<ENVELOPE>
+    <HEADER>
+        <VERSION>1</VERSION>
+        <TALLYREQUEST>Export</TALLYREQUEST>
+        <TYPE>Collection</TYPE>
+        <ID>Ledgers</ID>
+    </HEADER>
+    <BODY>
+        <DESC>
+            <STATICVARIABLES>
+                <SVEXPORTFORMAT>XML (Data Interchange)</SVEXPORTFORMAT>
+                <SVCURRENTCOMPANY>Demo2</SVCURRENTCOMPANY>
+            </STATICVARIABLES>
+            <TDL>
+                <TDLMESSAGE>
+                    <COLLECTION ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No" NAME="Ledgers">
+                        <TYPE>Ledger</TYPE>
+                        <BELONGSTO>Yes</BELONGSTO>
+                        <NATIVEMETHOD>Name,Guid,ALTERID,PARENT,OPENINGBALANCE,MAILINGNAME,LedgerMobile,Gsttypeofsupply</NATIVEMETHOD>
+                        <Compute>Parentguid:$Guid:Group:$Parent</Compute>
+                        <Compute>MAILINGADDRESS:if $$IsEmpty:$Address then '' else $$FullList:Address:$Addres</Compute>
+                        <Compute>MAILINGSTATE:$LedStateName</Compute>
+                        <Compute>MAILINGCOUNTRY:$CountryName</Compute>
+                        <Compute>OPENINGBALANCE:if $$IsDebit:$OpeningBalance then -$$NumValue:$OpeningBalance else $$NumValue:$OpeningBalance</Compute>
+                        <Compute>Pincode:$Pincode</Compute>
+                        <Compute>EMAIL:$EMAIL</Compute>
+                        <Compute>PHONE:$LedgerPHONE</Compute>
+                        <Compute>ITPAN:$IncomeTaxNumber</Compute>
+                        <Compute>GSTIN:$Partygstin</Compute>
+                        <Compute>GSTREGISTRATIONTYPE:$GSTREGISTRATIONTYPE</Compute>
+                        <Compute>GSTDUTYHEAD:$Gstdutyhead</Compute>
+                        <Compute>TAXRATE:if $$IsEmpty:$RateOfTaxCalculation then '0' else $$String:$RateOfTaxCalculation</Compute>
+                        <Compute>ALIAS:$OnlyAlias</Compute>
+                        <Compute>ISREVENUE:$ISREVENUE</Compute>
+                        <Compute>ISDEEMEDPOSITIVE:if $IsDeemedPositive then 1 else 0</Compute>
+                        <Compute>BANKACCOUNTHOLDER:if Not $$IsEmpty:$BankAccHolderName then $BankAccHolderName else "" </Compute>
+                        <Compute>BANKACCOUNTNUMBER:if Not $$IsEmpty:$BankDetails then $BankDetails else ""</Compute>
+                        <Compute>BANKIFSC:$IFSCode</Compute>
+                        <Compute>BANKSWIFT:$BANKSWIFT</Compute>
+                        <Compute>BANKBRANCH:if Not $$IsEmpty:$BankBranchName then $BankBranchName else ''</Compute>
+                        <Compute>BANKNAME:if Not $$IsEmpty:$MAILINGNAME then $MAILINGNAME else ''</Compute>
+                        <Compute>DESCRIPTION:$Description</Compute>
+                    </COLLECTION>
+                </TDLMESSAGE>
+            </TDL>
+        </DESC>
+    </BODY>
+</ENVELOPE>

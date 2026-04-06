@@ -1,0 +1,47 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- CreateJournal.xml — Create Journal Voucher in Tally -->
+<!-- ISOPTIONAL: Yes = Optional/Draft, No = Regular/Posted -->
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+        <STATICVARIABLES>
+          <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
+        </STATICVARIABLES>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <VOUCHER VCHTYPE="Journal" ACTION="Create">
+            <DATE>$$DATE</DATE>
+            <VOUCHERTYPENAME>Journal</VOUCHERTYPENAME>
+            <VOUCHERNUMBER>$$VOUCHER_NUMBER</VOUCHERNUMBER>
+            <NARRATION>$$NARRATION</NARRATION>
+            <ISOPTIONAL>$$IS_OPTIONAL</ISOPTIONAL>
+            <REFERENCE>$$REFERENCE</REFERENCE>
+
+            <!-- Dr entry (debit ledger) -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>$$DR_LEDGER</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <ISPARTYLEDGER>No</ISPARTYLEDGER>
+              <AMOUNT>$$DR_AMOUNT_NEGATIVE</AMOUNT>
+              <!-- Bill allocation if needed -->
+            </ALLLEDGERENTRIES.LIST>
+
+            <!-- Cr entry (credit ledger) -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>$$CR_LEDGER</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <ISPARTYLEDGER>No</ISPARTYLEDGER>
+              <AMOUNT>$$CR_AMOUNT</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

@@ -1,0 +1,46 @@
+<ENVELOPE>
+    <HEADER>
+        <VERSION>1</VERSION>
+        <TALLYREQUEST>Export</TALLYREQUEST>
+        <TYPE>Collection</TYPE>
+        <ID>StockitemReport</ID>
+    </HEADER>
+    <BODY>
+        <DESC>
+            <STATICVARIABLES>
+                <SVEXPORTFORMAT>XML (Data Interchange)</SVEXPORTFORMAT>
+                <SVCURRENTCOMPANY>Demo2</SVCURRENTCOMPANY>
+            </STATICVARIABLES>
+            <TDL>
+                <TDLMESSAGE>
+                    <COLLECTION NAME="StockitemReport">
+                        <TYPE>Stockitem</TYPE>
+                        <NATIVEMETHOD>Name,Guid,ALTERID,Parent</NATIVEMETHOD>
+                        <Compute>ParentGuid:if $$IsEqual:$Parent:$$SysName:Primary then '' else $Guid:StockGroup:$Parent</Compute>
+                        <Compute>Parent:if $$IsEqual:$Parent:$$SysName:Primary then '' else $Parent</Compute>
+                        <Compute>OnlyAlias:$OnlyAlias</Compute>
+                        <Compute>BaseUnits:$BaseUnits</Compute>
+                        <Compute>BaseUnitsGuid:$Guid:Unit:$BaseUnits</Compute>
+                        <Compute>OpeningBalance:$$StringFindAndReplace:($$Number:$$String:$OpeningBalance):'(-)':'-'</Compute>
+                        <Compute>OpeningRate:if $$IsEmpty:$OpeningRate then 0 else $$Number:$OpeningRate</Compute>
+                        <Compute>OpeningValue:$$StringFindAndReplace:(if $$IsDebit:$OpeningValue then -$$NumValue:$OpeningValue else $$NumValue:$OpeningValue):'(-)':'-'</Compute>
+                        <Compute>APPLICABLEFROM:if ($$IsEqual:$GstApplicable:($$SysName:Applicable) AND NOT $$IsEmpty:$GstDetails[Last].APPLICABLEFROM) then $GstDetails[Last].APPLICABLEFROM else ''</Compute>
+                        <Compute>GSTTYPEOFSUPPLY:$GSTTYPEOFSUPPLY</Compute>
+                        <Compute>isRcmApplicable:if $IsReverseChargeApplicable then 1 else 0</Compute>
+                        <Compute>Natureofgoods:if ($$IsEqual:$GstApplicable:($$SysName:Applicable) AND NOT $$IsEmpty:$GstDetails[Last].Natureofgoods) then $GstDetails[Last].Natureofgoods else ''</Compute>
+                        <Compute>GstNatureOfTransaction:if ($$IsEqual:$GstApplicable:($$SysName:Applicable) AND NOT $$IsEmpty:$GstDetails[Last].GstNatureOfTransaction) then $GstDetails[Last].GstNatureOfTransaction else ''</Compute>
+                        <Compute>Hsncode:if $$IsEmpty:$GstDetails[Last].Hsncode then $HSNDetails[Last].HSNCode else $GstDetails[Last].Hsncode</Compute>
+                        <Compute>hsnDescription:if $$IsEmpty:$GstDetails[Last].Hsn then $HSNDetails[Last].HSN else $GstDetails[Last].Hsn</Compute>
+                        <Compute>Taxability:if ($$IsEqual:$GstApplicable:($$SysName:Applicable) AND NOT $$IsEmpty:$GstDetails[Last].Taxability) then $GstDetails[Last].Taxability else ''</Compute>
+                        <Compute>IGSTRate:$GSTDetails[Last].StatewiseDetails[1, @@IsAnyState].RateDetails[1, @@IsIGST].GSTRate</Compute>
+                        <Compute>CGSTRate:$GSTDetails[Last].StatewiseDetails[1, @@IsAnyState].RateDetails[1, @@IsCGST].GSTRate</Compute>
+                        <Compute>SGSTRate:$GSTDetails[Last].StatewiseDetails[1, @@IsAnyState].RateDetails[1, ($$IsSysNameEqual:SGST:$GSTRateDutyHead)or($GSTRateDutyHead contains 'SGST/UTGST')].GSTRate</Compute>
+                        <Compute>CESSRate:$GSTDetails[Last].StatewiseDetails[1, @@IsAnyState].RateDetails[1, @@IsAddlCess].GSTRate</Compute>
+                        <Filter>Fltr01</Filter>
+                    </COLLECTION>
+                    <SYSTEM TYPE='Formulae' NAME='Fltr01'>$AlterId > 0</SYSTEM>
+                </TDLMESSAGE>
+            </TDL>
+        </DESC>
+    </BODY>
+</ENVELOPE>

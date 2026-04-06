@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld("api", {
   pairedDevice: () => ipcRenderer.invoke("api:paired_device"),
   removePairedDevice: () => ipcRenderer.invoke("api:remove_paired_device"),
   sendLogs: () => ipcRenderer.invoke("api:send_logs"),
+  userProfile: () => ipcRenderer.invoke("api:user_profile"),
 });
 
 contextBridge.exposeInMainWorld("tally", {

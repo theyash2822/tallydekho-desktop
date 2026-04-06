@@ -432,6 +432,17 @@ ipcMain.handle("api:remove_paired_device", async () => {
   };
 });
 
+// Fetch real user profile from backend
+ipcMain.handle("api:user_profile", async () => {
+  try {
+    const response = await axiosInstance.get("/app/me");
+    return { status: true, data: response.data?.data || null };
+  } catch (err) {
+    error(err?.message, "api:user_profile");
+    return { status: false };
+  }
+});
+
 ipcMain.handle("api:send_logs", async () => {
   const infoFile = logPath("info");
 

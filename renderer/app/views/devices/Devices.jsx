@@ -5,15 +5,20 @@ import { TallyContext } from "../../utils/TallyContext";
 import RemovePairedDeviceModal from "../components/RemovePairedDeviceModal";
 
 export default function Devices() {
-  // const item = { name: "Rahul’s Pixel 7", os: "Android", last: "5 min ago" };
-
   const [isRemoveDeviceModalOpen, setIsRemoveDeviceModalOpen] = useState(false);
+  const [userProfile, setUserProfile] = useState(null);
 
   const {
     state: { pairedDevice, pairingCodeGeneratedAt },
     updateState,
     openAlertModal,
   } = useContext(TallyContext);
+
+  useEffect(() => {
+    window.api?.userProfile?.().then(res => {
+      if (res?.status && res?.data) setUserProfile(res.data);
+    }).catch(() => {});
+  }, []);
 
   // useEffect(() => {
   //   if (pairingCodeGeneratedAt && !pairedDevice) {
@@ -128,7 +133,7 @@ export default function Devices() {
               className="px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-800"
               style={{ borderColor: "#D5D9E4" }}
             >
-              Admin User
+              {userProfile?.name || 'User'}
             </span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
@@ -136,7 +141,7 @@ export default function Devices() {
               <span className="text-xs text-slate-500 mb-1">Name</span>
               <input
                 readOnly
-                value="Admin User"
+                value={userProfile?.name || 'Not set'}
                 className="border rounded-md px-2 py-1 w-full bg-white"
                 style={{ borderColor: "#D5D9E4" }}
               />
@@ -145,7 +150,7 @@ export default function Devices() {
               <span className="text-xs text-slate-500 mb-1">Email</span>
               <input
                 readOnly
-                value="admin@example.com"
+                value={userProfile?.email || 'Not set'}
                 className="border rounded-md px-2 py-1 w-full bg-white"
                 style={{ borderColor: "#D5D9E4" }}
               />
@@ -154,7 +159,7 @@ export default function Devices() {
               <span className="text-xs text-slate-500 mb-1">Mobile</span>
               <input
                 readOnly
-                value="+91 98765 43210"
+                value={userProfile?.mobile ? `+91 ${userProfile.mobile}` : 'Not set'}
                 className="border rounded-md px-2 py-1 w-full bg-white"
                 style={{ borderColor: "#D5D9E4" }}
               />

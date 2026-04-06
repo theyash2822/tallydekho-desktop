@@ -159,8 +159,17 @@ export default function Devices() {
               />
             </div>
           </div>
-          <div className="text-xs text-slate-500 mt-2">
-            Edited on mobile app only.
+          <div className="flex items-center justify-between mt-3">
+            <div className="text-xs text-slate-500">Edited on mobile app only.</div>
+            {pairedDevice && (
+              <button
+                onClick={() => setIsRemoveDeviceModalOpen(true)}
+                className="px-3 py-1.5 rounded-md border text-sm font-medium text-rose-600 hover:bg-rose-50 transition-colors"
+                style={{ borderColor: "#fca5a5" }}
+              >
+                Unpair Device
+              </button>
+            )}
           </div>
         </div>
       </Card>

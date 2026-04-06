@@ -1,0 +1,52 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- CreateStockItem.xml - Create Stock Item in Tally -->
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>All Masters</REPORTNAME>
+        <STATICVARIABLES>
+          <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
+        </STATICVARIABLES>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <STOCKITEM ACTION="Create">
+            <NAME>$$ITEM_NAME</NAME>
+            <PARENT>$$GROUP_NAME</PARENT>
+            <CATEGORY>$$CATEGORY</CATEGORY>
+            <BASEUNITS>$$UNIT</BASEUNITS>
+            <OPENINGBALANCE>$$OPENING_QTY $$UNIT</OPENINGBALANCE>
+            <OPENINGRATE>$$OPENING_RATE /$$UNIT</OPENINGRATE>
+            <OPENINGVALUE>$$OPENING_VALUE</OPENINGVALUE>
+            <GSTAPPLICABLE>$$GST_APPLICABLE</GSTAPPLICABLE>
+            <GSTTYPEOFSUPPLY>$$GST_TYPE</GSTTYPEOFSUPPLY>
+            <GSTDETAILS.LIST>
+              <APPLICABLEFROM>$$APPLICABLE_FROM</APPLICABLEFROM>
+              <HSNCODE>$$HSN_CODE</HSNCODE>
+              <TAXABILITY>Taxable</TAXABILITY>
+              <STATEWISEDETAILS.LIST>
+                <STATENAME>$$ANY$$</STATENAME>
+                <RATEDETAILS.LIST>
+                  <GSTRATEDUTYHEAD>Central Tax</GSTRATEDUTYHEAD>
+                  <GSTRATE>$$CGST_RATE</GSTRATE>
+                </RATEDETAILS.LIST>
+                <RATEDETAILS.LIST>
+                  <GSTRATEDUTYHEAD>State Tax</GSTRATEDUTYHEAD>
+                  <GSTRATE>$$SGST_RATE</GSTRATE>
+                </RATEDETAILS.LIST>
+                <RATEDETAILS.LIST>
+                  <GSTRATEDUTYHEAD>Integrated Tax</GSTRATEDUTYHEAD>
+                  <GSTRATE>$$IGST_RATE</GSTRATE>
+                </RATEDETAILS.LIST>
+              </STATEWISEDETAILS.LIST>
+            </GSTDETAILS.LIST>
+          </STOCKITEM>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

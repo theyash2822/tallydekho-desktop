@@ -1,0 +1,60 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- CreateDeliveryNote.xml - Create Delivery Note in Tally -->
+<!-- Delivery Note = goods dispatched but invoice not yet raised -->
+<!-- ISOPTIONAL: Yes = Optional/Draft, No = Regular/Posted -->
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>All Masters</REPORTNAME>
+        <STATICVARIABLES>
+          <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
+        </STATICVARIABLES>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <VOUCHER VCHTYPE="Delivery Note" ACTION="Create">
+            <VOUCHERTYPENAME>Delivery Note</VOUCHERTYPENAME>
+            <DATE>$$DATE</DATE>
+            <EFFECTIVEDATE>$$DATE</EFFECTIVEDATE>
+            <VOUCHERNUMBER>$$VOUCHER_NUMBER</VOUCHERNUMBER>
+            <REFERENCE>$$REFERENCE</REFERENCE>
+            <ISINVOICE>Yes</ISINVOICE>
+            <ISCANCELLED>No</ISCANCELLED>
+            <ISOPTIONAL>$$IS_OPTIONAL</ISOPTIONAL>
+            <NARRATION>$$NARRATION</NARRATION>
+            <PARTYLEDGERNAME>$$PARTY_LEDGER</PARTYLEDGERNAME>
+
+            <!-- Inventory movement only — no accounting entry for delivery note -->
+            <ALLINVENTORYENTRIES.LIST>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <STOCKITEMNAME>$$ITEM_NAME</STOCKITEMNAME>
+              <AMOUNT>$$ITEM_AMOUNT</AMOUNT>
+              <ACTUALQTY>$$ACTUAL_QTY</ACTUALQTY>
+              <BILLEDQTY>$$BILLED_QTY</BILLEDQTY>
+              <RATE>$$RATE</RATE>
+              <ACCOUNTINGALLOCATIONS.LIST>
+                <REMOVEZEROENTRIES>No</REMOVEZEROENTRIES>
+                <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+                <LEDGERFROMITEM>No</LEDGERFROMITEM>
+                <LEDGERNAME>$$SALES_LEDGER</LEDGERNAME>
+                <AMOUNT>$$ITEM_AMOUNT</AMOUNT>
+              </ACCOUNTINGALLOCATIONS.LIST>
+              <BATCHALLOCATIONS.LIST>
+                <BATCHNAME>Primary Batch</BATCHNAME>
+                <GODOWNNAME>$$GODOWN_NAME</GODOWNNAME>
+                <TRACKINGNUMBER>$$TRACKING_NUMBER</TRACKINGNUMBER>
+                <AMOUNT>$$ITEM_AMOUNT</AMOUNT>
+                <ACTUALQTY>$$ACTUAL_QTY</ACTUALQTY>
+                <BILLEDQTY>$$BILLED_QTY</BILLEDQTY>
+              </BATCHALLOCATIONS.LIST>
+            </ALLINVENTORYENTRIES.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

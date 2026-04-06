@@ -1,0 +1,78 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- CreateDebitNote.xml - Create Debit Note (Purchase Return) in Tally -->
+<!-- ISOPTIONAL: Yes = Optional/Draft, No = Regular/Posted -->
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>All Masters</REPORTNAME>
+        <STATICVARIABLES>
+          <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
+        </STATICVARIABLES>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <VOUCHER VCHTYPE="Debit Note" ACTION="Create">
+            <VOUCHERTYPENAME>Debit Note</VOUCHERTYPENAME>
+            <DATE>$$DATE</DATE>
+            <EFFECTIVEDATE>$$DATE</EFFECTIVEDATE>
+            <VOUCHERNUMBER>$$VOUCHER_NUMBER</VOUCHERNUMBER>
+            <REFERENCE>$$REFERENCE</REFERENCE>
+            <ISINVOICE>Yes</ISINVOICE>
+            <ISCANCELLED>No</ISCANCELLED>
+            <ISOPTIONAL>$$IS_OPTIONAL</ISOPTIONAL>
+            <NARRATION>$$NARRATION</NARRATION>
+            <PARTYLEDGERNAME>$$PARTY_LEDGER</PARTYLEDGERNAME>
+
+            <!-- Vendor gets debited (Dr) -->
+            <LEDGERENTRIES.LIST>
+              <REMOVEZEROENTRIES>No</REMOVEZEROENTRIES>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <ISPARTYLEDGER>Yes</ISPARTYLEDGER>
+              <LEDGERFROMITEM>No</LEDGERFROMITEM>
+              <LEDGERNAME>$$PARTY_LEDGER</LEDGERNAME>
+              <AMOUNT>$$TOTAL_AMOUNT_NEGATIVE</AMOUNT>
+            </LEDGERENTRIES.LIST>
+
+            <!-- Returned items (Cr to Purchase Return) -->
+            <ALLINVENTORYENTRIES.LIST>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <STOCKITEMNAME>$$ITEM_NAME</STOCKITEMNAME>
+              <AMOUNT>$$ITEM_AMOUNT</AMOUNT>
+              <ACTUALQTY>$$ACTUAL_QTY</ACTUALQTY>
+              <BILLEDQTY>$$BILLED_QTY</BILLEDQTY>
+              <RATE>$$RATE</RATE>
+              <ACCOUNTINGALLOCATIONS.LIST>
+                <REMOVEZEROENTRIES>No</REMOVEZEROENTRIES>
+                <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+                <LEDGERFROMITEM>No</LEDGERFROMITEM>
+                <LEDGERNAME>$$PURCHASE_RETURN_LEDGER</LEDGERNAME>
+                <AMOUNT>$$ITEM_AMOUNT</AMOUNT>
+              </ACCOUNTINGALLOCATIONS.LIST>
+              <BATCHALLOCATIONS.LIST>
+                <BATCHNAME>Primary Batch</BATCHNAME>
+                <GODOWNNAME>$$GODOWN_NAME</GODOWNNAME>
+                <AMOUNT>$$ITEM_AMOUNT</AMOUNT>
+                <ACTUALQTY>$$ACTUAL_QTY</ACTUALQTY>
+                <BILLEDQTY>$$BILLED_QTY</BILLEDQTY>
+              </BATCHALLOCATIONS.LIST>
+            </ALLINVENTORYENTRIES.LIST>
+
+            <!-- Tax reversal -->
+            <LEDGERENTRIES.LIST>
+              <REMOVEZEROENTRIES>No</REMOVEZEROENTRIES>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <LEDGERFROMITEM>No</LEDGERFROMITEM>
+              <LEDGERNAME>$$TAX_LEDGER</LEDGERNAME>
+              <AMOUNT>$$TAX_AMOUNT</AMOUNT>
+              <VATASSESSABLEVALUE>$$TAXABLE_VALUE</VATASSESSABLEVALUE>
+            </LEDGERENTRIES.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

@@ -1,0 +1,31 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- DeleteVoucher.xml - Cancel/Delete a Voucher in Tally -->
+<!-- Use ACTION="Cancel" to mark as cancelled (recommended) -->
+<!-- Use ACTION="Delete" to permanently delete (cannot be undone) -->
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+        <STATICVARIABLES>
+          <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
+        </STATICVARIABLES>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <!-- ACTION: "Cancel" marks as cancelled, "Delete" removes permanently -->
+          <VOUCHER VCHTYPE="$$VOUCHER_TYPE" ACTION="$$ACTION">
+            <DATE>$$DATE</DATE>
+            <VOUCHERTYPENAME>$$VOUCHER_TYPE</VOUCHERTYPENAME>
+            <VOUCHERNUMBER>$$VOUCHER_NUMBER</VOUCHERNUMBER>
+            <!-- GUID is required for identifying the exact voucher to cancel/delete -->
+            <GUID>$$VOUCHER_GUID</GUID>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

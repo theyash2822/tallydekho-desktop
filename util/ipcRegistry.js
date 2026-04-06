@@ -432,6 +432,17 @@ ipcMain.handle("api:remove_paired_device", async () => {
   };
 });
 
+// AI Chat - proxies to backend /app/ai/chat
+ipcMain.handle("api:ai_chat", async (event, { messages }) => {
+  try {
+    const response = await axiosInstance.post("/app/ai/chat", { messages });
+    return response.data?.data?.reply || 'No response.';
+  } catch (err) {
+    error(err?.message, "api:ai_chat");
+    return 'Could not connect to AI assistant. Make sure the backend is running.';
+  }
+});
+
 // Fetch real user profile from backend
 ipcMain.handle("api:user_profile", async () => {
   try {

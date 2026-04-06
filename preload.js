@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld("api", {
   removePairedDevice: () => ipcRenderer.invoke("api:remove_paired_device"),
   sendLogs: () => ipcRenderer.invoke("api:send_logs"),
   userProfile: () => ipcRenderer.invoke("api:user_profile"),
+  aiChat: (payload) => ipcRenderer.invoke("api:ai_chat", payload),
 });
 
 contextBridge.exposeInMainWorld("tally", {

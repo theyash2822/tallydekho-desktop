@@ -282,8 +282,8 @@ function tallySyncMessageSender(webContents) {
 }
 
 const tallyUrl = () => {
-  const port = store.get("port");
-  return `http://localhost:${port}`; // adjust if needed
+  const port = store.get("port") || 9000; // Default Tally port is 9000
+  return `http://localhost:${port}`;
 };
 
 let totalVouchers = 0;
@@ -337,16 +337,46 @@ const postToTally = async (xmlBody) => {
         },
         timeout: 15000,
       });
-      const data = response.data;
-      // Check if Tally returned an error
-      const hasError = typeof data === 'string' && (data.includes('LINEERROR') || data.includes('CANCELLED'));
-      const hasSuccess = typeof data === 'string' && (data.includes('Created') || data.includes('Altered') || data.includes('RESULT') || data.includes('1'));
-      info('[tally:write] response', { length: data?.length, hasError, hasSuccess });
-      if (hasError) return { status: false, message: 'Tally returned an error', data };
-      return { status: true, message: 'Success', data };
+      const data = typeof response.data === 'string' ? response.data : JSON.stringify(response.data || '');
+
+      // Parse Tally XML response properly
+      // Tally returns LINEERROR on failure, empty BODY or CREATED on success
+      const hasLineError = data.includes('LINEERROR') || data.includes('<LINEERROR>');
+      const hasCancelled = data.includes('CANCELLED') && !data.includes('ISCANCELLED');
+      const hasImportResult = data.includes('IMPORTRESULT') || data.includes('CREATED') || data.includes('ALTERED');
+
+      info('[tally:write] response', {
+        url: TALLY_URL,
+        length: data.length,
+        hasLineError,
+        hasCancelled,
+        hasImportResult,
+        preview: data.slice(0, 200),
+      });
+
+      if (hasLineError) {
+        // Extract error message from XML
+        const match = data.match(/<LINEERROR>(.*?)<\/LINEERROR>/s);
+        const errMsg = match ? match[1].trim() : 'Tally validation error';
+        return { status: false, message: errMsg, data };
+      }
+
+      if (hasCancelled) {
+        return { status: false, message: 'Tally cancelled the operation', data };
+      }
+
+      // Success: Tally processed the request
+      return { status: true, message: 'Entry created in Tally', data };
     } catch (err) {
       error(err?.message, 'postToTally');
-      if (++attempt >= 2) return { status: false, message: err?.message || 'Tally not reachable' };
+      if (++attempt >= 2) {
+        return {
+          status: false,
+          message: err?.code === 'ECONNREFUSED'
+            ? `Cannot connect to Tally at ${tallyUrl()}. Is Tally Prime running?`
+            : err?.message || 'Tally not reachable',
+        };
+      }
       await new Promise((r) => setTimeout(r, 500));
     }
   }
@@ -715,6 +745,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
     "StockCategory.xml",
     "StockOpeningBalance.xml",
     "CurrencyMaster.xml",     // Currency masters
+    "BillOutstanding.xml",    // Bill-wise outstanding (receivables/payables ageing)
   ];
 
   for (let i = 0; i < companies.length; i++) {

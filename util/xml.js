@@ -365,8 +365,16 @@ const postToTally = async (xmlBody) => {
         return { status: false, message: 'Tally cancelled the operation', data };
       }
 
-      // Success: Tally processed the request
-      return { status: true, message: 'Entry created in Tally', data };
+      // Success: parse internal IDs from response
+      const createdMatch  = data.match(/<CREATED>(\d+)<\/CREATED>/i);
+      const alteredMatch  = data.match(/<ALTERED>(\d+)<\/ALTERED>/i);
+      const lastVchMatch  = data.match(/<LASTVCHID>(.*?)<\/LASTVCHID>/i);
+      const vchNumMatch   = data.match(/<VOUCHERNUMBER>(.*?)<\/VOUCHERNUMBER>/i);
+      const created       = createdMatch  ? parseInt(createdMatch[1])  : 0;
+      const altered       = alteredMatch  ? parseInt(alteredMatch[1])  : 0;
+      const tallyId       = lastVchMatch  ? lastVchMatch[1].trim()     : null;
+      const voucherNumber = vchNumMatch   ? vchNumMatch[1].trim()      : null;
+      return { status: true, message: 'Entry created in Tally', data, tallyId, voucherNumber, created, altered };
     } catch (err) {
       error(err?.message, 'postToTally');
       if (++attempt >= 2) {

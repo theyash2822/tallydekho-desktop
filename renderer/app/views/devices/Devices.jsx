@@ -101,18 +101,12 @@ export default function Devices() {
                   </div>
                 </div>
                 <div className="mt-3 flex gap-2">
-                  {/* <button
-                    className="px-3 py-1.5 rounded-md border text-slate-700 hover:bg-emerald-50 hover:text-emerald-700"
-                    style={{ borderColor: "#D5D9E4" }}
-                  >
-                    Block
-                  </button> */}
                   <button
-                    className="px-3 py-1.5 rounded-md border text-slate-700 hover:bg-rose-50 hover:text-rose-700"
+                    className="px-3 py-1.5 rounded-md border text-slate-700 hover:bg-rose-50 hover:text-rose-700 text-sm"
                     style={{ borderColor: "#fca5a5" }}
                     onClick={() => setIsRemoveDeviceModalOpen(true)}
                   >
-                    Remove
+                    Unpair Device
                   </button>
                 </div>
               </div>

@@ -162,7 +162,8 @@ export default function Devices() {
           </div>
           <div className="flex items-center justify-between mt-3">
             <div className="text-xs text-slate-500">Edited on mobile app only.</div>
-            {pairedDevice && (
+            {/* Show unpair if paired device exists OR if userProfile loaded (means paired) */}
+            {(pairedDevice || userProfile) && (
               <button
                 onClick={() => setIsRemoveDeviceModalOpen(true)}
                 className="px-3 py-1.5 rounded-md border text-sm font-medium text-rose-600 hover:bg-rose-50 transition-colors"

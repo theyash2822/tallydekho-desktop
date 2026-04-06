@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld("api", {
   sendLogs: () => ipcRenderer.invoke("api:send_logs"),
   userProfile: () => ipcRenderer.invoke("api:user_profile"),
   aiChat: (payload) => ipcRenderer.invoke("api:ai_chat", payload),
+  sendAttachment: (payload) => ipcRenderer.invoke("api:ai_attachment", payload),
 });
 
 contextBridge.exposeInMainWorld("tally", {

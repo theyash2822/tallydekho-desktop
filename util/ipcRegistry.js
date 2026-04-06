@@ -432,6 +432,21 @@ ipcMain.handle("api:remove_paired_device", async () => {
   };
 });
 
+// Send attachment to project@tallydekho.com via backend
+ipcMain.handle("api:ai_attachment", async (event, { filePath, fileName }) => {
+  try {
+    const fileData = fsSync.readFileSync(filePath).toString('base64');
+    const ext = fileName.split('.').pop().toLowerCase();
+    const mimeMap = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', pdf: 'application/pdf' };
+    const fileType = mimeMap[ext] || 'application/octet-stream';
+    const response = await axiosInstance.post('/app/ai/attachment', { fileName, fileData: `data:${fileType};base64,${fileData}`, fileType });
+    return response.data?.status ? true : false;
+  } catch (err) {
+    error(err?.message, 'api:ai_attachment');
+    return false;
+  }
+});
+
 // AI Chat - proxies to backend /app/ai/chat
 ipcMain.handle("api:ai_chat", async (event, { messages }) => {
   try {

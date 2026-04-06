@@ -58,6 +58,34 @@ export default function Help() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [msgs]);
 
+  async function handleAttach() {
+    try {
+      const files = await window.api.pickFiles({ properties: ['openFile', 'multiSelections'], filters: [{ name: 'Images & PDFs', extensions: ['jpg','jpeg','png','gif','pdf'] }] });
+      if (!files || files.length === 0) return;
+      const fs = window.require ? window.require('fs') : null;
+      for (const filePath of files.slice(0, 5)) {
+        const fileName = filePath.split(/[\/\\]/).pop();
+        const loadingId = Date.now() + Math.random();
+        setMsgs(m => [...m,
+          { from: 'me', text: `(Attached: ${fileName})` },
+          { from: 'bot', text: '', loading: true, id: loadingId },
+        ]);
+        try {
+          await window.api.sendAttachment({ filePath, fileName });
+          setMsgs(m => m.map(msg => msg.id === loadingId
+            ? { from: 'bot', text: `Got it! Your attachment "${fileName}" has been forwarded to the TallyDekho team at project@tallydekho.com. We'll get back to you soon.` }
+            : msg
+          ));
+        } catch {
+          setMsgs(m => m.map(msg => msg.id === loadingId
+            ? { from: 'bot', text: `Could not send "${fileName}". Please email it directly to project@tallydekho.com` }
+            : msg
+          ));
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
   async function sendMessage(text) {
     const t = (text || input).trim();
     if (!t || loading) return;
@@ -143,6 +171,15 @@ export default function Help() {
             className="flex-1 border rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:border-[#3F5263]"
             style={{ borderColor: "#D5D9E4" }}
           />
+          <button
+            onClick={handleAttach}
+            disabled={loading}
+            className="px-3 py-2 rounded-xl text-sm border transition-colors hover:bg-slate-50"
+            style={{ borderColor: "#D5D9E4" }}
+            title="Attach image or PDF — will be emailed to project@tallydekho.com"
+          >
+            📎
+          </button>
           <button
             onClick={() => sendMessage()}
             disabled={loading || !input.trim()}

@@ -1,0 +1,29 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- CreateWarehouse.xml — Create Godown/Warehouse in Tally -->
+<!-- Tally treats warehouses as Godowns — stored under inventory masters -->
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>All Masters</REPORTNAME>
+        <STATICVARIABLES>
+          <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
+        </STATICVARIABLES>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <GODOWN ACTION="Create">
+            <NAME>$$GODOWN_NAME</NAME>
+            <PARENT>$$PARENT_GODOWN</PARENT>  <!-- Leave empty for top-level, or set parent godown name -->
+            <ADDRESS.LIST TYPE="String">
+              <ADDRESS>$$ADDRESS</ADDRESS>
+            </ADDRESS.LIST>
+          </GODOWN>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

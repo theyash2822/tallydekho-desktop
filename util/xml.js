@@ -1061,6 +1061,7 @@ module.exports = {
   getCompanies,
   syncTallyData,
   stopTallySyncHandler,
+  postToTally,
 };
 
 // console.dir(json, { depth: null, colors: true, maxArrayLength: null });

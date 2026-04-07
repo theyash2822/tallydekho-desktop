@@ -75,7 +75,7 @@ export default function PairingPanel() {
         {pairingState === "revealed" && (
           <div className="flex items-center gap-3">
             <div className="font-mono text-2xl tracking-widest select-all">
-              {masked ? "••••" : pairingCode}
+              {masked ? "••••••" : pairingCode}
             </div>
             <button
               onClick={() => setMasked((v) => !v)}

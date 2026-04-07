@@ -80,6 +80,23 @@ module.exports = (window, socket) => {
   // tally:write - receive XML from backend and forward to Tally HTTP port
   // Backend sends: { jobId, xml, companyName }
   // Desktop POSTs to Tally and acks back with result
+  // pairing_confirmed - mobile paired with this desktop, refresh pairedDevice state
+  socket.on("pairing_confirmed", async (payload) => {
+    info("[socket] pairing_confirmed", payload);
+    try {
+      const pairedDevice = await axiosInstance.get("/desktop/pairing-device");
+      const device = pairedDevice.data?.data?.pairing;
+      if (device) {
+        window.webContents.send("window:listener", { key: "pairedDevice", value: {
+          name: device.USER_NAME || device.NAME || device.MOBILE || 'Mobile App',
+          os: 'Mobile',
+          last: device.LAST_SYNC_AT,
+          mobile: device.MOBILE || '',
+        }});
+      }
+    } catch (e) { error(e?.message, "pairing_confirmed"); }
+  });
+
   socket.on("tally:write", async (payload, callback) => {
     const { jobId, xml } = payload || {};
     info("[tally:write] received job", { jobId, xmlLength: xml?.length });

@@ -232,7 +232,7 @@
                     </COLLECTION>
                     <SYSTEM TYPE='Formulae' NAME='Fltr01'>NOT$IsCancelled</SYSTEM>
                     <SYSTEM TYPE='Formulae' NAME='Fltr02'>NOT$IsOptional</SYSTEM>
-                     <SYSTEM TYPE='Formulae' NAME='DeltaFilter'>$AlterId > $$Number:""</SYSTEM>
+                     <SYSTEM TYPE='Formulae' NAME='DeltaFilter'>$AlterId > $$ALTER_ID</SYSTEM>
                 </TDLMESSAGE>
             </TDL>
         </DESC>

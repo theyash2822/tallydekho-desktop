@@ -728,16 +728,11 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
 
   companies = companies.map((company) => ({
     ...company,
-    yearIds: company.years.map((year) => yearIds[company.id][year.finYear]),
+    // yearIds keyed by guid on backend, fallback to id for compatibility
+    yearIds: company.years.map((year) =>
+      (yearIds[company.guid] || yearIds[company.id] || {})[year.finYear]
+    ),
   }));
-
-  // syncedData.masterAlterId.forEach((item) => {
-  //   alterIds[item._id].master = item.maxAlterId;
-  // });
-
-  // syncedData.voucherAlterId.forEach((item) => {
-  //   alterIds[item._id].voucher = item.voucherAlterId;
-  // });
 
   sendMessage("Fetching Masters");
 

@@ -87,7 +87,7 @@ export default function Devices() {
               <div className="space-y-1">
                 <div className="inline-flex items-center gap-2">
                   <span
-                    className="px-2 py-0.5 rounded-full border bg-[#E8F5ED] text-[#2D7D46]"
+                    className="px-2 py-0.5 rounded-full border bg-[#F5F4EF] text-[#2D7D46]"
                     style={{ borderColor: "#E9E8E3" }}
                   >
                     Device
@@ -137,7 +137,7 @@ export default function Devices() {
         >
           <div className="flex items-center gap-2 mb-3 text-sm">
             <span
-              className="px-2 py-0.5 rounded-full border bg-[#E8F5ED] text-[#2D7D46]"
+              className="px-2 py-0.5 rounded-full border bg-[#F5F4EF] text-[#2D7D46]"
               style={{ borderColor: "#E9E8E3" }}
             >
               {userProfile?.name || 'User'}

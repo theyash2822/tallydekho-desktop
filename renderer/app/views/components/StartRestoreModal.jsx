@@ -30,7 +30,7 @@ const StartRestoreModal = ({ onClose, onConfirm }) => {
               No
             </button>
             <button
-              className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
+              className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#F0EFE9] hover:text-[#1A1A1A]"
               style={border}
               onClick={onConfirm}
             >

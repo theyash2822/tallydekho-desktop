@@ -18,7 +18,7 @@ function StatusChip({ s }) {
     <span
       className={`text-xs rounded-full border px-2 py-0.5 ${
         m.tone === "success"
-          ? "bg-[#E8F5ED] text-[#2D7D46]"
+          ? "bg-[#E8E7E1] text-[#1A1A1A]"
           : m.tone === "danger"
           ? "bg-[#FDECEA] text-[#C0392B]"
           : m.tone === "warn"
@@ -231,7 +231,7 @@ export default function Companies({
         <div className="flex items-center gap-2">
           <button
             onClick={openAddCompaniesModal}
-            className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
+            className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#F0EFE9] hover:text-[#1A1A1A]"
             style={{ borderColor: "#E9E8E3" }}
           >
             Add Companies
@@ -241,7 +241,7 @@ export default function Companies({
             className={`px-3 py-1.5 rounded-md border ${
               disableSyncButton
                 ? "bg-[#F0EFE9] text-[#AEACA8] cursor-not-allowed"
-                : "text-[#787774] hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
+                : "text-[#787774] hover:bg-[#F0EFE9] hover:text-[#1A1A1A]"
             }`}
             style={{ borderColor: "#E9E8E3" }}
             disabled={disableSyncButton}
@@ -295,7 +295,7 @@ export default function Companies({
                 <th className="py-2 px-2 w-8">
                   {selectedCompanies.length > 0 && (
                     <input
-                      type="checkbox"
+                      type="checkbox" className="accent-[#1A1A1A]"
                       checked={isAllChecked}
                       onChange={updateAllSelection}
                       className="block mx-auto"
@@ -317,11 +317,11 @@ export default function Companies({
 
               // const toneRow =
               //   mod == 1
-              //     ? "hover:bg-[#E8F5ED]"
+              //     ? "hover:bg-[#F0EFE9]"
               //     : mod == 2
               //     ? "hover:bg-[#FFFBEB]"
               //     : "hover:bg-[#FDECEA]";
-              const toneRow = "hover:bg-[#E8F5ED]";
+              const toneRow = "hover:bg-[#F0EFE9]";
 
               let YearComponent = <></>;
 
@@ -348,7 +348,7 @@ export default function Companies({
                   {false && (
                     <td className="py-2 px-2">
                       <input
-                        type="checkbox"
+                        type="checkbox" className="accent-[#1A1A1A]"
                         checked={!!checkedCompanies[company.id]}
                         onChange={(e) => toggle(company.id, e.target.checked)}
                         className="block mx-auto"

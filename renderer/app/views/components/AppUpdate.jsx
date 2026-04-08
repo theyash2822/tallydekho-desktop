@@ -59,7 +59,7 @@ export default function AppUpdate({
     if (state === "checking") {
       return (
         <button
-          className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
+          className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#F0EFE9] hover:text-[#1A1A1A]"
           style={{ borderColor: "#E9E8E3" }}
           disabled
         >
@@ -70,7 +70,7 @@ export default function AppUpdate({
     if (state === "available") {
       return (
         <button
-          className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
+          className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#F0EFE9] hover:text-[#1A1A1A]"
           style={{ borderColor: "#E9E8E3" }}
           onClick={startDownload}
           disabled={isDownloadStarted}
@@ -82,7 +82,7 @@ export default function AppUpdate({
     if (state === "downloading") {
       return (
         <button
-          className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
+          className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#F0EFE9] hover:text-[#1A1A1A]"
           style={{ borderColor: "#E9E8E3" }}
           disabled
         >
@@ -93,7 +93,7 @@ export default function AppUpdate({
     if (state === "downloaded") {
       return (
         <button
-          className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
+          className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#F0EFE9] hover:text-[#1A1A1A]"
           style={{ borderColor: "#E9E8E3" }}
           onClick={window.updater.quitAndInstall}
         >
@@ -104,7 +104,7 @@ export default function AppUpdate({
     if (state === "idle") {
       return (
         <button
-          className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
+          className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#F0EFE9] hover:text-[#1A1A1A]"
           style={{ borderColor: "#E9E8E3" }}
           onClick={() => {
             setError("");

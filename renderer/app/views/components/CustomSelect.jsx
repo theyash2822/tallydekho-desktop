@@ -66,8 +66,8 @@ export default function CustomSelect({
                 }}
                 className={`px-3 py-[6px] cursor-pointer select-none ${
                   value === opt.value
-                    ? "bg-[#E8F5ED] text-[#2D7D46]"
-                    : "hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
+                    ? "bg-[#E8E7E1] text-[#1A1A1A]"
+                    : "hover:bg-[#F0EFE9] hover:text-[#1A1A1A]"
                 }`}
               >
                 {opt.label}

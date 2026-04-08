@@ -79,7 +79,7 @@ export default function Settings() {
               setSaved(true);
               updatePort(port);
             }}
-            className={`px-3 py-1.5 rounded-md border text-[#1A1A1A] hover:bg-[#E8F5ED] hover:text-[#2D7D46] ${
+            className={`px-3 py-1.5 rounded-md border text-[#1A1A1A] hover:bg-[#F0EFE9] hover:text-[#1A1A1A] ${
               forceUpdate ? "cursor-not-allowed" : ""
             }`}
             style={{ borderColor: "#E9E8E3" }}

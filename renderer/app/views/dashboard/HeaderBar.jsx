@@ -95,7 +95,7 @@ export default function HeaderBar() {
             <label className="text-sm flex items-center gap-2">
               Auto Sync{" "}
               <input
-                type="checkbox"
+                type="checkbox" className="accent-[#1A1A1A]"
                 checked={isAutoSync}
                 // onChange={(e) => updateState("isAutoSync", e.target.checked)}
                 onChange={autoSyncHandler}

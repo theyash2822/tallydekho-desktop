@@ -149,7 +149,7 @@ export default function AddCompaniesModal({ onClose, onAdd }) {
                   </div>
                 </div>
                 <input
-                  type="checkbox"
+                  type="checkbox" className="accent-[#1A1A1A]"
                   checked={checkedCompanies[company.id]}
                   onChange={(e) => {
                     setCheckedCompanies((s) => ({
@@ -182,7 +182,7 @@ export default function AddCompaniesModal({ onClose, onAdd }) {
                     }
                   >
                     <input
-                      type="checkbox"
+                      type="checkbox" className="accent-[#1A1A1A]"
                       checked={
                         checkedCompanyYears?.[company.id]?.[year.finYear]
                       }
@@ -244,7 +244,7 @@ export default function AddCompaniesModal({ onClose, onAdd }) {
               Cancel
             </button>
             <button
-              className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
+              className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#F0EFE9] hover:text-[#1A1A1A]"
               style={border}
               onClick={onSubmit}
             >

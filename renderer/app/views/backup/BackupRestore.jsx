@@ -119,7 +119,7 @@ export default function BackupRestore() {
             )}
             <div className="mt-2 flex gap-2">
               <button
-                className="px-2 py-1 rounded-md border text-[#787774] hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
+                className="px-2 py-1 rounded-md border text-[#787774] hover:bg-[#F0EFE9] hover:text-[#1A1A1A]"
                 style={{ borderColor: "#E9E8E3" }}
                 onClick={selectPathHandle}
               >
@@ -237,7 +237,7 @@ export default function BackupRestore() {
           <button
             onClick={runBackup}
             disabled={isBackingUp}
-            className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
+            className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#F0EFE9] hover:text-[#1A1A1A]"
             style={{ borderColor: "#E9E8E3" }}
           >
             {isBackingUp ? "Backing up…" : "Run Backup Now"}

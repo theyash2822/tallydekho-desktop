@@ -432,7 +432,7 @@ export default function App() {
   return (
     <div
       className="w-full min-h-screen grid place-content-center text-[14px]"
-      style={{ background: '#FFFFFF', color: '#1A1A1A' }}
+      style={{ background: '#1A1A1A', color: '#1A1A1A' }}
     >
       {alertModalData.isOpen && (
         <AlertModal

@@ -12,7 +12,7 @@ export default function Sidebar({ active, updateState, forceUpdate }) {
   return (
     <aside
       className="w-48 h-full flex flex-col"
-      style={{ background: '#1A1A1A' }}
+      style={{ background: '#1A1A1A', borderRight: 'none' }}
     >
       <div className="p-3">
         {/* Logo */}

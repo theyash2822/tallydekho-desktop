@@ -56,7 +56,7 @@ export default function Sidebar({ active, updateState, forceUpdate }) {
       <div className="px-3 pt-3 pb-4 mt-auto">
         <div
           className="rounded-lg p-2.5 text-center text-xs"
-          style={{ border: '1px solid #333333', color: '#787774' }}
+          style={{ border: '1px solid #2A2A2A', color: '#787774' }}
         >
           © {new Date().getFullYear()} TallyDekho
         </div>

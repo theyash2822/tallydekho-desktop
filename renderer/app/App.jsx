@@ -478,7 +478,7 @@ export default function App() {
             width: 800,
             height: 500,
             background: '#FFFFFF',
-            border: '1px solid #E9E8E3',
+            border: '1px solid #1A1A1A',
             borderRadius: 12,
             overflow: 'hidden',
           }}

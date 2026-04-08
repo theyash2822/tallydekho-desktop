@@ -171,6 +171,12 @@ const registerTallySync = (windowContent) => {
 const startAutoSync = async (windowContent) => {
   // We can tell react to start manual sync also
 
+  const isPaired = store.get("isPaired") === true;
+  if (!isPaired) {
+    info(`Background [auto-sync skipped]: device not paired`);
+    return;
+  }
+
   const status = await isTallyConnected();
   const isOnline = store.get("isOnline");
   const isSyncing = store.get("isSyncing");
@@ -215,6 +221,12 @@ const startAutoSync = async (windowContent) => {
 };
 
 const startAutoSyncHeadless = async () => {
+  const isPaired = store.get("isPaired") === true;
+  if (!isPaired) {
+    info(`Headless [auto-sync skipped]: device not paired`);
+    return;
+  }
+
   const status = await isTallyConnected();
 
   info(`Headless [tally status]: ${status}`);

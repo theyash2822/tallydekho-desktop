@@ -87,6 +87,8 @@ module.exports = (window, socket) => {
       const pairedDevice = await axiosInstance.get("/desktop/pairing-device");
       const device = pairedDevice.data?.data?.pairing;
       if (device) {
+        // Mark as paired — auto-sync will now run
+        store.set("isPaired", true);
         window.webContents.send("window:listener", { key: "pairedDevice", value: {
           name: device.USER_NAME || device.NAME || device.MOBILE || 'Mobile App',
           os: 'Mobile',

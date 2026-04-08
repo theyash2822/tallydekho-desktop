@@ -432,7 +432,7 @@ export default function App() {
   return (
     <div
       className="w-full min-h-screen grid place-content-center text-[14px]"
-      style={{ background: '#F5F4EF', color: '#1A1A1A' }}
+      style={{ background: '#FFFFFF', color: '#1A1A1A' }}
     >
       {alertModalData.isOpen && (
         <AlertModal
@@ -477,7 +477,7 @@ export default function App() {
           style={{
             width: 800,
             height: 500,
-            background: '#F5F4EF',
+            background: '#FFFFFF',
             border: '1px solid #E9E8E3',
             borderRadius: 12,
             overflow: 'hidden',
@@ -493,7 +493,7 @@ export default function App() {
               updateState={updateState}
               forceUpdate={state.forceUpdate}
             />
-            <main className="p-4 overflow-auto" style={{ background: '#F5F4EF' }}>
+            <main className="p-4 overflow-auto" style={{ background: '#FFFFFF' }}>
               {active === "dashboard" && (
                 <Dashboard hardSync={confirmHardSyncModal} />
               )}

@@ -31,7 +31,7 @@ export default function Sidebar({ active, updateState, forceUpdate }) {
               className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors"
               style={{
                 background: active === n.id ? '#333333' : 'transparent',
-                color: active === n.id ? '#FFFFFF' : '#9A9A97',
+                color: active === n.id ? '#F5F4EF' : '#9A9A97',
                 fontWeight: active === n.id ? 600 : 400,
                 cursor: forceUpdate ? 'not-allowed' : 'pointer',
               }}

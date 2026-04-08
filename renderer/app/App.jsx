@@ -493,7 +493,7 @@ export default function App() {
               updateState={updateState}
               forceUpdate={state.forceUpdate}
             />
-            <main className="p-4 overflow-auto" style={{ background: '#FFFFFF' }}>
+            <main className="p-4 overflow-auto" style={{ background: '#F5F4EF' }}>
               {active === "dashboard" && (
                 <Dashboard hardSync={confirmHardSyncModal} />
               )}

@@ -485,7 +485,7 @@ export default function App() {
         >
           <TitleBar />
           <div
-            className="h-[calc(100%-2.25rem)] grid p-2"
+            className="h-[calc(100%-2.25rem)] grid"
             style={{ gridTemplateColumns: "12rem 1fr" }}
           >
             <Sidebar

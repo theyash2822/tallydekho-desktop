@@ -168,7 +168,7 @@ export default function Help() {
             placeholder="Ask anything about TallyDekho…"
             rows={2}
             disabled={loading}
-            className="flex-1 border rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:border-[#3F5263]"
+            className="flex-1 border rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:border-[#1A1A1A]"
             style={{ borderColor: "#E9E8E3" }}
           />
           <button
@@ -185,7 +185,7 @@ export default function Help() {
             disabled={loading || !input.trim()}
             className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-colors"
             style={{
-              background: loading || !input.trim() ? "#9CA3AF" : "#3F5263",
+              background: loading || !input.trim() ? "#AEACA8" : "#1A1A1A",
               cursor: loading || !input.trim() ? "not-allowed" : "pointer",
             }}
           >

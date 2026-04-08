@@ -29,7 +29,7 @@ export default function CustomSelect({
     options.find((opt) => opt.value === value)?.label || "Select";
 
   return (
-    <div className="inline-flex items-center gap-2 text-sm text-gray-800">
+    <div className="inline-flex items-center gap-2 text-sm text-[#1A1A1A]">
       <span className="text-sm">{label}</span>
       <div className="relative" ref={ref}>
         <button
@@ -39,14 +39,14 @@ export default function CustomSelect({
           className={`h-9 px-3 pr-8 rounded-md text-left flex items-center justify-between border outline-none appearance-none relative ${buttonClasses}
             ${
               disabled
-                ? "bg-[#F3F4F6] border-[#D1D5DB] text-[#9CA3AF] cursor-not-allowed"
-                : "bg-white border-[#E9E8E3] text-gray-800 hover:border-[#BFC6D4]"
+                ? "bg-[#F0EFE9] border-[#E9E8E3] text-[#AEACA8] cursor-not-allowed"
+                : "bg-white border-[#E9E8E3] text-[#1A1A1A] hover:border-[#D4D3CE]"
             }`}
         >
           <span>{selectedLabel}</span>
           <svg
             className={`absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 ${
-              disabled ? "text-[#C5CAD3]" : "text-gray-600"
+              disabled ? "text-[#AEACA8]" : "text-[#787774]"
             } transition-transform duration-150 ${open ? "rotate-180" : ""}`}
             viewBox="0 0 20 20"
             fill="currentColor"

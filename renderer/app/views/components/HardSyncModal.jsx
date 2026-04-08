@@ -40,7 +40,7 @@ export function HardSyncModal({ onClose, onConfirm }) {
               value={text}
               onChange={(e) => setText(e.target.value)}
               className="w-full border rounded-md px-2 py-1"
-              style={{ borderColor: "#fca5a5", outline: "none" }}
+              style={{ borderColor: "#EDBBB8", outline: "none" }}
             />
           </label>
           <div className="flex justify-end gap-2 pt-2">
@@ -57,7 +57,7 @@ export function HardSyncModal({ onClose, onConfirm }) {
               className={`px-3 py-1.5 rounded-md border ${
                 allow
                   ? "text-[#787774] hover:bg-[#FDECEA] hover:text-[#C0392B] border-[#EDBBB8]"
-                  : "bg-[#F3F4F6] text-[#9CA3AF] cursor-not-allowed border-[#E9E8E3]"
+                  : "bg-[#F0EFE9] text-[#AEACA8] cursor-not-allowed border-[#E9E8E3]"
               }`}
             >
               Start Hard Sync

@@ -240,7 +240,7 @@ export default function Companies({
             onClick={startSyncingHandler}
             className={`px-3 py-1.5 rounded-md border ${
               disableSyncButton
-                ? "bg-[#F3F4F6] text-[#9CA3AF] cursor-not-allowed"
+                ? "bg-[#F0EFE9] text-[#AEACA8] cursor-not-allowed"
                 : "text-[#787774] hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
             }`}
             style={{ borderColor: "#E9E8E3" }}
@@ -252,7 +252,7 @@ export default function Companies({
             onClick={startHardSyncHandler}
             className={`px-3 py-1.5 rounded-md border ${
               disableSyncButton || isSyncing
-                ? "bg-[#F3F4F6] text-[#9CA3AF] cursor-not-allowed border-[#E9E8E3]"
+                ? "bg-[#F0EFE9] text-[#AEACA8] cursor-not-allowed border-[#E9E8E3]"
                 : "text-[#787774] hover:bg-[#FDECEA] hover:text-[#C0392B] border-[#EDBBB8]"
             }`}
             disabled={disableSyncButton || isSyncing}

@@ -36,7 +36,7 @@ const StopSyncModal = ({ onClose, onConfirm }) => {
               </button>
               <button
                 className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#FDECEA] hover:text-[#C0392B]"
-                style={{ borderColor: "#fca5a5" }}
+                style={{ borderColor: "#EDBBB8" }}
                 onClick={onConfirm}
               >
                 Yes

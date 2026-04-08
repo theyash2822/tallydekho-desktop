@@ -116,7 +116,7 @@ export default function Devices() {
                 <div className="mt-3 flex gap-2">
                   <button
                     className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#FDECEA] hover:text-[#C0392B] text-sm"
-                    style={{ borderColor: "#fca5a5" }}
+                    style={{ borderColor: "#EDBBB8" }}
                     onClick={() => setIsRemoveDeviceModalOpen(true)}
                   >
                     Unpair Device
@@ -178,8 +178,8 @@ export default function Devices() {
             {(pairedDevice || userProfile) && (
               <button
                 onClick={() => setIsRemoveDeviceModalOpen(true)}
-                className="px-3 py-1.5 rounded-md border text-sm font-medium text-rose-600 hover:bg-[#FDECEA] transition-colors"
-                style={{ borderColor: "#fca5a5" }}
+                className="px-3 py-1.5 rounded-md border text-sm font-medium text-[#C0392B] hover:bg-[#FDECEA] transition-colors"
+                style={{ borderColor: "#EDBBB8" }}
               >
                 Unpair Device
               </button>

@@ -26,7 +26,8 @@ function run(cmd, args, opts = {}) {
 }
 
 // const PS_EXE = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
-const PS_EXE = resolvePowerShell()?.exe;
+let PS_EXE;
+try { PS_EXE = resolvePowerShell()?.exe; } catch (e) { PS_EXE = null; }
 const psq = (s) => String(s ?? "").replace(/'/g, "''");
 
 function normalizeTaskPath(p) {
@@ -98,6 +99,7 @@ $task = Get-ScheduledTask -TaskName $TaskName -TaskPath $TaskPath -ErrorAction S
 Write-Output "OK $($task.TaskPath)$($task.TaskName)"
 `.trim();
 
+  if (!PS_EXE) return; // PowerShell not available — skip task settings update
   const tmp = path.join(os.tmpdir(), `settask-${Date.now()}.ps1`);
   fs.writeFileSync(tmp, inner, "utf8");
   try {

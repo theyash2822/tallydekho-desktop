@@ -19,9 +19,9 @@ export default function Sidebar({ active, updateState, forceUpdate }) {
         <div className="flex items-center gap-2 px-3 py-2.5 mb-2">
           <div
             className="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
-            style={{ background: '#333333', color: '#FFFFFF' }}
+            style={{ background: '#333333', color: '#F5F4EF' }}
           >T</div>
-          <span className="text-sm font-semibold" style={{ color: '#FFFFFF' }}>TallyDekho</span>
+          <span className="text-sm font-semibold" style={{ color: '#F5F4EF' }}>TallyDekho</span>
         </div>
         <nav className="space-y-0.5">
           {NAV.map((n) => (
@@ -38,7 +38,7 @@ export default function Sidebar({ active, updateState, forceUpdate }) {
               onMouseEnter={e => {
                 if (active !== n.id) {
                   e.currentTarget.style.background = '#2A2A2A';
-                  e.currentTarget.style.color = '#FFFFFF';
+                  e.currentTarget.style.color = '#F5F4EF';
                 }
               }}
               onMouseLeave={e => {

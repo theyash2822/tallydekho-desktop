@@ -80,7 +80,7 @@ export default function Devices() {
             className="relative overflow-hidden rounded-xl border p-3"
             style={{
               borderColor: "#E9E8E3",
-              background: "linear-gradient(135deg, #f8fafc, #eef2f7)",
+              background: "#FFFFFF",
             }}
           >
             <div className="flex items-start justify-between">
@@ -132,7 +132,7 @@ export default function Devices() {
           className="relative overflow-hidden rounded-xl border p-3"
           style={{
             borderColor: "#E9E8E3",
-            background: "linear-gradient(135deg, #f8fafc, #eef2f7)",
+            background: "#FFFFFF",
           }}
         >
           <div className="flex items-center gap-2 mb-3 text-sm">

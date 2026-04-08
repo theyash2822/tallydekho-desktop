@@ -44,7 +44,7 @@ export default function PairingPanel() {
     return (
       <Card title="Pairing">
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-[#E8F5ED]0 inline-block"></span>
+          <span className="w-2 h-2 rounded-full bg-[#2D7D46] inline-block"></span>
           <span className="text-sm text-[#2D7D46] font-medium">Paired with {pairedDevice.name || 'mobile device'}</span>
         </div>
         <div className="text-xs text-[#9A9A97] mt-1">Go to Devices tab to manage pairing.</div>

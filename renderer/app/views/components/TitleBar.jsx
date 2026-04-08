@@ -57,8 +57,8 @@ export default function TitleBar() {
         WebkitAppRegion: "drag",
       }}
     >
-      <div className="flex items-center gap-2 text-white/95">
-        <div className="w-5 h-5 rounded-full bg-white/90" />
+      <div className="flex items-center gap-2 text-[#F5F4EF]/95">
+        <div className="w-5 h-5 rounded-full bg-[#F5F4EF]/90" />
         <span className="font-semibold tracking-wide">TallyDekho Agent</span>
         {/* <span className="ml-2 text-xs bg-white/15 px-2 py-0.5 rounded-full">
           Preview
@@ -71,14 +71,14 @@ export default function TitleBar() {
         <button
           title="Minimize"
           onClick={handleMinimize}
-          className="w-8 h-7 grid place-content-center rounded hover:bg-white/20 text-white"
+          className="w-8 h-7 grid place-content-center rounded hover:bg-white/20 text-[#F5F4EF]"
         >
           —
         </button>
         <button
           title="Close"
           onClick={handleClose}
-          className="w-8 h-7 grid place-content-center rounded hover:bg-white/20 text-white"
+          className="w-8 h-7 grid place-content-center rounded hover:bg-white/20 text-[#F5F4EF]"
         >
           ✕
         </button>

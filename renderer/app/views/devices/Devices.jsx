@@ -54,8 +54,6 @@ export default function Devices() {
       updateState("pairingCode", null);
       updateState("pairingCodeGeneratedAt", null);
       setUserProfile(null);
-      // Clear paired flag so auto-sync stops immediately
-      window.api?.setPref?.('isPaired', false);
       // Auto-generate fresh pairing code after unpair
       updateState("pairingState", "generating");
       const codeRes = await window.api.pairingCode();

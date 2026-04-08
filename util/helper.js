@@ -193,10 +193,9 @@ async function registerDevice() {
 
   if (response.status) {
     store.set("lastSync", response.data.lastSync);
-    store.set("isPaired", response.data.isPaired === true);
   }
 
-  return { status: true, forceUpdate: response.data.forceUpdate, isPaired: response.data.isPaired };
+  return { status: true, forceUpdate: response.data.forceUpdate };
 }
 
 async function checkForUpdates(mainWindow) {

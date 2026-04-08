@@ -18,14 +18,14 @@ function StatusChip({ s }) {
     <span
       className={`text-xs rounded-full border px-2 py-0.5 ${
         m.tone === "success"
-          ? "bg-emerald-50 text-emerald-800"
+          ? "bg-[#E8F5ED] text-[#2D7D46]"
           : m.tone === "danger"
-          ? "bg-rose-50 text-rose-800"
+          ? "bg-[#FDECEA] text-[#C0392B]"
           : m.tone === "warn"
-          ? "bg-amber-50 text-amber-800"
-          : "bg-slate-50 text-slate-700"
+          ? "bg-[#FFFBEB] text-[#D97706]"
+          : "bg-[#F5F4EF] text-[#787774]"
       }`}
-      style={{ borderColor: "#D5D9E4" }}
+      style={{ borderColor: "#E9E8E3" }}
     >
       {m.t}
     </span>
@@ -231,8 +231,8 @@ export default function Companies({
         <div className="flex items-center gap-2">
           <button
             onClick={openAddCompaniesModal}
-            className="px-3 py-1.5 rounded-md border text-slate-700 hover:bg-emerald-50 hover:text-emerald-700"
-            style={{ borderColor: "#D5D9E4" }}
+            className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
+            style={{ borderColor: "#E9E8E3" }}
           >
             Add Companies
           </button>
@@ -241,9 +241,9 @@ export default function Companies({
             className={`px-3 py-1.5 rounded-md border ${
               disableSyncButton
                 ? "bg-[#F3F4F6] text-[#9CA3AF] cursor-not-allowed"
-                : "text-slate-700 hover:bg-emerald-50 hover:text-emerald-700"
+                : "text-[#787774] hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
             }`}
-            style={{ borderColor: "#D5D9E4" }}
+            style={{ borderColor: "#E9E8E3" }}
             disabled={disableSyncButton}
           >
             {isSyncing ? "Stop Syncing" : "Sync Now"}
@@ -252,8 +252,8 @@ export default function Companies({
             onClick={startHardSyncHandler}
             className={`px-3 py-1.5 rounded-md border ${
               disableSyncButton || isSyncing
-                ? "bg-[#F3F4F6] text-[#9CA3AF] cursor-not-allowed border-[#D5D9E4]"
-                : "text-slate-700 hover:bg-rose-50 hover:text-rose-700 border-[#fca5a5]"
+                ? "bg-[#F3F4F6] text-[#9CA3AF] cursor-not-allowed border-[#E9E8E3]"
+                : "text-[#787774] hover:bg-[#FDECEA] hover:text-[#C0392B] border-[#EDBBB8]"
             }`}
             disabled={disableSyncButton || isSyncing}
           >
@@ -265,19 +265,19 @@ export default function Companies({
         <div className="flex items-center gap-2 text-sm">
           {/* <button
             className="px-2 py-1 rounded-md border"
-            style={{ borderColor: "#D5D9E4" }}
+            style={{ borderColor: "#E9E8E3" }}
           >
             Enable Sync
           </button>
           <button
             className="px-2 py-1 rounded-md border"
-            style={{ borderColor: "#D5D9E4" }}
+            style={{ borderColor: "#E9E8E3" }}
           >
             Disable Sync
           </button> */}
           <button
-            className="px-2 py-1 rounded-md border text-slate-700 hover:bg-slate-50 hover:text-slate-800"
-            style={{ borderColor: "#D5D9E4" }}
+            className="px-2 py-1 rounded-md border text-[#787774] hover:bg-[#F5F4EF] hover:text-[#1A1A1A]"
+            style={{ borderColor: "#E9E8E3" }}
             onClick={removeMultiHandler}
           >
             Remove
@@ -286,11 +286,11 @@ export default function Companies({
       )}
       <div
         className="rounded-lg border overflow-hidden p-2"
-        style={{ borderColor: "#D5D9E4" }}
+        style={{ borderColor: "#E9E8E3" }}
       >
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-slate-500 bg-slate-50">
+            <tr className="text-left text-[#9A9A97] bg-[#F5F4EF]">
               {false && (
                 <th className="py-2 px-2 w-8">
                   {selectedCompanies.length > 0 && (
@@ -317,11 +317,11 @@ export default function Companies({
 
               // const toneRow =
               //   mod == 1
-              //     ? "hover:bg-emerald-50"
+              //     ? "hover:bg-[#E8F5ED]"
               //     : mod == 2
-              //     ? "hover:bg-amber-50"
-              //     : "hover:bg-rose-50";
-              const toneRow = "hover:bg-emerald-50";
+              //     ? "hover:bg-[#FFFBEB]"
+              //     : "hover:bg-[#FDECEA]";
+              const toneRow = "hover:bg-[#E8F5ED]";
 
               let YearComponent = <></>;
 
@@ -341,9 +341,9 @@ export default function Companies({
                 <tr
                   key={company.id}
                   className={`border-t transition-colors ${toneRow} ${
-                    (index + 1) % 2 == 0 ? "bg-slate-50" : ""
+                    (index + 1) % 2 == 0 ? "bg-[#F5F4EF]" : ""
                   }`}
-                  style={{ borderColor: "#D5D9E4" }}
+                  style={{ borderColor: "#E9E8E3" }}
                 >
                   {false && (
                     <td className="py-2 px-2">
@@ -359,7 +359,7 @@ export default function Companies({
                     <div className="font-medium max-w-[100px] truncate">
                       {company.name}
                     </div>
-                    {/* <div className="text-xs text-slate-500">{company.guid}</div> */}
+                    {/* <div className="text-xs text-[#9A9A97]">{company.guid}</div> */}
                   </td>
                   {/* <td className="py-2 px-2">
                     <span className="text-[12px]">
@@ -381,8 +381,8 @@ export default function Companies({
                   <td className="py-2 px-2">
                     <div className="flex gap-2">
                       <button
-                        className="px-2 py-1 rounded-md border text-slate-700 hover:bg-slate-50 hover:text-slate-800 w-[80px]"
-                        style={{ borderColor: "#D5D9E4" }}
+                        className="px-2 py-1 rounded-md border text-[#787774] hover:bg-[#F5F4EF] hover:text-[#1A1A1A] w-[80px]"
+                        style={{ borderColor: "#E9E8E3" }}
                         onClick={() => {
                           openEditYearsModal(
                             company.years,
@@ -394,8 +394,8 @@ export default function Companies({
                         Edit Years
                       </button>
                       <button
-                        className="px-3 py-1.5 rounded-md border text-slate-700 hover:bg-slate-50 hover:text-slate-800"
-                        style={{ borderColor: "#D5D9E4" }}
+                        className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#F5F4EF] hover:text-[#1A1A1A]"
+                        style={{ borderColor: "#E9E8E3" }}
                         onClick={() => removeCompanyHandler(index)}
                       >
                         Remove

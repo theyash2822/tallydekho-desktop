@@ -80,19 +80,19 @@ export default function Dashboard({ hardSync }) {
         <Card title="Sync Progress">
           {isSyncing ? (
             <div className="space-y-2">
-              <div className="text-xs text-slate-600">
+              <div className="text-xs text-[#787774]">
                 {syncMode === "hard"
                   ? "Hard Sync (deep refresh)"
                   : "Standard Sync"}
               </div>
-              <div className="text-xs text-slate-600">{syncMessage}</div>
+              <div className="text-xs text-[#787774]">{syncMessage}</div>
               <Progress value={syncProgress} />
-              <div className="text-xs text-slate-500">
+              <div className="text-xs text-[#9A9A97]">
                 Connect → Fetch → Upload → Confirm
               </div>
             </div>
           ) : (
-            <div className="text-sm text-slate-600">
+            <div className="text-sm text-[#787774]">
               Auto sync is {isAutoSync ? <b>ON</b> : <b>OFF</b>}. Use controls
               above to change.
             </div>

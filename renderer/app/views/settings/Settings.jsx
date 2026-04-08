@@ -37,8 +37,8 @@ export default function Settings() {
             <input
               readOnly
               value="localhost"
-              className="ml-auto border rounded-md px-2 py-1 w-40 bg-slate-50"
-              style={{ borderColor: "#D5D9E4" }}
+              className="ml-auto border rounded-md px-2 py-1 w-40 bg-[#F5F4EF]"
+              style={{ borderColor: "#E9E8E3" }}
             />
           </label>
           <label className="flex items-center gap-2">
@@ -48,7 +48,7 @@ export default function Settings() {
               onChange={(e) => setPort(Number(e.target.value || 0))}
               type="number"
               className="ml-auto border rounded-md px-2 py-1 w-28"
-              style={{ borderColor: "#D5D9E4" }}
+              style={{ borderColor: "#E9E8E3" }}
             />
           </label>
           <label className="flex items-center gap-2">
@@ -56,8 +56,8 @@ export default function Settings() {
             <input
               readOnly
               value={isTallyOnline ? "Tally Prime running ✓" : "Not detected"}
-              className="ml-auto border rounded-md px-2 py-1 w-52 bg-slate-50"
-              style={{ borderColor: "#D5D9E4" }}
+              className="ml-auto border rounded-md px-2 py-1 w-52 bg-[#F5F4EF]"
+              style={{ borderColor: "#E9E8E3" }}
             />
           </label>
           <label className="flex items-center gap-2">
@@ -65,8 +65,8 @@ export default function Settings() {
             <input
               readOnly
               value={version}
-              className="ml-auto border rounded-md px-2 py-1 w-40 bg-slate-50"
-              style={{ borderColor: "#D5D9E4" }}
+              className="ml-auto border rounded-md px-2 py-1 w-40 bg-[#F5F4EF]"
+              style={{ borderColor: "#E9E8E3" }}
             />
           </label>
         </div>
@@ -79,16 +79,16 @@ export default function Settings() {
               setSaved(true);
               updatePort(port);
             }}
-            className={`px-3 py-1.5 rounded-md border text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 ${
+            className={`px-3 py-1.5 rounded-md border text-[#1A1A1A] hover:bg-[#E8F5ED] hover:text-[#2D7D46] ${
               forceUpdate ? "cursor-not-allowed" : ""
             }`}
-            style={{ borderColor: "#D5D9E4" }}
+            style={{ borderColor: "#E9E8E3" }}
           >
             Save
           </button>
         </div>
         {saved && (
-          <div className="text-xs text-emerald-700 mt-2">
+          <div className="text-xs text-[#2D7D46] mt-2">
             Saved and applied.
           </div>
         )}

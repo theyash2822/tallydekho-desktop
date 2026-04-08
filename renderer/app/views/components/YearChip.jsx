@@ -35,8 +35,8 @@ function YearChip({ years }) {
         ref={chipRef}
         onMouseEnter={() => setOpen(true)}
         onMouseLeave={() => setOpen(false)}
-        className="relative inline-block group border bg-slate-50 rounded-full text-xs px-2 py-0.5 cursor-pointer text-slate-700"
-        style={{ borderColor: "#D5D9E4" }}
+        className="relative inline-block group border bg-[#F5F4EF] rounded-full text-xs px-2 py-0.5 cursor-pointer text-[#787774]"
+        style={{ borderColor: "#E9E8E3" }}
       >
         +{years.length - 1}
       </div>
@@ -45,7 +45,7 @@ function YearChip({ years }) {
         createPortal(
           <div
             // fixed = escapes any overflow/stacking of the table wrapper
-            className="fixed z-50 text-xs text-slate-700"
+            className="fixed z-50 text-xs text-[#787774]"
             style={{
               top: pos.top,
               left: pos.left,
@@ -54,16 +54,16 @@ function YearChip({ years }) {
             onMouseEnter={() => setOpen(true)}
             onMouseLeave={() => setOpen(false)}
           >
-            <div className="relative rounded-md bg-white border border-slate-200 shadow-md p-2">
+            <div className="relative rounded-md bg-white border border-[#E9E8E3] shadow-md p-2">
               {/* arrow */}
-              <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 rotate-45 bg-white border-l border-t border-slate-200" />
+              <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 rotate-45 bg-white border-l border-t border-[#E9E8E3]" />
               {/* grid: 2 per row, equal gaps */}
               <ul className="grid grid-cols-2 gap-1">
                 {years.slice(1).map((y, i) => (
                   <li
                     key={i}
-                    className="text-xs rounded-full border px-2 py-0.5 bg-slate-50 text-slate-700 whitespace-nowrap"
-                    style={{ borderColor: "#D5D9E4" }}
+                    className="text-xs rounded-full border px-2 py-0.5 bg-[#F5F4EF] text-[#787774] whitespace-nowrap"
+                    style={{ borderColor: "#E9E8E3" }}
                   >
                     {y.finYear}
                   </li>

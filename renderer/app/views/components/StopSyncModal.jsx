@@ -1,4 +1,4 @@
-const border = { borderColor: "#D5D9E4" };
+const border = { borderColor: "#E9E8E3" };
 
 const StopSyncModal = ({ onClose, onConfirm }) => {
   return (
@@ -15,7 +15,7 @@ const StopSyncModal = ({ onClose, onConfirm }) => {
             style={border}
           >
             <div className="font-semibold">Are you sure?</div>
-            <button onClick={onClose} className="text-slate-500">
+            <button onClick={onClose} className="text-[#9A9A97]">
               ✕
             </button>
           </div>
@@ -35,7 +35,7 @@ const StopSyncModal = ({ onClose, onConfirm }) => {
                 No
               </button>
               <button
-                className="px-3 py-1.5 rounded-md border text-slate-700 hover:bg-rose-50 hover:text-rose-700"
+                className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#FDECEA] hover:text-[#C0392B]"
                 style={{ borderColor: "#fca5a5" }}
                 onClick={onConfirm}
               >

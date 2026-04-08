@@ -1,4 +1,4 @@
-const border = { borderColor: "#D5D9E4" };
+const border = { borderColor: "#E9E8E3" };
 
 const AlertModal = ({ onClose, message, sendLogs, onSendLogs }) => {
   return (
@@ -15,7 +15,7 @@ const AlertModal = ({ onClose, message, sendLogs, onSendLogs }) => {
             style={border}
           >
             <div className="font-semibold">Alert!</div>
-            <button onClick={onClose} className="text-slate-500">
+            <button onClick={onClose} className="text-[#9A9A97]">
               ✕
             </button>
           </div>

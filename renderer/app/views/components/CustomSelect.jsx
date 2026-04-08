@@ -40,7 +40,7 @@ export default function CustomSelect({
             ${
               disabled
                 ? "bg-[#F3F4F6] border-[#D1D5DB] text-[#9CA3AF] cursor-not-allowed"
-                : "bg-white border-[#D5D9E4] text-gray-800 hover:border-[#BFC6D4]"
+                : "bg-white border-[#E9E8E3] text-gray-800 hover:border-[#BFC6D4]"
             }`}
         >
           <span>{selectedLabel}</span>
@@ -56,7 +56,7 @@ export default function CustomSelect({
         </button>
 
         {open && (
-          <ul className="absolute top-full left-0 w-full bg-white border border-[#D5D9E4] rounded-md shadow-sm z-10">
+          <ul className="absolute top-full left-0 w-full bg-white border border-[#E9E8E3] rounded-md shadow-sm z-10">
             {options.map((opt) => (
               <li
                 key={opt.value}
@@ -66,8 +66,8 @@ export default function CustomSelect({
                 }}
                 className={`px-3 py-[6px] cursor-pointer select-none ${
                   value === opt.value
-                    ? "bg-emerald-50 text-emerald-700"
-                    : "hover:bg-emerald-50 hover:text-emerald-700"
+                    ? "bg-[#E8F5ED] text-[#2D7D46]"
+                    : "hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
                 }`}
               >
                 {opt.label}

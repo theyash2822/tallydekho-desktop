@@ -59,8 +59,8 @@ export default function AppUpdate({
     if (state === "checking") {
       return (
         <button
-          className="px-3 py-1.5 rounded-md border text-slate-700 hover:bg-emerald-50 hover:text-emerald-700"
-          style={{ borderColor: "#D5D9E4" }}
+          className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
+          style={{ borderColor: "#E9E8E3" }}
           disabled
         >
           Checking…
@@ -70,8 +70,8 @@ export default function AppUpdate({
     if (state === "available") {
       return (
         <button
-          className="px-3 py-1.5 rounded-md border text-slate-700 hover:bg-emerald-50 hover:text-emerald-700"
-          style={{ borderColor: "#D5D9E4" }}
+          className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
+          style={{ borderColor: "#E9E8E3" }}
           onClick={startDownload}
           disabled={isDownloadStarted}
         >
@@ -82,8 +82,8 @@ export default function AppUpdate({
     if (state === "downloading") {
       return (
         <button
-          className="px-3 py-1.5 rounded-md border text-slate-700 hover:bg-emerald-50 hover:text-emerald-700"
-          style={{ borderColor: "#D5D9E4" }}
+          className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
+          style={{ borderColor: "#E9E8E3" }}
           disabled
         >
           Downloading… {percent}%
@@ -93,8 +93,8 @@ export default function AppUpdate({
     if (state === "downloaded") {
       return (
         <button
-          className="px-3 py-1.5 rounded-md border text-slate-700 hover:bg-emerald-50 hover:text-emerald-700"
-          style={{ borderColor: "#D5D9E4" }}
+          className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
+          style={{ borderColor: "#E9E8E3" }}
           onClick={window.updater.quitAndInstall}
         >
           Restart to update
@@ -104,8 +104,8 @@ export default function AppUpdate({
     if (state === "idle") {
       return (
         <button
-          className="px-3 py-1.5 rounded-md border text-slate-700 hover:bg-emerald-50 hover:text-emerald-700"
-          style={{ borderColor: "#D5D9E4" }}
+          className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
+          style={{ borderColor: "#E9E8E3" }}
           onClick={() => {
             setError("");
             setState("checking");
@@ -121,12 +121,12 @@ export default function AppUpdate({
 
   return (
     <Card title="Updates & About" right={right}>
-      <div className="text-xs text-slate-500">
+      <div className="text-xs text-[#9A9A97]">
         Version v{appVersion} · Windows Agent
       </div>
 
       {state === "available" && (
-        <div className="mt-2 text-xs text-slate-500">
+        <div className="mt-2 text-xs text-[#9A9A97]">
           A new version is available.
           {releaseNotes && (
             <>
@@ -144,17 +144,17 @@ export default function AppUpdate({
         </div>
       )}
       {/* {state === "downloading" && (
-        <div className="mt-2 text-xs text-slate-500">
+        <div className="mt-2 text-xs text-[#9A9A97]">
           Downloading… {percent}%
         </div>
       )} */}
       {state === "downloaded" && (
-        <div className="mt-2 text-xs text-slate-500">
+        <div className="mt-2 text-xs text-[#9A9A97]">
           Update ready. Click “Restart to update” to install.
         </div>
       )}
       {state === "none" && (
-        <div className="mt-2 text-xs text-slate-500">You're up to date.</div>
+        <div className="mt-2 text-xs text-[#9A9A97]">You're up to date.</div>
       )}
       {/* {state === "error" && (
         <div className="mt-2 text-xs text-red-600">Update error: {error}</div>

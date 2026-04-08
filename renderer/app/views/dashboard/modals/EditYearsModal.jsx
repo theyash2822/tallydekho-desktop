@@ -1,6 +1,6 @@
 import React, { Fragment, useContext, useEffect, useState } from "react";
 
-const border = { borderColor: "#D5D9E4" };
+const border = { borderColor: "#E9E8E3" };
 
 export default function EditYearsModal({
   onClose,
@@ -30,7 +30,7 @@ export default function EditYearsModal({
           style={border}
         >
           <div className="font-semibold">Edit Years</div>
-          <button onClick={onClose} className="text-slate-500">
+          <button onClick={onClose} className="text-[#9A9A97]">
             ✕
           </button>
         </div>
@@ -39,7 +39,7 @@ export default function EditYearsModal({
             {years.map((year) => (
               <div
                 className="text-xs rounded-md border px-2 py-1.5 flex items-center gap-1 "
-                style={{ borderColor: "#D5D9E4" }}
+                style={{ borderColor: "#E9E8E3" }}
                 key={year.finYear}
                 onClick={() => {
                   setCheckedYears((prev) => ({
@@ -73,7 +73,7 @@ export default function EditYearsModal({
               Cancel
             </button>
             <button
-              className="px-3 py-1.5 rounded-md border text-slate-700 hover:bg-emerald-50 hover:text-emerald-700"
+              className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
               style={border}
               disabled={!anyChecked}
               onClick={onSubmit}

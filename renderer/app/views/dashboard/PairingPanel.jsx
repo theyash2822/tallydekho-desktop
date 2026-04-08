@@ -44,10 +44,10 @@ export default function PairingPanel() {
     return (
       <Card title="Pairing">
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-          <span className="text-sm text-emerald-700 font-medium">Paired with {pairedDevice.name || 'mobile device'}</span>
+          <span className="w-2 h-2 rounded-full bg-[#E8F5ED]0 inline-block"></span>
+          <span className="text-sm text-[#2D7D46] font-medium">Paired with {pairedDevice.name || 'mobile device'}</span>
         </div>
-        <div className="text-xs text-slate-500 mt-1">Go to Devices tab to manage pairing.</div>
+        <div className="text-xs text-[#9A9A97] mt-1">Go to Devices tab to manage pairing.</div>
       </Card>
     );
   }
@@ -58,15 +58,15 @@ export default function PairingPanel() {
         {pairingState === "hidden" && (
           <button
             onClick={generateCode}
-            className="px-3 py-1.5 rounded-full border bg-slate-50 hover:bg-slate-100 text-slate-700"
-            style={{ borderColor: "#D5D9E4" }}
+            className="px-3 py-1.5 rounded-full border bg-[#F5F4EF] hover:bg-[#F0EFE9] text-[#787774]"
+            style={{ borderColor: "#E9E8E3" }}
           >
             Generate code
           </button>
         )}
         {pairingState === "generating" && (
           <div className="space-y-2">
-            <div className="text-sm text-slate-600">
+            <div className="text-sm text-[#787774]">
               Generating secure code…
             </div>
             <Progress value={66} />
@@ -79,14 +79,14 @@ export default function PairingPanel() {
             </div>
             <button
               onClick={() => setMasked((v) => !v)}
-              className="px-3 py-1.5 rounded-full border bg-slate-50 hover:bg-slate-100 text-slate-700"
-              style={{ borderColor: "#D5D9E4" }}
+              className="px-3 py-1.5 rounded-full border bg-[#F5F4EF] hover:bg-[#F0EFE9] text-[#787774]"
+              style={{ borderColor: "#E9E8E3" }}
             >
               {masked ? "Reveal code" : "Hide code"}
             </button>
           </div>
         )}
-        <div className="text-xs text-slate-500">
+        <div className="text-xs text-[#9A9A97]">
           Enter this code in the mobile app → Settings → Account Pairing.
         </div>
       </div>

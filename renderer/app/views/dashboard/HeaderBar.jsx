@@ -80,7 +80,7 @@ export default function HeaderBar() {
   return (
     <div className="mb-2">
       <div className="flex items-baseline justify-between">
-        <div className="flex items-center gap-2 text-slate-700">
+        <div className="flex items-center gap-2 text-[#787774]">
           <Badge
             tone={isTallyOnline ? "success" : "danger"}
             label={`Tally: ${isTallyOnline ? "Connected" : "Not detected"}`}
@@ -111,7 +111,7 @@ export default function HeaderBar() {
                   //   updateState("syncInterval", Number(e.target.value))
                   // }
                   onChange={updateAutoSyncHandler}
-                  className="min-w-[110px] h-9 px-3 pr-8 bg-white rounded-md appearance-none outline-none border-transparent shadow-[inset_0_0_0_1px_#D5D9E4]"
+                  className="min-w-[110px] h-9 px-3 pr-8 bg-white rounded-md appearance-none outline-none border-transparent shadow-[inset_0_0_0_1px_#E9E8E3]"
                 >
                   <option value={10}>10 min</option>
                   <option value={15}>15 min</option>
@@ -136,7 +136,7 @@ export default function HeaderBar() {
               buttonClasses="min-w-[110px]"
             />
           </div>
-          <div className="text-[12px] leading-tight text-slate-600 mt-0.5">
+          <div className="text-[12px] leading-tight text-[#787774] mt-0.5">
             {isAutoSync && (
               <>
                 {nextSync ? (
@@ -149,7 +149,7 @@ export default function HeaderBar() {
               </>
             )}
             {!isAutoSync && lastSync && (
-              <span className="text-slate-500">
+              <span className="text-[#9A9A97]">
                 Last sync: {formatDateTime(lastSync)}
               </span>
             )}

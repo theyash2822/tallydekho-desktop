@@ -1,4 +1,4 @@
-const border = { borderColor: "#D5D9E4" };
+const border = { borderColor: "#E9E8E3" };
 
 const ForceUpdateModal = ({ onConfirm }) => {
   const onClose = async () => {
@@ -32,7 +32,7 @@ const ForceUpdateModal = ({ onConfirm }) => {
                 Quit
               </button>
               <button
-                className="px-3 py-1.5 rounded-md border text-slate-700 hover:bg-emerald-50 hover:text-emerald-700"
+                className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
                 style={border}
                 onClick={onConfirm}
               >

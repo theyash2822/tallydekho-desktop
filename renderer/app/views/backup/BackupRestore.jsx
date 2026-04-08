@@ -105,22 +105,22 @@ export default function BackupRestore() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
           <div
             className="rounded-md border p-3"
-            style={{ borderColor: "#D5D9E4" }}
+            style={{ borderColor: "#E9E8E3" }}
           >
             <div className="font-medium mb-1">Local backup folder</div>
-            <div className="text-slate-700 break-all truncate">
+            <div className="text-[#787774] break-all truncate">
               {localPath || "Not set"}
             </div>
             {backups.length > 0 && (
-              <div className="text-xs text-slate-500">
+              <div className="text-xs text-[#9A9A97]">
                 Last backup:{" "}
                 {formatDate(new Date(backups[backups.length - 1].date))}
               </div>
             )}
             <div className="mt-2 flex gap-2">
               <button
-                className="px-2 py-1 rounded-md border text-slate-700 hover:bg-emerald-50 hover:text-emerald-700"
-                style={{ borderColor: "#D5D9E4" }}
+                className="px-2 py-1 rounded-md border text-[#787774] hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
+                style={{ borderColor: "#E9E8E3" }}
                 onClick={selectPathHandle}
               >
                 Change Path
@@ -129,19 +129,19 @@ export default function BackupRestore() {
           </div>
           <div
             className="rounded-md border p-3"
-            style={{ borderColor: "#D5D9E4" }}
+            style={{ borderColor: "#E9E8E3" }}
           >
             <div className="font-medium mb-1">Cloud backups</div>
-            {/* <div className="text-xs text-slate-600">
+            {/* <div className="text-xs text-[#787774]">
               Organization: ACME Pvt. Ltd.
             </div> */}
             <div
               className="mt-2 rounded-md border"
-              style={{ borderColor: "#D5D9E4" }}
+              style={{ borderColor: "#E9E8E3" }}
             >
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-slate-500 bg-slate-50">
+                  <tr className="text-left text-[#9A9A97] bg-[#F5F4EF]">
                     <th className="py-1 px-2">Date/Time</th>
                     <th className="py-1 px-2">Size</th>
                     <th className="py-1 px-2">Action</th>
@@ -152,14 +152,14 @@ export default function BackupRestore() {
                     <tr
                       key={index}
                       className="border-t"
-                      style={{ borderColor: "#D5D9E4" }}
+                      style={{ borderColor: "#E9E8E3" }}
                     >
                       <td className="py-1 px-2 text-[12px]">
                         {formatDateTime(new Date(backup.date))}
                       </td>
                       <td className="py-1 px-2">{backup.size}</td>
                       <td className="py-1 px-2">
-                        {/* <button className="underline text-slate-700">
+                        {/* <button className="underline text-[#787774]">
                           Download
                         </button>{" "}
                         ·{" "} */}
@@ -176,7 +176,7 @@ export default function BackupRestore() {
                             }
                             window.tally.startRestore(backup.path);
                           }}
-                          className="underline text-slate-700"
+                          className="underline text-[#787774]"
                         >
                           Restore
                         </button>
@@ -187,7 +187,7 @@ export default function BackupRestore() {
               </table>
             </div>
             {backups.length > 2 && (
-              <div className="text-xs text-slate-500 mt-1">View all on Web</div>
+              <div className="text-xs text-[#9A9A97] mt-1">View all on Web</div>
             )}
           </div>
         </div>
@@ -201,7 +201,7 @@ export default function BackupRestore() {
                 <select
                   value={backupInterval}
                   onChange={saveAutoBackupHandler}
-                  className="ml-2 min-w-[140px] h-9 px-3 pr-8 bg-white rounded-md appearance-none outline-none border-transparent shadow-[inset_0_0_0_1px_#D5D9E4]"
+                  className="ml-2 min-w-[140px] h-9 px-3 pr-8 bg-white rounded-md appearance-none outline-none border-transparent shadow-[inset_0_0_0_1px_#E9E8E3]"
                 >
                   <option value="off">OFF</option>
                   <option value="1day">1 day</option>
@@ -224,7 +224,7 @@ export default function BackupRestore() {
               label="Backup schedule"
               buttonClasses="min-w-[140px]"
             />
-            <div className="text-[13px] leading-tight text-slate-600 mt-2">
+            <div className="text-[13px] leading-tight text-[#787774] mt-2">
               {backupInterval != "off" ? (
                 <span className="mr-3">
                   Next backup: {formatDateTime(nextBackup)}
@@ -237,8 +237,8 @@ export default function BackupRestore() {
           <button
             onClick={runBackup}
             disabled={isBackingUp}
-            className="px-3 py-1.5 rounded-md border text-slate-700 hover:bg-emerald-50 hover:text-emerald-700"
-            style={{ borderColor: "#D5D9E4" }}
+            className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
+            style={{ borderColor: "#E9E8E3" }}
           >
             {isBackingUp ? "Backing up…" : "Run Backup Now"}
           </button>
@@ -265,7 +265,7 @@ export default function BackupRestore() {
         )}
         <ul className="list-disc pl-5 text-sm space-y-1">
           {backupAndRestoreActivity.length === 0 ? (
-            <li className="text-slate-500">No activity yet.</li>
+            <li className="text-[#9A9A97]">No activity yet.</li>
           ) : (
             backupAndRestoreActivity
               .slice(0, 4)

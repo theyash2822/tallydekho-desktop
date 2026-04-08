@@ -79,7 +79,7 @@ export default function Devices() {
           <div
             className="relative overflow-hidden rounded-xl border p-3"
             style={{
-              borderColor: "#D5D9E4",
+              borderColor: "#E9E8E3",
               background: "linear-gradient(135deg, #f8fafc, #eef2f7)",
             }}
           >
@@ -87,20 +87,20 @@ export default function Devices() {
               <div className="space-y-1">
                 <div className="inline-flex items-center gap-2">
                   <span
-                    className="px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-800"
-                    style={{ borderColor: "#D5D9E4" }}
+                    className="px-2 py-0.5 rounded-full border bg-[#E8F5ED] text-[#2D7D46]"
+                    style={{ borderColor: "#E9E8E3" }}
                   >
                     Device
                   </span>
-                  <span className="text-xs text-slate-500">•</span>
-                  <span className="text-xs text-slate-600">
+                  <span className="text-xs text-[#9A9A97]">•</span>
+                  <span className="text-xs text-[#787774]">
                     OS {pairedDevice.os}
                   </span>
                 </div>
                 <div className="text-xl font-semibold tracking-wide">
                   {pairedDevice.name}
                 </div>
-                <div className="text-xs text-slate-500">
+                <div className="text-xs text-[#9A9A97]">
                   Last sync: {pairedDevice.last ? pairedDevice.last : "never"}
                 </div>
               </div>
@@ -108,14 +108,14 @@ export default function Devices() {
                 <div className="flex justify-end">
                   <div
                     className="text-xs font-semibold rounded-full border px-2 py-0.5"
-                    style={{ borderColor: "#D5D9E4", width: "fit-content" }}
+                    style={{ borderColor: "#E9E8E3", width: "fit-content" }}
                   >
                     PAIRED
                   </div>
                 </div>
                 <div className="mt-3 flex gap-2">
                   <button
-                    className="px-3 py-1.5 rounded-md border text-slate-700 hover:bg-rose-50 hover:text-rose-700 text-sm"
+                    className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#FDECEA] hover:text-[#C0392B] text-sm"
                     style={{ borderColor: "#fca5a5" }}
                     onClick={() => setIsRemoveDeviceModalOpen(true)}
                   >
@@ -131,54 +131,54 @@ export default function Devices() {
         <div
           className="relative overflow-hidden rounded-xl border p-3"
           style={{
-            borderColor: "#D5D9E4",
+            borderColor: "#E9E8E3",
             background: "linear-gradient(135deg, #f8fafc, #eef2f7)",
           }}
         >
           <div className="flex items-center gap-2 mb-3 text-sm">
             <span
-              className="px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-800"
-              style={{ borderColor: "#D5D9E4" }}
+              className="px-2 py-0.5 rounded-full border bg-[#E8F5ED] text-[#2D7D46]"
+              style={{ borderColor: "#E9E8E3" }}
             >
               {userProfile?.name || 'User'}
             </span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
             <div className="flex flex-col">
-              <span className="text-xs text-slate-500 mb-1">Name</span>
+              <span className="text-xs text-[#9A9A97] mb-1">Name</span>
               <input
                 readOnly
                 value={userProfile?.name || 'Not set'}
                 className="border rounded-md px-2 py-1 w-full bg-white"
-                style={{ borderColor: "#D5D9E4" }}
+                style={{ borderColor: "#E9E8E3" }}
               />
             </div>
             <div className="flex flex-col">
-              <span className="text-xs text-slate-500 mb-1">Email</span>
+              <span className="text-xs text-[#9A9A97] mb-1">Email</span>
               <input
                 readOnly
                 value={userProfile?.email || 'Not set'}
                 className="border rounded-md px-2 py-1 w-full bg-white"
-                style={{ borderColor: "#D5D9E4" }}
+                style={{ borderColor: "#E9E8E3" }}
               />
             </div>
             <div className="flex flex-col">
-              <span className="text-xs text-slate-500 mb-1">Mobile</span>
+              <span className="text-xs text-[#9A9A97] mb-1">Mobile</span>
               <input
                 readOnly
                 value={userProfile?.mobile ? `+91 ${userProfile.mobile}` : 'Not set'}
                 className="border rounded-md px-2 py-1 w-full bg-white"
-                style={{ borderColor: "#D5D9E4" }}
+                style={{ borderColor: "#E9E8E3" }}
               />
             </div>
           </div>
           <div className="flex items-center justify-between mt-3">
-            <div className="text-xs text-slate-500">Edited on mobile app only.</div>
+            <div className="text-xs text-[#9A9A97]">Edited on mobile app only.</div>
             {/* Show unpair if paired device exists OR if userProfile loaded (means paired) */}
             {(pairedDevice || userProfile) && (
               <button
                 onClick={() => setIsRemoveDeviceModalOpen(true)}
-                className="px-3 py-1.5 rounded-md border text-sm font-medium text-rose-600 hover:bg-rose-50 transition-colors"
+                className="px-3 py-1.5 rounded-md border text-sm font-medium text-rose-600 hover:bg-[#FDECEA] transition-colors"
                 style={{ borderColor: "#fca5a5" }}
               >
                 Unpair Device

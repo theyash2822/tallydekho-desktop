@@ -1,19 +1,19 @@
-import React from 'react'
-
-const border = { borderColor: '#D5D9E4' }
+import React from 'react';
 
 export default function Badge({ label, tone = 'default' }) {
-  const bg =
-    tone === 'success'
-      ? 'bg-emerald-50 text-emerald-800'
-      : tone === 'danger'
-      ? 'bg-rose-50 text-rose-800'
-      : tone === 'warn'
-      ? 'bg-amber-50 text-amber-800'
-      : 'bg-slate-50 text-slate-700'
+  const styles = {
+    success: { background: '#E8F5ED', color: '#2D7D46', border: '1px solid #A8D5BC' },
+    danger:  { background: '#FDECEA', color: '#C0392B', border: '1px solid #EDBBB8' },
+    warn:    { background: '#FFFBEB', color: '#D97706', border: '1px solid #FDE68A' },
+    default: { background: '#F5F4EF', color: '#787774', border: '1px solid #E9E8E3' },
+  };
+  const s = styles[tone] || styles.default;
   return (
-    <span className={`text-xs rounded-full border px-2 py-0.5 ${bg}`} style={border}>
+    <span
+      className="text-xs rounded-full px-2 py-0.5"
+      style={s}
+    >
       {label}
     </span>
-  )
+  );
 }

@@ -2,14 +2,37 @@
 @tailwind components;
 @tailwind utilities;
 
+/* TallyDekho Desktop — matches web portal theme */
+:root {
+  --bg:            #F5F4EF;
+  --bg-card:       #FFFFFF;
+  --bg-hover:      #F0EFE9;
+  --bg-active:     #E8E7E1;
+  --text-primary:  #1A1A1A;
+  --text-secondary:#787774;
+  --text-tertiary: #AEACA8;
+  --border:        #E9E8E3;
+  --border-strong: #D4D3CE;
+  --brand:         #1A1A1A;
+  --brand-hover:   #333333;
+  --positive:      #2D7D46;
+  --positive-bg:   #E8F5ED;
+  --negative:      #C0392B;
+  --negative-bg:   #FDECEA;
+  --caution:       #D97706;
+  --caution-bg:    #FFFBEB;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
 .no-drag {
   -webkit-app-region: no-drag;
 }
-
-/* :focus-visible {
-  outline: 3px solid #39947E; 
-  outline-offset: 2px;
-} */
 
 @layer base {
   :where(input, textarea, select):focus {
@@ -17,6 +40,8 @@
   }
 
   :where(button, a):focus-visible {
-    @apply outline outline-[3px] outline-[#39947E] outline-offset-2;
+    outline: 2px solid #1A1A1A;
+    outline-offset: 2px;
+    border-radius: 4px;
   }
 }

@@ -53,7 +53,7 @@ export default function TitleBar() {
     <div
       className="h-9 flex items-center justify-between px-3 select-none"
       style={{
-        background: "radial-gradient(circle at top left, #39947E, #07624C)",
+        background: '#1A1A1A',
         WebkitAppRegion: "drag",
       }}
     >

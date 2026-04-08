@@ -1,4 +1,4 @@
-const border = { borderColor: "#D5D9E4" };
+const border = { borderColor: "#E9E8E3" };
 
 const StartRestoreModal = ({ onClose, onConfirm }) => {
   return (
@@ -12,7 +12,7 @@ const StartRestoreModal = ({ onClose, onConfirm }) => {
           style={border}
         >
           <div className="font-semibold">Are you sure?</div>
-          <button onClick={onClose} className="text-slate-500">
+          <button onClick={onClose} className="text-[#9A9A97]">
             ✕
           </button>
         </div>
@@ -30,7 +30,7 @@ const StartRestoreModal = ({ onClose, onConfirm }) => {
               No
             </button>
             <button
-              className="px-3 py-1.5 rounded-md border text-slate-700 hover:bg-emerald-50 hover:text-emerald-700"
+              className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
               style={border}
               onClick={onConfirm}
             >

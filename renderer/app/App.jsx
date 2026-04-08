@@ -431,8 +431,8 @@ export default function App() {
 
   return (
     <div
-      className="w-full min-h-screen grid place-content-center bg-slate-100 text-[14px]"
-      style={{ color: "#0F172A" }}
+      className="w-full min-h-screen grid place-content-center text-[14px]"
+      style={{ background: '#F5F4EF', color: '#1A1A1A' }}
     >
       {alertModalData.isOpen && (
         <AlertModal
@@ -477,8 +477,10 @@ export default function App() {
           style={{
             width: 800,
             height: 500,
-            background: "#FEFEFE",
-            border: `1px solid #D5D9E4`,
+            background: '#F5F4EF',
+            border: '1px solid #E9E8E3',
+            borderRadius: 12,
+            overflow: 'hidden',
           }}
         >
           <TitleBar />
@@ -491,7 +493,7 @@ export default function App() {
               updateState={updateState}
               forceUpdate={state.forceUpdate}
             />
-            <main className="p-4 overflow-auto bg-white">
+            <main className="p-4 overflow-auto" style={{ background: '#FFFFFF' }}>
               {active === "dashboard" && (
                 <Dashboard hardSync={confirmHardSyncModal} />
               )}

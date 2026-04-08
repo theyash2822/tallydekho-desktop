@@ -1,15 +1,16 @@
 import React from "react";
 
-const border = { borderColor: "#D5D9E4" };
-
 export default function Card({ title, right, children }) {
   return (
-    <div className="rounded-xl border bg-white" style={border}>
+    <div
+      className="rounded-xl"
+      style={{ border: '1px solid #E9E8E3', background: '#FFFFFF' }}
+    >
       <div
-        className="flex items-center justify-between px-4 py-2 border-b"
-        style={border}
+        className="flex items-center justify-between px-4 py-2.5"
+        style={{ borderBottom: '1px solid #E9E8E3' }}
       >
-        <div className="font-semibold text-slate-800">{title}</div>
+        <div className="text-sm font-semibold" style={{ color: '#1A1A1A' }}>{title}</div>
         {right}
       </div>
       <div className="p-4">{children}</div>

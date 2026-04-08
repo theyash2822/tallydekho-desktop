@@ -8,7 +8,7 @@ import React, {
 } from "react";
 import { TallyContext } from "../../../utils/TallyContext";
 
-const border = { borderColor: "#D5D9E4" };
+const border = { borderColor: "#E9E8E3" };
 
 export default function AddCompaniesModal({ onClose, onAdd }) {
   const {
@@ -130,7 +130,7 @@ export default function AddCompaniesModal({ onClose, onAdd }) {
           <div className="font-semibold">
             Add Companies (Discovered via Tally)
           </div>
-          <button onClick={onClose} className="text-slate-500">
+          <button onClick={onClose} className="text-[#9A9A97]">
             ✕
           </button>
         </div>
@@ -143,7 +143,7 @@ export default function AddCompaniesModal({ onClose, onAdd }) {
               >
                 <div>
                   <div className="font-medium">{company.name}</div>
-                  <div className="text-xs text-slate-500">
+                  <div className="text-xs text-[#9A9A97]">
                     GUID {company.guid}
                     {/* · Path {company.path} */}
                   </div>
@@ -170,7 +170,7 @@ export default function AddCompaniesModal({ onClose, onAdd }) {
                 {company.years?.map((year, idx) => (
                   <div
                     className="text-xs rounded-md border px-2 py-1.5 flex items-center gap-1 "
-                    style={{ borderColor: "#D5D9E4" }}
+                    style={{ borderColor: "#E9E8E3" }}
                     key={year.finYear}
                     onClick={() =>
                       yearUpdateHandler({
@@ -244,7 +244,7 @@ export default function AddCompaniesModal({ onClose, onAdd }) {
               Cancel
             </button>
             <button
-              className="px-3 py-1.5 rounded-md border text-slate-700 hover:bg-emerald-50 hover:text-emerald-700"
+              className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#E8F5ED] hover:text-[#2D7D46]"
               style={border}
               onClick={onSubmit}
             >

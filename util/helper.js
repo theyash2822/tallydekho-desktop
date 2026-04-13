@@ -16,7 +16,7 @@ const MS_PER_DAY = 86_400_000;
 
 const isDev = !!process.env.ELECTRON_DEV;
 const baseURL = process.env.BACKEND_URL ||
-  (isDev ? "http://192.168.29.241:3001" : "https://api.tallydekho.com");
+  (isDev ? "http://192.168.29.246:3001" : "https://api.tallydekho.com");
 // In dev mode (npm run dev), automatically uses local backend
 // In production build, uses https://api.tallydekho.com
 // Override anytime with BACKEND_URL env var

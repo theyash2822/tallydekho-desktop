@@ -12,12 +12,21 @@ export default function PairingPanel() {
 
   const [masked, setMasked] = useState(true);
 
-  const generateCode = async () => {
+  // onRevealed: optional callback fired after code is set (used by Reveal button to unmask)
+  const generateCode = async (onRevealed) => {
     updateState("pairingState", "generating");
+    setMasked(true); // always start masked
 
     const startTime = new Date().getTime();
-    const response = await window.api.pairingCode();
+    const response = await window.api?.pairingCode();
     const endTime = new Date().getTime();
+
+    if (!response) {
+      updateState("pairingState", "hidden");
+      openAlertModal("Could not reach backend. Make sure the backend is running.");
+      return;
+    }
+
     if (response.status) {
       if (!response.data) {
         updateState("pairingState", "hidden");
@@ -25,11 +34,13 @@ export default function PairingPanel() {
         return;
       }
       const timeTaken = endTime - startTime;
+      const delay = Math.max(0, 1000 - timeTaken);
       setTimeout(() => {
         updateState("pairingState", "revealed");
         updateState("pairingCode", response.data.code);
         updateState("pairingCodeGeneratedAt", response.data.generatedAt);
-      }, 1000 - timeTaken);
+        onRevealed?.(); // ← called INSIDE setTimeout so it fires after state is set
+      }, delay);
     } else {
       updateState("pairingState", "hidden");
       openAlertModal(
@@ -78,10 +89,11 @@ export default function PairingPanel() {
               {masked ? "••••••" : pairingCode}
             </div>
             <button
-              onClick={async () => {
+              onClick={() => {
                 if (masked) {
-                  // Reveal = regenerate a fresh code (CTO spec: auto-update on reveal)
-                  await generateCode();
+                  // Reveal click: regenerate fresh code AND unmask it
+                  // onRevealed callback fires inside setTimeout after state is set
+                  generateCode(() => setMasked(false));
                 } else {
                   setMasked(true);
                 }

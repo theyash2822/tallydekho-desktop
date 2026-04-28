@@ -156,7 +156,7 @@ export default function App() {
   }, [pairingCodeGeneratedAt, pairedDevice]);
 
   useEffect(() => {
-    if (isInitCompleted.current) {
+    if (isInitCompleted.current && window.api) {
       window.api.setPref("selectedCompanies", selectedCompanies);
       selectedCompaniesRef.current = selectedCompanies;
     }

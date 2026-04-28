@@ -140,31 +140,36 @@ const registerTallySync = (windowContent) => {
         return { status: false, code: "version_blocked", message: store.get("versionMessage") || "Update required to sync" };
       }
 
-      // Multi-device conflict check: if another device synced more recently, warn
-      if (!isHardSync) {
+      // Multi-device conflict check: if another device synced this company more recently, warn
+      // Uses /desktop/company-sync-status (desktopAuth — device-id only, no JWT required)
+      if (!isHardSync && companies?.length > 0) {
         try {
-          const statusRes = await axiosInstance.get("/desktop/register").catch(() => null);
-          // We check via tally-sync/status — if isPaired and lastSeen exists, compare
-          const syncStatus2 = await axiosInstance.get("/api/tally-sync/status").catch(() => null);
-          const deviceLastSeen = syncStatus2?.data?.data?.device?.last_seen;
-          const myDeviceId = require('./deviceProfile')().deviceId;
-          const myLastSeen = store.get('myLastSeen') || 0;
-          // If server's last_seen is more recent than our stored last_seen, another device synced
-          if (deviceLastSeen && deviceLastSeen > myLastSeen + 60) {
-            const { dialog } = require('electron');
-            const choice = dialog.showMessageBoxSync({
-              type: 'question',
-              buttons: ['Force Sync Anyway', 'Cancel'],
-              defaultId: 1,
-              title: 'Another device synced recently',
-              message: 'A different desktop synced more recently. Syncing now may overwrite newer data.\n\nProceed?',
-            });
-            if (choice === 1) {
-              return { status: false, code: 'cancelled_by_user' };
+          const firstCompany = companies[0];
+          const companyGuid = firstCompany?.guid || firstCompany?.id;
+          if (companyGuid) {
+            const syncInfo = await axiosInstance
+              .get(`/desktop/company-sync-status?companyGuid=${encodeURIComponent(companyGuid)}`)
+              .catch(() => null);
+
+            const { lastSyncedAt, isMyDevice } = syncInfo?.data?.data || {};
+            const myLastSyncEpoch = store.get('myLastSyncEpoch') || 0;
+
+            // If server shows a sync from a DIFFERENT device more recent than our last sync
+            if (lastSyncedAt && !isMyDevice && lastSyncedAt > myLastSyncEpoch + 60) {
+              const { dialog } = require('electron');
+              const choice = dialog.showMessageBoxSync({
+                type: 'question',
+                buttons: ['Force Sync Anyway', 'Cancel'],
+                defaultId: 1,
+                title: 'Another device synced recently',
+                message: `A different desktop synced "${firstCompany?.name || companyGuid}" more recently.\n\nSyncing now may overwrite newer data. Proceed?`,
+              });
+              if (choice === 1) {
+                return { status: false, code: 'cancelled_by_user' };
+              }
             }
           }
-          store.set('myLastSeen', Math.floor(Date.now() / 1000));
-        } catch (_) { /* non-critical, continue sync */ }
+        } catch (_) { /* non-critical — never block sync due to this check */ }
       }
 
       store.set("isSyncing", true);
@@ -187,6 +192,8 @@ const registerTallySync = (windowContent) => {
       if (syncStatus.status) {
         windowContent.send("window:listener", { key: "syncMessage", value: "Sync Complete" });
         windowContent.send("window:listener", { key: "lastSync", value: new Date() });
+        // Update epoch so next conflict check knows when we last synced
+        store.set('myLastSyncEpoch', Math.floor(Date.now() / 1000));
       }
 
       if (!syncStatus.status) {

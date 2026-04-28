@@ -35,7 +35,8 @@ const {
 } = require("./util/helper");
 const validateSchema = require("./util/validateSchema");
 
-require("./util/ipcRegistry");
+// Note: ipcRegistry already required above via destructuring — do NOT require again
+// require("./util/ipcRegistry"); // REMOVED: double-require crashes Electron (duplicate IPC handlers)
 require("./util/backup");
 require("./util/closeSoftware");
 

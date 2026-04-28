@@ -424,27 +424,36 @@ app.whenReady().then(async () => {
   store.set("forceUpdate", false);
   const response = await registerDevice();
   if (!response.status) {
-    const icon = nativeImage.createFromPath(assetPath("build", "icon.png"));
-    const choice = dialog.showMessageBoxSync({
-      type: "warning",
-      buttons: ["Retry", "Quit"],
-      defaultId: 0,
-      cancelId: 1,
-      title: "Alert!",
-      message: response.message,
-      noLink: true,
-      icon,
-    });
-
-    if (choice === 0) {
-      const response = await registerDevice();
-      if (!response.status) {
-        app.quit();
-      }
+    if (isDev) {
+      // In dev mode: log the error but continue loading the app
+      // Backend may not be running yet or URL may be wrong — don't block development
+      info(`[dev] registerDevice failed: ${response.message} — continuing anyway`);
+      createWindow();
     } else {
-      app.quit();
+      // In production: show retry/quit dialog
+      const icon = nativeImage.createFromPath(assetPath("build", "icon.png"));
+      const choice = dialog.showMessageBoxSync({
+        type: "warning",
+        buttons: ["Retry", "Quit"],
+        defaultId: 0,
+        cancelId: 1,
+        title: "Alert!",
+        message: response.message,
+        noLink: true,
+        icon,
+      });
+
+      if (choice === 0) {
+        const response2 = await registerDevice();
+        if (!response2.status) { app.quit(); return; }
+      } else {
+        app.quit();
+        return;
+      }
     }
-  } else {
+  }
+
+  if (response.status) {
     if (response.forceUpdate) {
       store.set("forceUpdate", true);
     }

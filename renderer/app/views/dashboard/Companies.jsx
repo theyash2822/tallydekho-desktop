@@ -295,10 +295,9 @@ export default function Companies({
                 <th className="py-2 px-2 w-8">
                   {selectedCompanies.length > 0 && (
                     <input
-                      type="checkbox" className="accent-[#1A1A1A]"
+                      type="checkbox" className="accent-[#1A1A1A] block mx-auto"
                       checked={isAllChecked}
                       onChange={updateAllSelection}
-                      className="block mx-auto"
                     />
                   )}
                 </th>
@@ -358,10 +357,9 @@ export default function Companies({
                   {false && (
                     <td className="py-2 px-2">
                       <input
-                        type="checkbox" className="accent-[#1A1A1A]"
+                        type="checkbox" className="accent-[#1A1A1A] block mx-auto"
                         checked={!!checkedCompanies[company.id]}
                         onChange={(e) => toggle(company.id, e.target.checked)}
-                        className="block mx-auto"
                       />
                     </td>
                   )}

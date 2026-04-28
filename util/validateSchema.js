@@ -277,8 +277,30 @@ function validateSchema() {
     const valid = validate(parsed);
 
     if (!valid) {
-      info("Config still invalid after repair attempt:", validate.errors);
+      const errors = validate.errors || [];
 
+      // If ONLY additionalProperties errors remain, just delete the unknown keys
+      // and write the fixed config. Never delete config or restart for this.
+      const onlyAdditional = errors.every(e => e.keyword === 'additionalProperties');
+      if (onlyAdditional) {
+        for (const e of errors) {
+          const extraKey = e.params?.additionalProperty;
+          if (extraKey && Object.prototype.hasOwnProperty.call(parsed, extraKey)) {
+            delete parsed[extraKey];
+            info(`Config: removed unknown key '${extraKey}'`);
+          }
+        }
+        // Apply defaults and write
+        const ajvFinal = new Ajv({ allErrors: true, useDefaults: true, strict: false });
+        addFormats(ajvFinal);
+        ajvFinal.compile(schema)(parsed);
+        fs.writeFileSync(configPath, JSON.stringify(parsed, null, 2), 'utf8');
+        info('Config: unknown keys removed, defaults applied, saved.');
+        return;
+      }
+
+      // Genuinely invalid config (wrong types etc.) — delete and restart
+      info("Config still invalid after repair attempt:", errors);
       try {
         fs.unlinkSync(configPath);
         info("Deleted corrupt config.json");
@@ -289,7 +311,6 @@ function validateSchema() {
 
       info("Restarting app due to unrecoverable config errors...");
       app.relaunch();
-      // app.quit();
       app.exit(0);
       return;
     }

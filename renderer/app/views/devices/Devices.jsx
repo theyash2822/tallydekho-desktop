@@ -51,19 +51,10 @@ export default function Devices() {
     closeRemoveDeviceModal();
     if (response.status) {
       updateState("pairedDevice", null);
-      updateState("pairingCode", null);
-      updateState("pairingCodeGeneratedAt", null);
       setUserProfile(null);
-      // Auto-generate fresh pairing code after unpair
-      updateState("pairingState", "generating");
-      const codeRes = await window.api.pairingCode();
-      if (codeRes.status && codeRes.data?.code) {
-        updateState("pairingState", "revealed");
-        updateState("pairingCode", codeRes.data.code);
-        updateState("pairingCodeGeneratedAt", codeRes.data.generatedAt);
-      } else {
-        updateState("pairingState", "hidden");
-      }
+      // New pairing code is delivered via WebSocket 'unpaired' event (with newCode payload)
+      // The socket.js handler updates pairingCode in store + state automatically.
+      // No API call needed here.
     } else {
       openAlertModal(
         "Something went wrong while removing paired device. If this message persists, please contact the support team.",

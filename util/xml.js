@@ -41,16 +41,17 @@ async function uploadLargeArray({
 
   sendMessage("Uploading Data");
 
+  // Retry init up to 3x with backoff (backend may be briefly unavailable)
   let initRes;
-  try {
-    initRes = await axiosInstance.post("/ingest/init", {}, { timeout: 15_000 });
-
-    initRes = initRes.data;
-  } catch (err) {
-    info("[sync] size err", {
-      message: err?.response?.data?.message || err?.message,
-    });
-    return { status: false, message: "Something went wrong" };
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      initRes = (await axiosInstance.post("/ingest/init", {}, { timeout: 15_000 })).data;
+      break;
+    } catch (err) {
+      info("[sync] init attempt failed", { attempt, message: err?.message });
+      if (attempt === 3) return { status: false, message: "Backend unreachable. Sync paused — retry when backend is available." };
+      await new Promise(r => setTimeout(r, 1000 * attempt));
+    }
   }
 
   info("[sync] ingest init", initRes);
@@ -110,31 +111,23 @@ async function uploadLargeArray({
   info("[sync] ingest complete body", { uploadId, ...extras });
   sendMessage("Processing Data");
 
+  // Retry complete up to 3x (all data uploaded — just need to confirm)
   let completeRes;
-
-  try {
-    completeRes = await axiosInstance.post("/ingest/complete", {
-      uploadId,
-      ...extras,
-    });
-    completeRes = completeRes.data;
-  } catch (err) {
-    info("[sync] completed error", {
-      message: err?.response?.data?.message || err?.message,
-      code: err.code,
-      errno: err.errno,
-      address: err.address,
-      port: err.port,
-      responseStatus: err.response?.status,
-      responseData: err.response?.data,
-      configUrl: err.config?.baseURL + err.config?.url,
-      headersSent: !!err.response,
-    });
-    return {
-      status: false,
-      message: err?.response?.data?.message,
-      data: err?.response?.data?.data,
-    };
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      completeRes = (await axiosInstance.post("/ingest/complete", { uploadId, ...extras })).data;
+      break;
+    } catch (err) {
+      info("[sync] complete attempt failed", { attempt, message: err?.message });
+      if (attempt === 3) {
+        return {
+          status: false,
+          message: err?.response?.data?.message || "Could not complete sync. Will retry on next sync.",
+          data: err?.response?.data?.data,
+        };
+      }
+      await new Promise(r => setTimeout(r, 1500 * attempt));
+    }
   }
 
   // sendMessage("Data Synced");

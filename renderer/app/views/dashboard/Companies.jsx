@@ -312,6 +312,16 @@ export default function Companies({
             </tr>
           </thead>
           <tbody>
+            {/* Status messages per CTO spec */}
+            {!isTallyOnline && (
+              <tr><td colSpan={4} className="py-4 px-2 text-center text-sm text-[#C0392B]">Tally not connected</td></tr>
+            )}
+            {isTallyOnline && !isOnline && (
+              <tr><td colSpan={4} className="py-4 px-2 text-center text-sm text-[#D97706]">No internet connection</td></tr>
+            )}
+            {isTallyOnline && isOnline && selectedCompanies.length === 0 && (
+              <tr><td colSpan={4} className="py-4 px-2 text-center text-sm text-[#9A9A97]">No companies available</td></tr>
+            )}
             {selectedCompanies.map((company, index) => {
               // const mod = (index + 1) % 3;
 
@@ -359,6 +369,9 @@ export default function Companies({
                     <div className="font-medium max-w-[100px] truncate">
                       {company.name}
                     </div>
+                    {!company.isSynced && (
+                      <div className="text-[10px] text-[#D97706] mt-0.5">Data not synced yet</div>
+                    )}
                     {/* <div className="text-xs text-[#9A9A97]">{company.guid}</div> */}
                   </td>
                   {/* <td className="py-2 px-2">

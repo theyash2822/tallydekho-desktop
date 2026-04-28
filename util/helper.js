@@ -193,9 +193,24 @@ async function registerDevice() {
 
   if (response.status) {
     store.set("lastSync", response.data.lastSync);
+
+    // Handle version compatibility levels returned by backend
+    const { versionLevel, versionMessage, latestVersion } = response.data || {};
+    if (versionLevel) {
+      store.set("versionLevel", versionLevel);
+      store.set("versionMessage", versionMessage || "");
+      store.set("latestVersion", latestVersion || "");
+    } else {
+      store.set("versionLevel", 0);
+    }
   }
 
-  return { status: true, forceUpdate: response.data.forceUpdate };
+  return {
+    status: true,
+    forceUpdate: response.data?.forceUpdate || false,
+    versionLevel: response.data?.versionLevel || 0,
+    versionMessage: response.data?.versionMessage || null,
+  };
 }
 
 async function checkForUpdates(mainWindow) {

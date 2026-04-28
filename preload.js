@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld("api", {
   pairingCode: () => ipcRenderer.invoke("api:pairing_code"),
   pairedDevice: () => ipcRenderer.invoke("api:paired_device"),
   removePairedDevice: () => ipcRenderer.invoke("api:remove_paired_device"),
+  pingBackend: () => ipcRenderer.invoke("backend:ping"),
   sendLogs: () => ipcRenderer.invoke("api:send_logs"),
   userProfile: () => ipcRenderer.invoke("api:user_profile"),
   aiChat: (payload) => ipcRenderer.invoke("api:ai_chat", payload),

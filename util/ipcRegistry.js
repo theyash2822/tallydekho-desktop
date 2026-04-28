@@ -134,6 +134,39 @@ const registerTallySync = (windowContent) => {
         return { status: false, code: "tally_not_connected" };
       }
 
+      // Version check: block sync if versionLevel >= 2
+      const versionLevel = store.get("versionLevel") || 0;
+      if (versionLevel >= 2) {
+        return { status: false, code: "version_blocked", message: store.get("versionMessage") || "Update required to sync" };
+      }
+
+      // Multi-device conflict check: if another device synced more recently, warn
+      if (!isHardSync) {
+        try {
+          const statusRes = await axiosInstance.get("/desktop/register").catch(() => null);
+          // We check via tally-sync/status — if isPaired and lastSeen exists, compare
+          const syncStatus2 = await axiosInstance.get("/api/tally-sync/status").catch(() => null);
+          const deviceLastSeen = syncStatus2?.data?.data?.device?.last_seen;
+          const myDeviceId = require('./deviceProfile')().deviceId;
+          const myLastSeen = store.get('myLastSeen') || 0;
+          // If server's last_seen is more recent than our stored last_seen, another device synced
+          if (deviceLastSeen && deviceLastSeen > myLastSeen + 60) {
+            const { dialog } = require('electron');
+            const choice = dialog.showMessageBoxSync({
+              type: 'question',
+              buttons: ['Force Sync Anyway', 'Cancel'],
+              defaultId: 1,
+              title: 'Another device synced recently',
+              message: 'A different desktop synced more recently. Syncing now may overwrite newer data.\n\nProceed?',
+            });
+            if (choice === 1) {
+              return { status: false, code: 'cancelled_by_user' };
+            }
+          }
+          store.set('myLastSeen', Math.floor(Date.now() / 1000));
+        } catch (_) { /* non-critical, continue sync */ }
+      }
+
       store.set("isSyncing", true);
       store.set("syncMode", isHardSync ? "hard" : "normal");
 

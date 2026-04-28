@@ -274,6 +274,17 @@ ipcMain.handle("openExternal", async (_event) => {
   return shell.openExternal(gmailLink);
 });
 
+// Ping backend to check real connectivity (not just browser online status)
+ipcMain.handle("backend:ping", async () => {
+  const { axiosInstance } = require("./util/helper");
+  try {
+    await axiosInstance.get("/app/ping", { timeout: 5000 });
+    return true;
+  } catch {
+    return false;
+  }
+});
+
 ipcMain.handle("store:get", (_event, key) => {
   return store.get(key);
 });
@@ -373,15 +384,36 @@ app.on("second-instance", async (_event, argv) => {
   }
 });
 
-// Global crash logging
+// Global crash logging + auto-email to project@tallydekho.com
+// Throttled: max one email per unique error message per day
+const _sentErrors = new Map();
+
+async function autoSendCrashLogs(label, details) {
+  error(label, details);
+
+  // Throttle: skip if same error sent in last 24h
+  const key = String(details?.message || details?.reason || label).slice(0, 120);
+  const lastSent = _sentErrors.get(key) || 0;
+  if (Date.now() - lastSent < 24 * 60 * 60 * 1000) return;
+  _sentErrors.set(key, Date.now());
+
+  try {
+    const fs = require("fs");
+    const { logPath } = require("./util/logger");
+    const infoFile = logPath("info");
+    const FormData = require("form-data");
+    const { axiosInstance } = require("./util/helper");
+    const form = new FormData();
+    if (fs.existsSync(infoFile)) form.append("file", fs.createReadStream(infoFile));
+    await axiosInstance.post("/desktop/logs", form);
+  } catch (_) { /* silent — never crash the crash handler */ }
+}
+
 process.on("uncaughtException", (err) => {
-  error("uncaughtException", {
-    message: err.message,
-    stack: err.stack,
-  });
+  autoSendCrashLogs("uncaughtException", { message: err.message, stack: err.stack });
 });
 process.on("unhandledRejection", (reason) => {
-  error("unhandledRejection", { reason: String(reason) });
+  autoSendCrashLogs("unhandledRejection", { reason: String(reason) });
 });
 
 app.whenReady().then(async () => {
@@ -414,6 +446,22 @@ app.whenReady().then(async () => {
   } else {
     if (response.forceUpdate) {
       store.set("forceUpdate", true);
+    }
+
+    // Version compatibility: level 2 = sync blocked, level 3 = force update
+    const vLevel = response.versionLevel || 0;
+    store.set("versionLevel", vLevel);
+    store.set("versionMessage", response.versionMessage || "");
+
+    if (vLevel === 3) {
+      // Force update — block everything
+      store.set("forceUpdate", true);
+    } else if (vLevel === 2) {
+      // Sync blocked — app works, but sync is disabled. Renderer handles this via versionLevel.
+      info(`[version] Sync blocked: ${response.versionMessage}`);
+    } else if (vLevel === 1) {
+      // Non-blocking update available — just log, renderer shows banner
+      info(`[version] Update available: ${response.versionMessage}`);
     }
   }
 
@@ -462,6 +510,18 @@ app.whenReady().then(async () => {
   });
 
   require("./util/socket")(mainWindow, socket);
+
+  // ── Heartbeat: keep last_seen fresh so mobile can detect desktop online status
+  // Runs every 2 minutes. Lightweight — just updates a timestamp in DB.
+  const { axiosInstance } = require("./util/helper");
+  const heartbeatInterval = setInterval(async () => {
+    try {
+      await axiosInstance.post("/desktop/heartbeat");
+    } catch (_) { /* silently ignore — will retry next tick */ }
+  }, 2 * 60 * 1000);
+
+  // Clear on quit
+  app.once("before-quit", () => clearInterval(heartbeatInterval));
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

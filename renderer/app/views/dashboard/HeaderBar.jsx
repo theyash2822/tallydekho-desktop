@@ -26,6 +26,8 @@ export default function HeaderBar() {
       autoSyncStartedAt,
     },
     updateState,
+    versionLevel,
+    versionMessage,
   } = useContext(TallyContext);
 
   useEffect(() => {
@@ -79,6 +81,20 @@ export default function HeaderBar() {
 
   return (
     <div className="mb-2">
+      {/* Version compatibility banner */}
+      {versionLevel >= 1 && versionMessage && (
+        <div className={`mb-2 px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 ${
+          versionLevel >= 2
+            ? 'bg-[#FDECEA] text-[#C0392B] border border-[#EDBBB8]'
+            : 'bg-[#FFFBEB] text-[#D97706] border border-[#FDE68A]'
+        }`}>
+          <span>{versionLevel >= 2 ? '⚠️ Sync blocked —' : 'ℹ️'} {versionMessage}</span>
+          <button
+            className="ml-auto underline"
+            onClick={() => updateState('active', 'settings')}
+          >Update now</button>
+        </div>
+      )}
       <div className="flex items-baseline justify-between">
         <div className="flex items-center gap-2 text-[#787774]">
           <Badge

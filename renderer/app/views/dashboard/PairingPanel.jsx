@@ -78,7 +78,14 @@ export default function PairingPanel() {
               {masked ? "••••••" : pairingCode}
             </div>
             <button
-              onClick={() => setMasked((v) => !v)}
+              onClick={async () => {
+                if (masked) {
+                  // Reveal = regenerate a fresh code (CTO spec: auto-update on reveal)
+                  await generateCode();
+                } else {
+                  setMasked(true);
+                }
+              }}
               className="px-3 py-1.5 rounded-full border bg-[#F5F4EF] hover:bg-[#F0EFE9] text-[#787774]"
               style={{ borderColor: "#E9E8E3" }}
             >

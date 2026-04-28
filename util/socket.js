@@ -77,6 +77,25 @@ module.exports = (window, socket) => {
     window && window.webContents && checkForUpdates(window);
   });
 
+  // Mobile or web portal unpaired this desktop — clear local state immediately
+  socket.on("unpaired", () => {
+    info("[socket] unpaired — clearing pairing state");
+    if (window && window.webContents) {
+      // Stop any active sync
+      window.webContents.send("window:listener", { key: "isSyncing", value: false });
+      window.webContents.send("window:listener", { key: "syncProgress", value: 0 });
+      // Clear pairing state so UI shows pairing panel again
+      window.webContents.send("window:listener", { key: "pairedDevice", value: null });
+      window.webContents.send("window:listener", { key: "pairingState", value: "hidden" });
+      window.webContents.send("window:listener", { key: "pairingCode", value: null });
+      window.webContents.send("window:listener", { key: "pairingCodeGeneratedAt", value: null });
+      // Show user-facing message
+      window.webContents.send("window:listener", { key: "unpairedAlert", value: true });
+    }
+    // Also stop any headless sync (store flag)
+    store.set("isSyncing", false);
+  });
+
   // tally:write - receive XML from backend and forward to Tally HTTP port
   // Backend sends: { jobId, xml, companyName }
   // Desktop POSTs to Tally and acks back with result

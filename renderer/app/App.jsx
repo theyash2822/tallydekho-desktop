@@ -8,7 +8,7 @@ import Devices from "./views/devices/Devices";
 import Settings from "./views/settings/Settings";
 import Help from "./views/help/Help";
 import { formatDateTime } from "./utils/datetime";
-import { TallyContext } from "./utils/TallyContext";
+import { TallyContext, deriveSyncState } from "./utils/TallyContext";
 import AlertModal from "./views/components/AlertModal";
 import SyncErrorModal from "./views/components/SyncErrorModal";
 import { CODE_ERROR_MESSAGE } from "./utils/helper";
@@ -50,6 +50,8 @@ export default function App() {
     isCloseConfirmationModalOpen: false,
     forceUpdate: false,
     isForceUpdateModalOpen: false,
+    versionLevel: 0,       // 0=ok, 1=update available, 2=sync blocked, 3=force update
+    versionMessage: "",
   });
 
   const [isHardSyncConfirmationModalOpen, setIsHardSyncConfirmationModalOpen] =
@@ -94,14 +96,26 @@ export default function App() {
 
   useEffect(() => {
     updateTallyStatus();
+    const timer = setInterval(() => updateTallyStatus(), 5000);
+    return () => clearInterval(timer);
+  }, []);
 
-    const timer = setInterval(() => {
-      updateTallyStatus();
-    }, 5000);
-
-    return () => {
-      clearInterval(timer);
+  // Backend connectivity check every 10s (navigator.onLine only detects WiFi, not backend reachability)
+  useEffect(() => {
+    const checkBackend = async () => {
+      try {
+        const reachable = await window.api.pingBackend();
+        const current = navigator.onLine && reachable;
+        updateState("isOnline", current);
+        window.api.setPref("isOnline", current);
+        if (isSyncingRef.current && !current) stopSync("internet_is_offline");
+      } catch {
+        // pingBackend unavailable in dev without IPC — fall back to browser value
+      }
     };
+    checkBackend();
+    const backendTimer = setInterval(checkBackend, 10_000);
+    return () => clearInterval(backendTimer);
   }, []);
 
   useEffect(() => {
@@ -202,6 +216,12 @@ export default function App() {
         updateState("active", "settings");
       }
 
+      // Version level: 2 = sync blocked, 3 = force update (already handled above)
+      const versionLevel = await window.api.getPref("versionLevel") || 0;
+      const versionMessage = await window.api.getPref("versionMessage") || "";
+      updateState("versionLevel", versionLevel);
+      updateState("versionMessage", versionMessage);
+
       isInitCompleted.current = true;
 
       const pairedDevice = await window.api.pairedDevice();
@@ -234,6 +254,11 @@ export default function App() {
       } else if (key == "syncMessage" && value == "Data Synced") {
         resetSyncStates(true);
         openAlertModal("Data synced successfully");
+      } else if (key == "unpairedAlert" && value === true) {
+        // Remote unpair from mobile/web — stop sync, show alert
+        resetSyncStates(false);
+        openAlertModal("Device unpaired from mobile or web portal. Please generate a new pairing code to reconnect.");
+        return; // don't call updateState("unpairedAlert")
       }
       updateState(key, value);
     });
@@ -266,6 +291,16 @@ export default function App() {
       const date = new Date();
       window.api.setPref("lastSync", date);
       updateState("lastSync", date);
+
+      // Mark every synced company as isSynced: true
+      updateState("selectedCompanies", (prev) =>
+        (prev || []).map((c) => ({ ...c, isSynced: true, lastSyncedAt: date.toISOString() }))
+      );
+      // Persist updated companies with sync flags
+      window.api.getPref("selectedCompanies").then((stored) => {
+        const updated = (stored || []).map((c) => ({ ...c, isSynced: true, lastSyncedAt: date.toISOString() }));
+        window.api.setPref("selectedCompanies", updated);
+      });
     }
     updateState("syncMessage", "");
     window.api.setPref("isSyncing", false);
@@ -357,8 +392,21 @@ export default function App() {
     }
 
     updateState("selectedCompanies", newSelectedCompanies);
-
     updateState("companies", data);
+
+    // ── GUID change detection ─────────────────────────────────────────
+    // If a previously-synced company GUID is no longer in the live Tally list,
+    // the company was migrated/reinstalled. Suggest hard sync.
+    const prevSynced = selectedCompaniesRef.current.filter(c => c.isSynced);
+    const newIds = new Set(ids);
+    const missingGuids = prevSynced.filter(c => !newIds.has(c.guid));
+    if (missingGuids.length > 0) {
+      const names = missingGuids.map(c => c.name).join(", ");
+      openAlertModal(
+        `Company GUID changed for: ${names}.\n\nThis usually means Tally was reinstalled or the company was recreated. ` +
+        `Hard Sync is recommended to rebuild data safely.`
+      );
+    }
   };
 
   const stopSync = async (code) => {
@@ -465,6 +513,9 @@ export default function App() {
           fetchCompanies,
           updatePort,
           openAlertModal,
+          syncState: deriveSyncState(state),
+          versionLevel: state.versionLevel,
+          versionMessage: state.versionMessage,
         }}
       >
         <div

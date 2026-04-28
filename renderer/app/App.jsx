@@ -77,7 +77,7 @@ export default function App() {
   useEffect(() => {
     const updateOnlineStatus = async () => {
       updateState("isOnline", navigator.onLine);
-      window.api.setPref("isOnline", navigator.onLine);
+      window.api?.setPref("isOnline", navigator.onLine);
       if (isSyncingRef.current && !navigator.onLine) {
         stopSync("internet_is_offline");
       }
@@ -102,12 +102,13 @@ export default function App() {
 
   // Backend connectivity check every 10s (navigator.onLine only detects WiFi, not backend reachability)
   useEffect(() => {
+    if (!window.api) return;
     const checkBackend = async () => {
       try {
         const reachable = await window.api.pingBackend();
         const current = navigator.onLine && reachable;
         updateState("isOnline", current);
-        window.api.setPref("isOnline", current);
+        window.api?.setPref("isOnline", current);
         if (isSyncingRef.current && !current) stopSync("internet_is_offline");
       } catch {
         // pingBackend unavailable in dev without IPC — fall back to browser value
@@ -166,6 +167,12 @@ export default function App() {
   }, [isSyncing]);
 
   useEffect(() => {
+    // Guard: window.api/tally only exist inside Electron (preload.js).
+    // In browser dev mode they are undefined — skip init gracefully.
+    if (!window.api || !window.tally) {
+      console.warn('[TallyDekho] Preload not available — running outside Electron?');
+      return;
+    }
     const init = async () => {
       const version = await window.tally.version();
       const isAutoSync = await window.api.getPref("isAutoSync");
@@ -232,6 +239,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!window.api) return;
     const listener = window.api.listener(({ key, value }) => {
       if (key == "syncingCurrentStatus") {
         resetSyncStates(false);
@@ -266,6 +274,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!window.tally) return;
     const listener = window.tally.syncProgress(({ percent }) => {
       updateState("syncProgress", percent);
     });
@@ -273,6 +282,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!window.tally) return;
     const listener = window.tally.backupProgress(({ percent }) => {
       updateState("backupProgress", percent);
     });
@@ -280,6 +290,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!window.tally) return;
     const listener = window.tally.restoreProgress(({ percent }) => {
       updateState("restoreProgress", percent);
     });

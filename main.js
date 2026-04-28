@@ -143,7 +143,7 @@ async function createWindow() {
     "did-fail-load",
     (_e, ec, desc, _url, isMainFrame) => {
       console.error("did-fail-load", ec, desc);
-      if (isMainFrame) {
+      if (isMainFrame && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.loadURL(
           `data:text/html;charset=utf-8,` +
             encodeURIComponent(

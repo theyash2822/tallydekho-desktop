@@ -6,11 +6,24 @@
     "yearItem": {
       "type": "object",
       "properties": {
-        "finYear": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{4}$" },
-        "begin": { "type": "string", "pattern": "^[0-9]{8}$" },
-        "end": { "type": "string", "pattern": "^[0-9]{8}$" }
+        "finYear": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{4}$"
+        },
+        "begin": {
+          "type": "string",
+          "pattern": "^[0-9]{8}$"
+        },
+        "end": {
+          "type": "string",
+          "pattern": "^[0-9]{8}$"
+        }
       },
-      "required": ["finYear", "begin", "end"],
+      "required": [
+        "finYear",
+        "begin",
+        "end"
+      ],
       "additionalProperties": false
     },
     "company": {
@@ -19,23 +32,42 @@
         "id": {
           "type": "string"
         },
-        "name": { "type": "string" },
+        "name": {
+          "type": "string"
+        },
         "guid": {
           "type": "string"
         },
-        "path": { "type": "string" },
+        "path": {
+          "type": "string"
+        },
         "years": {
           "type": "array",
-          "items": { "$ref": "#/definitions/yearItem" },
+          "items": {
+            "$ref": "#/definitions/yearItem"
+          },
           "minItems": 0
         },
-        "isCurrentCompany": { "type": "boolean" },
+        "isCurrentCompany": {
+          "type": "boolean"
+        },
         "allYears": {
           "type": "array",
-          "items": { "$ref": "#/definitions/yearItem" },
+          "items": {
+            "$ref": "#/definitions/yearItem"
+          },
           "minItems": 0
         },
-        "ledgersCount": { "type": "integer", "minimum": 0 }
+        "ledgersCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "isSynced": {
+          "type": "boolean"
+        },
+        "lastSyncedAt": {
+          "type": "string"
+        }
       },
       "required": [
         "id",
@@ -52,20 +84,39 @@
     "backupItem": {
       "type": "object",
       "properties": {
-        "date": { "type": "string", "format": "date-time" },
-        "size": { "type": "string" },
-        "path": { "type": "string" }
+        "date": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "size": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
       },
-      "required": ["date", "size", "path"],
+      "required": [
+        "date",
+        "size",
+        "path"
+      ],
       "additionalProperties": false
     },
     "activityItem": {
       "type": "object",
       "properties": {
-        "date": { "type": "string", "format": "date-time" },
-        "message": { "type": "string" }
+        "date": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "message": {
+          "type": "string"
+        }
       },
-      "required": ["date", "message"],
+      "required": [
+        "date",
+        "message"
+      ],
       "additionalProperties": false
     }
   },
@@ -76,56 +127,94 @@
       "maximum": 65535,
       "default": 9000
     },
-
     "selectedCompanies": {
       "type": "array",
-      "items": { "$ref": "#/definitions/company" },
+      "items": {
+        "$ref": "#/definitions/company"
+      },
       "default": [],
       "minItems": 0
     },
-
     "backup": {
       "type": "object",
       "properties": {
-        "dir": { "type": "string" }
+        "dir": {
+          "type": "string"
+        }
       },
-      "required": ["dir"],
+      "required": [
+        "dir"
+      ],
       "additionalProperties": false
     },
-
     "backups": {
       "type": "array",
-      "items": { "$ref": "#/definitions/backupItem" },
+      "items": {
+        "$ref": "#/definitions/backupItem"
+      },
       "default": [],
       "minItems": 0
     },
-
     "backupAndRestoreActivity": {
       "type": "array",
-      "items": { "$ref": "#/definitions/activityItem" },
+      "items": {
+        "$ref": "#/definitions/activityItem"
+      },
       "default": [],
       "minItems": 0
     },
-
-    "backupInterval": { "type": "string", "default": "off" },
+    "backupInterval": {
+      "type": "string",
+      "default": "off"
+    },
     "appVersion": {
       "type": "string",
       "default": "0.0.0"
     },
-    "isOnline": { "type": "boolean", "default": false },
-    "lastSync": { "type": "string", "format": "date-time" },
-    "destination": { "type": "string" },
-    "isSyncing": { "type": "boolean", "default": false },
-    "isRestoring": { "type": "boolean", "default": false },
-    "isBackingUp": { "type": "boolean", "default": false },
+    "isOnline": {
+      "type": "boolean",
+      "default": false
+    },
+    "lastSync": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "destination": {
+      "type": "string"
+    },
+    "isSyncing": {
+      "type": "boolean",
+      "default": false
+    },
+    "isRestoring": {
+      "type": "boolean",
+      "default": false
+    },
+    "isBackingUp": {
+      "type": "boolean",
+      "default": false
+    },
     "syncMode": {
       "type": "string",
-      "enum": ["normal", "hard"],
+      "enum": [
+        "normal",
+        "hard"
+      ],
       "default": "normal"
     },
-    "isAutoSync": { "type": "boolean", "default": false },
-    "syncInterval": { "type": "integer", "minimum": 0, "default": 10 },
-    "autoSyncStartedAt": { "type": "integer", "minimum": 0 },
+    "isAutoSync": {
+      "type": "boolean",
+      "default": false
+    },
+    "syncInterval": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 10
+    },
+    "autoSyncStartedAt": {
+      "type": "integer",
+      "minimum": 0
+    },
     "savedVersion": {
       "type": "string",
       "default": "0.0.0"
@@ -137,6 +226,29 @@
     "uploadId": {
       "type": "string",
       "default": "none"
+    },
+    "versionLevel": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3,
+      "default": 0
+    },
+    "versionMessage": {
+      "type": "string",
+      "default": ""
+    },
+    "latestVersion": {
+      "type": "string",
+      "default": ""
+    },
+    "myLastSyncEpoch": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "autoBackupStartedAt": {
+      "type": "integer",
+      "minimum": 0
     }
   },
   "required": [

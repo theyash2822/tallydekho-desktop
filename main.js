@@ -425,10 +425,9 @@ app.whenReady().then(async () => {
   const response = await registerDevice();
   if (!response.status) {
     if (isDev) {
-      // In dev mode: log the error but continue loading the app
+      // In dev mode: log warning and fall through to createWindow() at the bottom
       // Backend may not be running yet or URL may be wrong — don't block development
       info(`[dev] registerDevice failed: ${response.message} — continuing anyway`);
-      createWindow();
     } else {
       // In production: show retry/quit dialog
       const icon = nativeImage.createFromPath(assetPath("build", "icon.png"));

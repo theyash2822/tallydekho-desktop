@@ -194,6 +194,11 @@ async function registerDevice() {
   if (response.status) {
     store.set("lastSync", response.data.lastSync);
 
+    // Store the permanent pairing code returned on every register
+    if (response.data?.pairingCode) {
+      store.set('pairingCode', response.data.pairingCode);
+    }
+
     // Handle version compatibility levels returned by backend
     const { versionLevel, versionMessage, latestVersion } = response.data || {};
     if (versionLevel) {

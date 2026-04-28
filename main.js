@@ -457,6 +457,19 @@ app.whenReady().then(async () => {
       store.set("forceUpdate", true);
     }
 
+    // Store permanent pairing code (backend returns it on every register)
+    if (response.versionLevel !== undefined) {
+      // version data present — handled below
+    }
+    // pairingCode is already stored in helper.js registerDevice()
+    // Send it to renderer once window is ready
+    const storedCode = store.get('pairingCode');
+    if (storedCode && mainWindow) {
+      mainWindow.once('ready-to-show', () => {
+        mainWindow?.webContents.send('window:listener', { key: 'pairingCode', value: storedCode });
+      });
+    }
+
     // Version compatibility: level 2 = sync blocked, level 3 = force update
     const vLevel = response.versionLevel || 0;
     store.set("versionLevel", vLevel);

@@ -120,39 +120,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    let timer;
-
-    if (pairingCodeGeneratedAt) {
-      timer = setInterval(() => {
-        const generatedAt = new Date(pairingCodeGeneratedAt);
-        const currentDate = new Date();
-
-        const differenceInMillis = currentDate - generatedAt;
-
-        const differenceInMinutes = differenceInMillis / (1000 * 60);
-
-        if (differenceInMinutes >= 10) {
-          // if (!pairedDevice) {
-          //   window.api.pairedDevice().then((response) => {
-          //     if (response.status) {
-          //       updateState("pairedDevice", response.data);
-          //     }
-          //   });
-          // }
-          setState((prev) => ({
-            ...prev,
-            pairingState: "hidden",
-            pairingCode: null,
-            pairingCodeGeneratedAt: null,
-          }));
-          clearInterval(timer);
-        }
-      }, 1000 * 60);
-    }
-
-    return () => {
-      clearInterval(timer);
-    };
+    // Pairing code is now permanent — no expiry timer needed
+    return () => {};
   }, [pairingCodeGeneratedAt, pairedDevice]);
 
   useEffect(() => {
@@ -230,6 +199,10 @@ export default function App() {
       updateState("versionMessage", versionMessage);
 
       isInitCompleted.current = true;
+
+      // Load permanent pairing code from store
+      const pairingCode = await window.api.getPref('pairingCode');
+      if (pairingCode) updateState('pairingCode', pairingCode);
 
       const pairedDevice = await window.api.pairedDevice();
       updateState("pairedDevice", pairedDevice.data);

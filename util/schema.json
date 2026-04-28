@@ -249,6 +249,10 @@
     "autoBackupStartedAt": {
       "type": "integer",
       "minimum": 0
+    },
+    "pairingCode": {
+      "type": "string",
+      "default": ""
     }
   },
   "required": [

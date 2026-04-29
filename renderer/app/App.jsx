@@ -360,6 +360,22 @@ export default function App() {
       );
       newSelectedCompanies = newSelectedCompanies.map((company) => {
         company.ledgersCount = ledgersCount[company.id];
+
+        // Sync allYears from latest Tally data
+        const freshData = data.find(d => d.id === company.id);
+        if (freshData) company.allYears = freshData.allYears;
+
+        // Auto-add any new year from Tally that isn't in selected years yet
+        // e.g. user just created FY 2026-27 in Tally — add it automatically
+        if (freshData?.allYears) {
+          const selectedFYNames = new Set((company.years || []).map(y => y.finYear));
+          const newYears = freshData.allYears.filter(y => !selectedFYNames.has(y.finYear));
+          if (newYears.length > 0) {
+            console.log('[fetchCompanies] New FY years detected:', newYears.map(y => y.finYear));
+            company.years = [...(company.years || []), ...newYears];
+          }
+        }
+
         return company;
       });
 

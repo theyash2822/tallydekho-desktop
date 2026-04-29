@@ -9,7 +9,7 @@
         <DESC>
             <STATICVARIABLES>
                 <SVEXPORTFORMAT>XML (Data Interchange)</SVEXPORTFORMAT>
-                <SVCURRENTCOMPANY>Test Company Data</SVCURRENTCOMPANY>
+                <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
                 <SVFROMDATE>$$FROM_DATE</SVFROMDATE>
                 <SVTODATE>$$TO_DATE</SVTODATE>
             </STATICVARIABLES>

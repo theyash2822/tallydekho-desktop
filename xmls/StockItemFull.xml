@@ -9,7 +9,7 @@
         <DESC>
             <STATICVARIABLES>
                 <SVEXPORTFORMAT>XML (Data Interchange)</SVEXPORTFORMAT>
-                <SVCURRENTCOMPANY>Demo2</SVCURRENTCOMPANY>
+                <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
             </STATICVARIABLES>
             <TDL>
                 <TDLMESSAGE>

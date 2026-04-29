@@ -365,6 +365,27 @@ export default function App() {
         const freshData = data.find(d => d.id === company.id);
         if (freshData) company.allYears = freshData.allYears;
 
+        // Auto-add ONLY genuinely new FY years:
+        // A year is "new" if its begin date is AFTER the end date of all currently selected years
+        // This avoids adding old historical years the user deliberately excluded
+        if (freshData?.allYears && (company.years || []).length > 0) {
+          const selectedYears = company.years || [];
+          const selectedFYNames = new Set(selectedYears.map(y => y.finYear));
+
+          // Find the latest end date among currently selected years (YYYYMMDD format)
+          const maxEnd = selectedYears.reduce((max, y) => y.end > max ? y.end : max, '');
+
+          if (maxEnd) {
+            const trulyNewYears = freshData.allYears.filter(y =>
+              !selectedFYNames.has(y.finYear) && y.begin > maxEnd
+            );
+            if (trulyNewYears.length > 0) {
+              console.log('[fetchCompanies] Auto-adding new FY years:', trulyNewYears.map(y => y.finYear));
+              company.years = [...selectedYears, ...trulyNewYears];
+            }
+          }
+        }
+
         return company;
       });
 

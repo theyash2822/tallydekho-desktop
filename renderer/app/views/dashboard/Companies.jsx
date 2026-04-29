@@ -52,10 +52,23 @@ export default function Companies({
     message: null,
   });
 
+  const [refreshing, setRefreshing] = useState(false);
+
   const {
     state: { companies, selectedCompanies, isSyncing, isTallyOnline, isOnline },
     updateState,
+    fetchCompanies,
   } = useContext(TallyContext);
+
+  const handleRefresh = async () => {
+    if (refreshing || !isTallyOnline) return;
+    setRefreshing(true);
+    try {
+      await fetchCompanies();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   function toggle(id, v) {
     setCheckedCompanies((s) => ({ ...s, [id]: v ?? !s[id] }));
@@ -227,7 +240,30 @@ export default function Companies({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <div className="text-lg font-semibold">My Companies</div>
+        <div className="flex items-center gap-2">
+          <div className="text-lg font-semibold">My Companies</div>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing || !isTallyOnline}
+            title="Refresh companies from Tally (picks up new financial years)"
+            className={`p-1.5 rounded-md border transition-all ${
+              refreshing || !isTallyOnline
+                ? 'text-[#AEACA8] border-[#E9E8E3] cursor-not-allowed'
+                : 'text-[#787774] border-[#E9E8E3] hover:bg-[#F0EFE9] hover:text-[#1A1A1A]'
+            }`}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14" height="14" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" strokeWidth="2"
+              strokeLinecap="round" strokeLinejoin="round"
+              className={refreshing ? 'animate-spin' : ''}
+            >
+              <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+              <path d="M21 3v5h-5" />
+            </svg>
+          </button>
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={openAddCompaniesModal}

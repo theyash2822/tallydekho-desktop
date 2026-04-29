@@ -294,6 +294,17 @@ const getData = async (filePath, replacer = []) => {
     xml = xml.replace(key, value);
   });
 
+  // SAFETY: Force SVCURRENTCOMPANY to always use the real company name.
+  // This fixes any XML files that have hardcoded placeholder names
+  // (e.g. 'Test Company Data', 'Demo2') from development/testing.
+  const companyNameVal = replacer.find(r => r.key === '$$COMPANY_NAME')?.value;
+  if (companyNameVal) {
+    xml = xml.replace(
+      /<SVCURRENTCOMPANY>[^<]*<\/SVCURRENTCOMPANY>/g,
+      `<SVCURRENTCOMPANY>${companyNameVal}</SVCURRENTCOMPANY>`
+    );
+  }
+
   let attempt = 0;
   while (true) {
     try {

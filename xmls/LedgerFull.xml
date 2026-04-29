@@ -22,6 +22,7 @@
                         <Compute>MAILINGSTATE:$LedStateName</Compute>
                         <Compute>MAILINGCOUNTRY:$CountryName</Compute>
                         <Compute>OPENINGBALANCE:if $$IsDebit:$OpeningBalance then -$$NumValue:$OpeningBalance else $$NumValue:$OpeningBalance</Compute>
+                        <Compute>CLOSINGBALANCE:if $$IsDebit:$ClosingBalance then -$$NumValue:$ClosingBalance else $$NumValue:$ClosingBalance</Compute>
                         <Compute>Pincode:$Pincode</Compute>
                         <Compute>EMAIL:$EMAIL</Compute>
                         <Compute>PHONE:$LedgerPHONE</Compute>

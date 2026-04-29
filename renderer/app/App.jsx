@@ -232,7 +232,7 @@ export default function App() {
             sendLogs: true,
           });
         }
-      } else if (key == "syncMessage" && value == "Data Synced") {
+      } else if (key == "syncMessage" && (value == "Data Synced" || value == "Sync Complete")) {
         resetSyncStates(true);
         openAlertModal("Data synced successfully");
       } else if (key == "unpairedAlert" && value === true) {

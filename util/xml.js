@@ -748,7 +748,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
     "StockGroupFull.xml",     // StockGroup with ParentGuid (replaces StockGroup.xml)
     "UnitFull.xml",           // Units with FormalName, IsSimpleUnit, Conversion
     "VoucherTypeFull.xml",    // VoucherType with ParentGuid, AffectsStock
-    "LedgerFull.xml",         // Full ledger with bank, GSTIN, PAN, address
+    // LedgerFull.xml is called per-year below (needs FY dates for accurate closing balance)
     "StockCategory.xml",
     "StockOpeningBalance.xml",
     "CurrencyMaster.xml",     // Currency masters
@@ -770,6 +770,30 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
           companyName: name,
           alterId: masterAlterId,
           companyGuid,
+        })
+      );
+    }
+  }
+
+  // LedgerFull.xml — called once per company using the MOST RECENT active year's dates
+  // This gives Tally FY-specific opening and closing balances
+  for (let i = 0; i < companies.length; i++) {
+    const company = companies[i];
+    const companyGuid = company.guid;
+    const name = company.name;
+    const masterAlterId = alterIds[company.guid].master;
+    const sortedYears = [...(company.years || [])].sort((a, b) => b.begin.localeCompare(a.begin));
+    const latestYear = sortedYears[0]; // most recent FY
+    if (latestYear) {
+      promises.push(
+        syncHelperWithDate({
+          xml: "LedgerFull.xml",
+          companyName: name,
+          alterId: masterAlterId,
+          fromDate: latestYear.begin,
+          toDate: latestYear.end,
+          companyGuid,
+          yearId: yearIds[companyGuid]?.[latestYear.finYear],
         })
       );
     }

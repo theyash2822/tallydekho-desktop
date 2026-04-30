@@ -10,6 +10,8 @@
             <STATICVARIABLES>
                 <SVEXPORTFORMAT>XML (Data Interchange)</SVEXPORTFORMAT>
                 <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
+                <SVFROMDATE>$$FROM_DATE</SVFROMDATE>
+                <SVTODATE>$$TO_DATE</SVTODATE>
             </STATICVARIABLES>
             <TDL>
                 <TDLMESSAGE>

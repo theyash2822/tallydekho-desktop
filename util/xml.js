@@ -710,10 +710,12 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
   syncedData = syncedData.data;
 
   if (isHardSync) {
+    // Use cv.allYears if available, fall back to cv.years (both contain FY list)
     const alterIds = companies.reduce((acc, cv) => {
+      const yearList = cv.allYears || cv.years || [];
       acc[cv.guid] = {
         master: 0,
-        voucher: cv.allYears.reduce((years, year) => {
+        voucher: yearList.reduce((years, year) => {
           years[year.finYear] = 0;
           return years;
         }, {}),

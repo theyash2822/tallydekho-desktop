@@ -545,6 +545,40 @@ const getCurrentCompany = async () => {
   //GUID
 };
 
+// Maps XML filename → explicit recordType tag (V2 spec: explicit routing, no field-signature guessing)
+const XML_RECORD_TYPE = {
+  'AllVoucher.xml':              'voucher',
+  'LedgerFull.xml':              'ledger',
+  'FullLedger.xml':              'ledger',
+  'LedgerTransaction.xml':       'ledger_transaction',
+  'StockItemFull.xml':           'stock',
+  'StockTransaction.xml':        'stock_transaction',
+  'GroupMaster.xml':             'group',
+  'VoucherInventoryDetail.xml':  'voucher_inventory',
+  'GSTDetails.xml':              'gst_detail',
+  'BillOutstanding.xml':         'bill_outstanding',
+  'LedgerOpeningBalance.xml':    'ledger_opening_balance',
+  'Godown.xml':                  'warehouse',
+  'UnitFull.xml':                'unit',
+  'VoucherTypeFull.xml':         'voucher_type',
+  'CurrencyMaster.xml':          'currency',
+  'StockGroupFull.xml':          'stock_group',
+  'StockOpeningBalance.xml':     'stock_opening_balance',
+  'StockCategory.xml':           'stock_category',
+  'CostCategory.xml':            'cost_category',
+  'CostCentre.xml':              'cost_centre',
+  'Master.xml':                  'master_catalog',
+  'SimplifiedVoucher.xml':       'voucher_stub',
+};
+
+// Compute financial year label from YYYYMMDD fromDate
+// e.g. "20250401" -> "2025-2026"
+function computeFinancialYear(fromDate) {
+  if (!fromDate || String(fromDate).length < 4) return null;
+  const year = parseInt(String(fromDate).slice(0, 4), 10);
+  return `${year}-${year + 1}`;
+}
+
 const syncHelper = async ({ xml, companyName, alterId, companyGuid }) => {
   const response = await getData(xml, [
     {
@@ -577,9 +611,11 @@ const syncHelper = async ({ xml, companyName, alterId, companyGuid }) => {
 
   return normalizeEnvelope(json.ENVELOPE).map((item) => ({
     ...item,
-    COMPANY_NAME: companyName,
-    XML: xml,
-    COMPANY_GUID: companyGuid,
+    COMPANY_NAME:    companyName,
+    XML:             xml,
+    COMPANY_GUID:    companyGuid,
+    _RECORD_TYPE:    XML_RECORD_TYPE[xml] || 'unknown',
+    _FINANCIAL_YEAR: null,
   }));
 };
 
@@ -617,14 +653,17 @@ const syncHelperWithDate = async ({
 
   const json = parser.parse(response.data);
 
+  const financialYear = computeFinancialYear(fromDate);
   const normalizeData = normalizeEnvelope(json.ENVELOPE).map((item) => ({
     ...item,
-    COMPANY_NAME: companyName,
-    XML: xml,
-    FROM_DATE: fromDate,
-    TO_DATE: toDate,
-    COMPANY_GUID: companyGuid,
-    YEAR_ID: yearId,
+    COMPANY_NAME:    companyName,
+    XML:             xml,
+    FROM_DATE:       fromDate,
+    TO_DATE:         toDate,
+    COMPANY_GUID:    companyGuid,
+    YEAR_ID:         yearId,
+    _RECORD_TYPE:    XML_RECORD_TYPE[xml] || 'unknown',
+    _FINANCIAL_YEAR: financialYear,
   }));
 
   if (xml == "Voucher.xml") {

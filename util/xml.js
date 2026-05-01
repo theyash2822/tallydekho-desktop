@@ -729,6 +729,22 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
 
   const startTime = new Date().getTime();
 
+  // V2: Start a sync_run record for monitoring/atomicity
+  let syncRunId = null;
+  try {
+    const firstCompanyGuid = companies[0]?.guid || companies[0]?.id;
+    if (firstCompanyGuid) {
+      const runRes = await axiosInstance.post('/ingest/sync-run/start', {
+        companyGuid: firstCompanyGuid,
+        syncType: isHardSync ? 'hard' : 'normal',
+      });
+      syncRunId = runRes?.data?.data?.syncRunId || null;
+      info('[sync_run] started', { syncRunId, companyGuid: firstCompanyGuid, isHardSync });
+    }
+  } catch (err) {
+    info('[sync_run] start failed (non-fatal):', err?.message);
+  }
+
   let promises = [];
   sendProgress(0);
   sendMessage("Initializing");
@@ -1085,13 +1101,35 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
   }
 
   if (!response.status) {
+    // V2: Mark sync_run as failed
+    if (syncRunId) {
+      try {
+        await axiosInstance.post('/ingest/sync-run/complete', {
+          syncRunId, status: 'failed', errorMessage: response.message || 'Upload failed',
+        });
+      } catch (err) {
+        info('[sync_run] failed-mark failed (non-fatal):', err?.message);
+      }
+    }
     return {
       status: false,
       data: { message: response.message, code: response.data?.code },
     };
   }
 
-  // sendProgress(100);
+  // V2: Mark sync_run as completed
+  if (syncRunId) {
+    try {
+      await axiosInstance.post('/ingest/sync-run/complete', {
+        syncRunId,
+        uploadId: response.uploadId,
+        status: 'completed',
+      });
+      info('[sync_run] completed', { syncRunId });
+    } catch (err) {
+      info('[sync_run] complete failed (non-fatal):', err?.message);
+    }
+  }
 
   store.set("uploadId", response.uploadId);
   return { status: true, data: { code: null, uploadId: response.uploadId } };

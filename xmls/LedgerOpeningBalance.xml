@@ -30,7 +30,7 @@
                     </PART>
                     <LINE NAME='MyLine01'>
                         <FIELDS>
-                            Fld01,Fld02,Fld03
+                            Fld01,Fld02,Fld03,Fld04
                         </FIELDS>
                     </LINE>
                     <FIELD NAME='Fld01'>
@@ -45,6 +45,10 @@
                         <SET>if $$IsDebit:$OpeningBalance then -$$NumValue:$OpeningBalance else
                             $$NumValue:$OpeningBalance</SET>
                         <XMLTAG>OpeningBalance</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld04'>
+                        <SET>$Name</SET>
+                        <XMLTAG>LedgerName</XMLTAG>
                     </FIELD>
                     <COLLECTION NAME='MyCollection'>
                         <TYPE> Ledger </TYPE>

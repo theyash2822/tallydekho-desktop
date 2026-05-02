@@ -100,22 +100,33 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
-  // Backend connectivity check every 10s (navigator.onLine only detects WiFi, not backend reachability)
+  // Backend connectivity check every 15s — requires 2 consecutive failures to mark offline
+  // (prevents false "disconnected" flicker from a single slow ping)
   useEffect(() => {
     if (!window.api) return;
+    let failCount = 0;
     const checkBackend = async () => {
       try {
         const reachable = await window.api.pingBackend();
         const current = navigator.onLine && reachable;
-        updateState("isOnline", current);
-        window.api?.setPref("isOnline", current);
-        if (isSyncingRef.current && !current) stopSync("internet_is_offline");
+        if (current) {
+          failCount = 0; // reset on success
+          updateState("isOnline", true);
+          window.api?.setPref("isOnline", true);
+        } else {
+          failCount++;
+          if (failCount >= 2) {
+            updateState("isOnline", false);
+            window.api?.setPref("isOnline", false);
+            if (isSyncingRef.current) stopSync("internet_is_offline");
+          }
+        }
       } catch {
         // pingBackend unavailable in dev without IPC — fall back to browser value
       }
     };
     checkBackend();
-    const backendTimer = setInterval(checkBackend, 10_000);
+    const backendTimer = setInterval(checkBackend, 15_000);
     return () => clearInterval(backendTimer);
   }, []);
 

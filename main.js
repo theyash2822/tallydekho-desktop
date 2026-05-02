@@ -279,7 +279,7 @@ ipcMain.handle("openExternal", async (_event) => {
 ipcMain.handle("backend:ping", async () => {
   const { axiosInstance } = require("./util/helper");
   try {
-    await axiosInstance.get("/app/ping", { timeout: 5000 });
+    await axiosInstance.get("/app/ping", { timeout: 10000 }); // 10s timeout — avoids false offline on slow connections
     return true;
   } catch {
     return false;

@@ -15,11 +15,11 @@ const execFileAsync = promisify(execFile);
 const MS_PER_DAY = 86_400_000;
 
 const isDev = !!process.env.ELECTRON_DEV;
-const baseURL = process.env.BACKEND_URL ||
-  (isDev ? "http://localhost:3001" : "https://api.tallydekho.com");
-// In dev mode (npm run dev), automatically uses local backend on localhost
-// In production build, uses https://api.tallydekho.com
-// Override anytime with BACKEND_URL env var
+const baseURL = process.env.BACKEND_URL || process.env.BASE_URL ||
+  (isDev ? "http://192.168.29.245:3001" : "https://api.tallydekho.com");
+// In dev mode: reads BACKEND_URL or BASE_URL from .env (set to Mac's LAN IP)
+// In production build: uses https://api.tallydekho.com
+// Override anytime: set BACKEND_URL=http://<mac-ip>:3001 in .env
 
 const axiosInstance = axios.create({
   baseURL,

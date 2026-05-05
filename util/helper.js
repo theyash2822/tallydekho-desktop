@@ -16,8 +16,8 @@ const MS_PER_DAY = 86_400_000;
 
 const isDev = !!process.env.ELECTRON_DEV;
 const baseURL = process.env.BACKEND_URL ||
-  (isDev ? "http://192.168.29.241:3001" : "https://api.tallydekho.com");
-// In dev mode (npm run dev), automatically uses local backend
+  (isDev ? "http://localhost:3001" : "https://api.tallydekho.com");
+// In dev mode (npm run dev), automatically uses local backend on localhost
 // In production build, uses https://api.tallydekho.com
 // Override anytime with BACKEND_URL env var
 
@@ -70,19 +70,24 @@ const isTallyOpen = async () => {
 };
 
 const isOnlineHandler = async (timeoutMs = 5000) => {
+  // Ping local backend first — if it responds, we're connected (avoids Google DNS blocks)
+  try {
+    const res = await axiosInstance.get("/app/ping", { timeout: timeoutMs });
+    if (res.status >= 200 && res.status < 400) return true;
+  } catch (_) {}
+
+  // Fallback: try a plain TCP-style fetch to a reliable public endpoint
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-
   try {
-    const res = await axios.get("https://clients3.google.com/generate_204", {
+    const res = await axios.get("https://connectivitycheck.gstatic.com/generate_204", {
       validateStatus: (s) => s >= 200 && s < 400,
       signal: controller.signal,
       timeout: timeoutMs,
       responseType: "text",
     });
-
     return res.status >= 200 && res.status < 400;
-  } catch (err) {
+  } catch (_) {
     return false;
   } finally {
     clearTimeout(timer);

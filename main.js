@@ -1,3 +1,6 @@
+// Load .env variables before anything else
+require('dotenv').config();
+
 const {
   app,
   BrowserWindow,

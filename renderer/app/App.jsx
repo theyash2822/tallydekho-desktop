@@ -75,22 +75,24 @@ export default function App() {
   } = state;
 
   useEffect(() => {
-    const updateOnlineStatus = async () => {
-      updateState("isOnline", navigator.onLine);
-      window.api?.setPref("isOnline", navigator.onLine);
-      if (isSyncingRef.current && !navigator.onLine) {
-        stopSync("internet_is_offline");
-      }
+    // navigator.onLine is unreliable in Electron on Windows — don't blindly trust it.
+    // Only use it as a hint to trigger the backend ping check sooner.
+    const onNetworkChange = async () => {
+      if (!window.api) return;
+      try {
+        const reachable = await window.api.pingBackend();
+        updateState("isOnline", reachable);
+        window.api?.setPref("isOnline", reachable);
+        if (!reachable && isSyncingRef.current) stopSync("internet_is_offline");
+      } catch {}
     };
 
-    window.addEventListener("online", updateOnlineStatus);
-    window.addEventListener("offline", updateOnlineStatus);
-
-    updateOnlineStatus();
+    window.addEventListener("online",  onNetworkChange);
+    window.addEventListener("offline", onNetworkChange);
 
     return () => {
-      window.removeEventListener("online", updateOnlineStatus);
-      window.removeEventListener("offline", updateOnlineStatus);
+      window.removeEventListener("online",  onNetworkChange);
+      window.removeEventListener("offline", onNetworkChange);
     };
   }, []);
 
@@ -108,7 +110,8 @@ export default function App() {
     const checkBackend = async () => {
       try {
         const reachable = await window.api.pingBackend();
-        const current = navigator.onLine && reachable;
+        // Use backend ping as the source of truth — navigator.onLine is unreliable in Electron on Windows
+        const current = reachable;
         if (current) {
           failCount = 0; // reset on success
           updateState("isOnline", true);

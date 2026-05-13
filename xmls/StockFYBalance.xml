@@ -1,0 +1,76 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- StockFYBalance.xml
+     Purpose: Get EXACT stock opening/closing values at FY boundaries from Tally
+     Strategy: Set SVFROMDATE = SVTODATE = single date (FY end) so Tally must
+               compute the actual balance AT that date (cannot use cached current-FY values)
+     Called twice per FY:
+       1. toDate = FY_END → gives exact CLOSING stock for that FY
+       2. toDate = FY_START-1_day → gives exact OPENING stock for that FY
+     This bypasses the limitation where $ClosingValue ignores date ranges
+-->
+<ENVELOPE>
+    <HEADER>
+        <VERSION>1</VERSION>
+        <TALLYREQUEST>Export</TALLYREQUEST>
+        <TYPE>Data</TYPE>
+        <ID>StockFYBalanceReport</ID>
+    </HEADER>
+    <BODY>
+        <DESC>
+            <STATICVARIABLES>
+                <SVEXPORTFORMAT>XML (Data Interchange)</SVEXPORTFORMAT>
+                <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
+                <!-- Set FROM = TO = same date so Tally computes AT that exact date -->
+                <!-- Pass the same date as both FROM and TO via $$FROM_DATE / $$TO_DATE -->
+                <SVFROMDATE TYPE="Date">$$FROM_DATE</SVFROMDATE>
+                <SVTODATE TYPE="Date">$$TO_DATE</SVTODATE>
+            </STATICVARIABLES>
+            <TDL>
+                <TDLMESSAGE>
+                    <REPORT NAME='StockFYBalanceReport'>
+                        <FORMS>StockForm</FORMS>
+                    </REPORT>
+                    <FORM NAME='StockForm'>
+                        <PARTS>StockPart</PARTS>
+                    </FORM>
+                    <PART NAME='StockPart'>
+                        <LINES>StockLine</LINES>
+                        <REPEAT>StockLine:StockCollection</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
+                    </PART>
+                    <LINE NAME='StockLine'>
+                        <FIELDS>FldName,FldGuid,FldClsQty,FldClsRate,FldClsVal</FIELDS>
+                    </LINE>
+                    <!-- Stock item name -->
+                    <FIELD NAME='FldName'>
+                        <SET>$Name</SET>
+                        <XMLTAG>Name</XMLTAG>
+                    </FIELD>
+                    <!-- Stock item GUID -->
+                    <FIELD NAME='FldGuid'>
+                        <SET>$Guid</SET>
+                        <XMLTAG>Guid</XMLTAG>
+                    </FIELD>
+                    <!-- Closing qty AT the specified date -->
+                    <FIELD NAME='FldClsQty'>
+                        <SET>$$Number:$$String:$ClosingBalance</SET>
+                        <XMLTAG>ClosingQty</XMLTAG>
+                    </FIELD>
+                    <!-- Closing rate AT the specified date -->
+                    <FIELD NAME='FldClsRate'>
+                        <SET>if $$IsEmpty:$ClosingRate then 0 else $$Number:$ClosingRate</SET>
+                        <XMLTAG>ClosingRate</XMLTAG>
+                    </FIELD>
+                    <!-- Closing VALUE AT the specified date (Tally's own valuation) -->
+                    <FIELD NAME='FldClsVal'>
+                        <SET>if $$IsDebit:$ClosingValue then -$$NumValue:$ClosingValue else $$NumValue:$ClosingValue</SET>
+                        <XMLTAG>ClosingValue</XMLTAG>
+                    </FIELD>
+                    <COLLECTION NAME='StockCollection'>
+                        <TYPE>StockItem</TYPE>
+                    </COLLECTION>
+                </TDLMESSAGE>
+            </TDL>
+        </DESC>
+    </BODY>
+</ENVELOPE>

@@ -565,6 +565,7 @@ const XML_RECORD_TYPE = {
   'StockGroupFull.xml':          'stock_group',
   'StockOpeningBalance.xml':     'stock_opening_balance',
   'StockValuation.xml':          'stock_valuation',
+  'StockFYBalance.xml':           'stock_fy_balance',
   'StockCategory.xml':           'stock_category',
   'CostCategory.xml':            'cost_category',
   'CostCentre.xml':              'cost_centre',
@@ -953,18 +954,50 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
       info(`[sync] Year Function`, { year, voucherAlterId });
 
       // StockItemFull.xml replaces StockItem.xml — includes full GST rates, HSN, alias
-      // StockValuation.xml — FY-specific opening/closing stock VALUE (exact Tally costing)
-      // This is the source of truth for P&L Opening Stock and Closing Stock
+      // StockValuation.xml — FY-specific opening/closing stock VALUE (existing, current FY only)
       const stockValuationResponse = await syncHelperWithDate({
         xml: "StockValuation.xml",
         companyName: name,
-        alterId: 0, // always fetch full — values change with every transaction
+        alterId: 0,
         fromDate: year.begin,
         toDate: year.end,
         companyGuid,
         yearId,
       });
       promises.push(stockValuationResponse);
+
+      // StockFYBalance.xml — queries Tally stock AT EXACT DATES (from=to=single date)
+      // Bypasses Tally's limitation where $ClosingValue returns current FY data for ranges
+      // Closing balance: query at FY end date
+      const fyEndStr   = year.end;   // e.g. '20260331'
+      // Opening balance: query at day BEFORE FY start
+      const fyStartMs  = new Date(year.begin.slice(0,4)+'-'+year.begin.slice(4,6)+'-'+year.begin.slice(6,8)+'T00:00:00Z');
+      const prevDayMs  = new Date(fyStartMs.getTime() - 86400000);
+      const prevDayStr = prevDayMs.toISOString().slice(0,10).replace(/-/g,''); // YYYYMMDD
+
+      // Closing stock at FY end
+      const stockFYClosingResponse = await syncHelperWithDate({
+        xml: "StockFYBalance.xml",
+        companyName: name,
+        alterId: 0,
+        fromDate: fyEndStr,
+        toDate:   fyEndStr,
+        companyGuid,
+        yearId,
+      });
+      promises.push(stockFYClosingResponse);
+
+      // Opening stock = closing stock at day before FY start
+      const stockFYOpeningResponse = await syncHelperWithDate({
+        xml: "StockFYBalance.xml",
+        companyName: name,
+        alterId: 0,
+        fromDate: prevDayStr,
+        toDate:   prevDayStr,
+        companyGuid,
+        yearId,
+      });
+      promises.push(stockFYOpeningResponse);
 
       const stockresponse = await syncHelperWithDate({
         xml: "StockItemFull.xml",

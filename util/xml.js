@@ -564,6 +564,7 @@ const XML_RECORD_TYPE = {
   'CurrencyMaster.xml':          'currency',
   'StockGroupFull.xml':          'stock_group',
   'StockOpeningBalance.xml':     'stock_opening_balance',
+  'StockValuation.xml':          'stock_valuation',
   'StockCategory.xml':           'stock_category',
   'CostCategory.xml':            'cost_category',
   'CostCentre.xml':              'cost_centre',
@@ -952,6 +953,19 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
       info(`[sync] Year Function`, { year, voucherAlterId });
 
       // StockItemFull.xml replaces StockItem.xml — includes full GST rates, HSN, alias
+      // StockValuation.xml — FY-specific opening/closing stock VALUE (exact Tally costing)
+      // This is the source of truth for P&L Opening Stock and Closing Stock
+      const stockValuationResponse = await syncHelperWithDate({
+        xml: "StockValuation.xml",
+        companyName: name,
+        alterId: 0, // always fetch full — values change with every transaction
+        fromDate: year.begin,
+        toDate: year.end,
+        companyGuid,
+        yearId,
+      });
+      promises.push(stockValuationResponse);
+
       const stockresponse = await syncHelperWithDate({
         xml: "StockItemFull.xml",
         companyName: name,

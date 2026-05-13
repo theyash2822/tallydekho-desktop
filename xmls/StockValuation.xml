@@ -1,0 +1,80 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ENVELOPE>
+    <HEADER>
+        <VERSION>1</VERSION>
+        <TALLYREQUEST>Export</TALLYREQUEST>
+        <TYPE>Data</TYPE>
+        <ID>MyReportStockValuation</ID>
+    </HEADER>
+    <BODY>
+        <DESC>
+            <STATICVARIABLES>
+                <SVEXPORTFORMAT>XML (Data Interchange)</SVEXPORTFORMAT>
+                <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
+                <SVFROMDATE TYPE="Date">$$FROM_DATE</SVFROMDATE>
+                <SVTODATE TYPE="Date">$$TO_DATE</SVTODATE>
+            </STATICVARIABLES>
+            <TDL>
+                <TDLMESSAGE>
+                    <REPORT NAME='MyReportStockValuation'>
+                        <FORMS>MyForm</FORMS>
+                    </REPORT>
+                    <FORM NAME='MyForm'>
+                        <PARTS>MyPart01</PARTS>
+                    </FORM>
+                    <PART NAME='MyPart01'>
+                        <LINES>MyLine01</LINES>
+                        <REPEAT>MyLine01 : MyCollection</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
+                    </PART>
+                    <LINE NAME='MyLine01'>
+                        <FIELDS>Fld01,Fld02,Fld03,Fld04,Fld05,Fld06,Fld07,Fld08</FIELDS>
+                    </LINE>
+                    <!-- Stock item name -->
+                    <FIELD NAME='Fld01'>
+                        <SET>$Name</SET>
+                        <XMLTAG>Name</XMLTAG>
+                    </FIELD>
+                    <!-- Stock item GUID -->
+                    <FIELD NAME='Fld02'>
+                        <SET>$Guid</SET>
+                        <XMLTAG>Guid</XMLTAG>
+                    </FIELD>
+                    <!-- Opening qty for the period -->
+                    <FIELD NAME='Fld03'>
+                        <SET>$$Number:$$String:$OpeningBalance</SET>
+                        <XMLTAG>OpeningQty</XMLTAG>
+                    </FIELD>
+                    <!-- Opening rate -->
+                    <FIELD NAME='Fld04'>
+                        <SET>if $$IsEmpty:$OpeningRate then 0 else $$Number:$OpeningRate</SET>
+                        <XMLTAG>OpeningRate</XMLTAG>
+                    </FIELD>
+                    <!-- Opening VALUE — this is what Tally computes using its costing method -->
+                    <FIELD NAME='Fld05'>
+                        <SET>if $$IsDebit:$OpeningValue then -$$NumValue:$OpeningValue else $$NumValue:$OpeningValue</SET>
+                        <XMLTAG>OpeningValue</XMLTAG>
+                    </FIELD>
+                    <!-- Closing qty for the period -->
+                    <FIELD NAME='Fld06'>
+                        <SET>$$Number:$$String:$ClosingBalance</SET>
+                        <XMLTAG>ClosingQty</XMLTAG>
+                    </FIELD>
+                    <!-- Closing rate -->
+                    <FIELD NAME='Fld07'>
+                        <SET>if $$IsEmpty:$ClosingRate then 0 else $$Number:$ClosingRate</SET>
+                        <XMLTAG>ClosingRate</XMLTAG>
+                    </FIELD>
+                    <!-- Closing VALUE — this is what Tally computes using its costing method -->
+                    <FIELD NAME='Fld08'>
+                        <SET>if $$IsDebit:$ClosingValue then -$$NumValue:$ClosingValue else $$NumValue:$ClosingValue</SET>
+                        <XMLTAG>ClosingValue</XMLTAG>
+                    </FIELD>
+                    <COLLECTION NAME='MyCollection'>
+                        <TYPE>StockItem</TYPE>
+                    </COLLECTION>
+                </TDLMESSAGE>
+            </TDL>
+        </DESC>
+    </BODY>
+</ENVELOPE>

@@ -42,7 +42,12 @@
                         <LINES>MyLine04</LINES>
                         <REPEAT>MyLine04:AllLedgerentries</REPEAT>
                         <SCROLLED>Vertical</SCROLLED>
-                        
+                    </PART>
+                    <!-- LedgerEntries: catches sub-ledger lines that AllLedgerEntries may skip -->
+                    <PART NAME='MyPart07'>
+                        <LINES>MyLine07</LINES>
+                        <REPEAT>MyLine07:LedgerEntries</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
                     </PART>
                     <PART NAME='MyPart05'>
                         <LINES>MyLine05</LINES>
@@ -61,6 +66,7 @@
                         <XMLTAG>Voucher</XMLTAG>
                         <EXPLODE>MyPart02</EXPLODE>
                         <EXPLODE>MyPart04</EXPLODE>
+                        <EXPLODE>MyPart07</EXPLODE>
                     </LINE>
                     <FIELD NAME='Fld01'>
                         <SET>$Guid</SET>
@@ -184,10 +190,9 @@
                         <XMLTAG>Amount</XMLTAG>
                     </FIELD>
                     <LINE NAME='MyLine04'>
-                        <FIELDS>Fld01L,Fld02L</FIELDS>
-                      
+                        <FIELDS>Fld01L,Fld02L,Fld03L</FIELDS>
                         <XMLTAG>AllLedgerEntries</XMLTAG>
-                         <EXPLODE>MyPart06</EXPLODE>
+                        <EXPLODE>MyPart06</EXPLODE>
                     </LINE>
                     <FIELD NAME='Fld01L'>
                         <SET>$Ledgername</SET>
@@ -196,6 +201,27 @@
                     <FIELD NAME='Fld02L'>
                         <SET>if ($$IsDebit:$Amount) then (-$$NumValue:$Amount) else ($$NumValue:$Amount)</SET>
                         <XMLTAG>Amount</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld03L'>
+                        <SET>$Guid:Ledger:$Ledgername</SET>
+                        <XMLTAG>LedgerGuid</XMLTAG>
+                    </FIELD>
+                    <!-- LedgerEntries line — captures sub-entries not in AllLedgerEntries -->
+                    <LINE NAME='MyLine07'>
+                        <FIELDS>Fld01LE,Fld02LE,Fld03LE</FIELDS>
+                        <XMLTAG>LedgerEntries</XMLTAG>
+                    </LINE>
+                    <FIELD NAME='Fld01LE'>
+                        <SET>$Ledgername</SET>
+                        <XMLTAG>Ledgername</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld02LE'>
+                        <SET>if ($$IsDebit:$Amount) then (-$$NumValue:$Amount) else ($$NumValue:$Amount)</SET>
+                        <XMLTAG>Amount</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld03LE'>
+                        <SET>$Guid:Ledger:$Ledgername</SET>
+                        <XMLTAG>LedgerGuid</XMLTAG>
                     </FIELD>
                      <LINE NAME='MyLine05'>
                         <FIELDS>Fld01D</FIELDS>
@@ -228,7 +254,7 @@
                     <COLLECTION NAME='MyCollection'>
                         <TYPE>Vouchers</TYPE>
                         <Belongsto>Yes</Belongsto>
-                        <FETCH>AlterId,Narration,PartyLedgerName,PlaceOfSupply,Allinventoryentries.List,Basicuserdescription.List,AllLedgerEntries.List,Billallocations.List</FETCH>
+                        <FETCH>AlterId,Narration,PartyLedgerName,PlaceOfSupply,Allinventoryentries.List,Basicuserdescription.List,AllLedgerEntries.List,LedgerEntries.List,Billallocations.List</FETCH>
                         <FILTER>Fltr01,Fltr02,DeltaFilter</FILTER>
                         <KeepSource>().</KeepSource>
                     </COLLECTION>

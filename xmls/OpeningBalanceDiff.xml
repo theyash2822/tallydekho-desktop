@@ -10,7 +10,7 @@
        not any running balance. Summing signed values gives the exact Tally TB difference.
 
   Called ONCE per company sync (not per FY).
-  Substitute: $$COMPANY_NAME, $$FROM_DATE (= $$TO_DATE = BOOKSFROM date in YYYYMMDD format)
+  Substitutes: COMPANY_NAME, FROM_DATE (= TO_DATE = BOOKSFROM date in YYYYMMDD format)
 -->
 <ENVELOPE>
     <HEADER>
@@ -26,7 +26,7 @@
                 <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
                 <!-- FROM = TO = company BOOKSFROM → gets initial opening balances -->
                 <SVFROMDATE TYPE="Date">$$FROM_DATE</SVFROMDATE>
-                <SVTODATE TYPE="Date">$$FROM_DATE</SVTODATE>
+                <SVTODATE TYPE="Date">$$TO_DATE</SVTODATE>
             </STATICVARIABLES>
             <TDL>
                 <TDLMESSAGE>

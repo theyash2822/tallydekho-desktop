@@ -1,0 +1,69 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!--
+  OpeningBalanceDiff.xml
+  Purpose: Fetch ALL ledger opening balances as of the company's BOOKSFROM date.
+           The algebraic sum of these values = Tally's "Difference in Opening Balances"
+           (the fixed company-level constant that appears in the Trial Balance).
+
+  Key: FROM_DATE = TO_DATE = company's BOOKSFROM date (first accounting date).
+       At this date, $OpeningBalance = the INITIAL opening balance entered during company setup,
+       not any running balance. Summing signed values gives the exact Tally TB difference.
+
+  Called ONCE per company sync (not per FY).
+  Substitute: $$COMPANY_NAME, $$FROM_DATE (= $$TO_DATE = BOOKSFROM date in YYYYMMDD format)
+-->
+<ENVELOPE>
+    <HEADER>
+        <VERSION>1</VERSION>
+        <TALLYREQUEST>Export</TALLYREQUEST>
+        <TYPE>Data</TYPE>
+        <ID>MyReportOBDiff</ID>
+    </HEADER>
+    <BODY>
+        <DESC>
+            <STATICVARIABLES>
+                <SVEXPORTFORMAT>XML (Data Interchange)</SVEXPORTFORMAT>
+                <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
+                <!-- FROM = TO = company BOOKSFROM → gets initial opening balances -->
+                <SVFROMDATE TYPE="Date">$$FROM_DATE</SVFROMDATE>
+                <SVTODATE TYPE="Date">$$FROM_DATE</SVTODATE>
+            </STATICVARIABLES>
+            <TDL>
+                <TDLMESSAGE>
+                    <REPORT NAME='MyReportOBDiff'>
+                        <FORMS>OBDiffForm</FORMS>
+                    </REPORT>
+                    <FORM NAME='OBDiffForm'>
+                        <PARTS>OBDiffPart</PARTS>
+                    </FORM>
+                    <PART NAME='OBDiffPart'>
+                        <LINES>OBDiffLine</LINES>
+                        <REPEAT>OBDiffLine : LedgerColl</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
+                    </PART>
+                    <LINE NAME='OBDiffLine'>
+                        <FIELDS>FldName, FldSignedOB</FIELDS>
+                    </LINE>
+                    <!-- Ledger name -->
+                    <FIELD NAME='FldName'>
+                        <SET>$Name</SET>
+                        <XMLTAG>LedgerName</XMLTAG>
+                    </FIELD>
+                    <!--
+                        Signed opening balance at BOOKSFROM date:
+                        Dr = negative (asset / expense side)
+                        Cr = positive (liability / income side)
+                        SUM of all = Tally's "Difference in Opening Balances" (signed)
+                    -->
+                    <FIELD NAME='FldSignedOB'>
+                        <SET>if $$IsDebit:$OpeningBalance then -$$NumValue:$OpeningBalance else $$NumValue:$OpeningBalance</SET>
+                        <XMLTAG>SignedOpeningBalance</XMLTAG>
+                    </FIELD>
+                    <COLLECTION NAME='LedgerColl'>
+                        <TYPE>Ledger</TYPE>
+                    </COLLECTION>
+                </TDLMESSAGE>
+            </TDL>
+        </DESC>
+    </BODY>
+</ENVELOPE>

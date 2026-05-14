@@ -566,6 +566,7 @@ const XML_RECORD_TYPE = {
   'StockOpeningBalance.xml':     'stock_opening_balance',
   'StockValuation.xml':          'stock_valuation',
   'StockFYBalance.xml':           'stock_fy_balance',
+  'OpeningBalanceDiff.xml':       'opening_balance_diff',
   'StockCategory.xml':           'stock_category',
   'CostCategory.xml':            'cost_category',
   'CostCentre.xml':              'cost_centre',
@@ -938,6 +939,26 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
     const trimmedName = name.length > 20 ? `${name.slice(0, 20)}...` : name;
 
     sendMessage(`Fetching ${trimmedName} Data`);
+
+    // ── OpeningBalanceDiff.xml ── once per company (not per FY)
+    // Fetches per-ledger signed opening balances at company's BOOKSFROM date.
+    // SUM of all values = Tally's fixed "Difference in Opening Balances" for the Trial Balance.
+    if (company.booksFrom) {
+      const booksFromStr = String(company.booksFrom).replace(/-/g, ''); // ensure YYYYMMDD
+      const obDiffResponse = await syncHelperWithDate({
+        xml: 'OpeningBalanceDiff.xml',
+        companyName: name,
+        alterId: 0,
+        fromDate: booksFromStr,
+        toDate:   booksFromStr,
+        companyGuid,
+        yearId: null,
+      });
+      promises.push(obDiffResponse);
+      info('[sync] OpeningBalanceDiff.xml fetched for', name, 'at booksFrom', booksFromStr);
+    } else {
+      info('[sync] OpeningBalanceDiff.xml skipped — booksFrom not available for', name);
+    }
 
     for (let j = 0; j < years.length; j++) {
       if (stopTallySyncCode) {

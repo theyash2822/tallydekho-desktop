@@ -943,21 +943,23 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
     // ── OpeningBalanceDiff.xml ── once per company (not per FY)
     // Fetches per-ledger signed opening balances at company's BOOKSFROM date.
     // SUM of all values = Tally's fixed "Difference in Opening Balances" for the Trial Balance.
-    if (company.booksFrom) {
-      const booksFromStr = String(company.booksFrom).replace(/-/g, ''); // ensure YYYYMMDD
+    // Fallback: use startingFrom if booksFrom is null (same concept, always available).
+    const obDiffDate = company.booksFrom || company.startingFrom;
+    if (obDiffDate) {
+      const obDiffDateStr = String(obDiffDate).replace(/-/g, ''); // ensure YYYYMMDD
       const obDiffResponse = await syncHelperWithDate({
         xml: 'OpeningBalanceDiff.xml',
         companyName: name,
         alterId: 0,
-        fromDate: booksFromStr,
-        toDate:   booksFromStr,
+        fromDate: obDiffDateStr,
+        toDate:   obDiffDateStr,
         companyGuid,
         yearId: null,
       });
       promises.push(obDiffResponse);
-      info('[sync] OpeningBalanceDiff.xml fetched for', name, 'at booksFrom', booksFromStr);
+      info('[sync] OpeningBalanceDiff.xml fetched for', name, 'at date', obDiffDateStr);
     } else {
-      info('[sync] OpeningBalanceDiff.xml skipped — booksFrom not available for', name);
+      info('[sync] OpeningBalanceDiff.xml skipped — no booksFrom/startingFrom for', name);
     }
 
     for (let j = 0; j < years.length; j++) {

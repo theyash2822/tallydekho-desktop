@@ -346,13 +346,13 @@ export default function App() {
       name: company.name,
       guid: company.guid,
       path: company.destination,
-      // status: "connected",
-      // last: new Date(Date.now() - 5 * 60 * 1000),
-      // enabled: true,
       years: company.years,
       isCurrentCompany: company.isCurrentCompany,
       allYears: company.years,
       ledgersCount: company.ledgersCount,
+      // Preserve date fields needed for OpeningBalanceDiff.xml sync
+      startingFrom: company.startingFrom,
+      booksFrom: company.booksFrom,
     }));
 
     const ids = data.map((item) => item.id);

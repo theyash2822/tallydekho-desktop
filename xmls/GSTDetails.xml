@@ -32,7 +32,7 @@
                     <FIELD NAME='Fld03'><SET>if $$IsEmpty:$Date then $$StrByCharCode:241 else $$PyrlYYYYMMDDFormat:$Date:'-'</SET><XMLTAG>Date</XMLTAG></FIELD>
                     <FIELD NAME='Fld04'><SET>$VoucherTypeName</SET><XMLTAG>VoucherTypeName</XMLTAG></FIELD>
                     <FIELD NAME='Fld05'><SET>$PartyLedgerName</SET><XMLTAG>PartyLedgerName</XMLTAG></FIELD>
-                    <FIELD NAME='Fld06'><SET>$GSTRegistrationType</SET><XMLTAG>GSTRegType</XMLTAG></FIELD>
+                    <FIELD NAME='Fld06'><SET>$GSTRegistrationType:Ledger:$PartyLedgerName</SET><XMLTAG>GSTRegType</XMLTAG></FIELD>
                     <FIELD NAME='Fld07'><SET>$PlaceOfSupply</SET><XMLTAG>PlaceOfSupply</XMLTAG></FIELD>
                     <FIELD NAME='Fld08'><SET>$$GSTTaxableValue:$VoucherTypeName</SET><XMLTAG>TaxableAmount</XMLTAG></FIELD>
                     <FIELD NAME='Fld09'><SET>$$GSTTaxAmount:$VoucherTypeName:'CGST'</SET><XMLTAG>CGSTAmount</XMLTAG></FIELD>
@@ -44,7 +44,7 @@
                     <FIELD NAME='Fld15'><SET>if $IsRCMApplicable then 'Yes' else 'No'</SET><XMLTAG>IsRCMApplicable</XMLTAG></FIELD>
                     <FIELD NAME='Fld16'><SET>$ExportType</SET><XMLTAG>ExportType</XMLTAG></FIELD>
                     <FIELD NAME='Fld17'><SET>if $IsSEZParty then 'Yes' else 'No'</SET><XMLTAG>IsSEZParty</XMLTAG></FIELD>
-                    <FIELD NAME='Fld18'><SET>$GSTRegistrationType</SET><XMLTAG>GSTRegTypeDirect</XMLTAG></FIELD>
+                    <FIELD NAME='Fld18'><SET>$GSTRegistrationType:Ledger:$PartyLedgerName</SET><XMLTAG>GSTRegTypeDirect</XMLTAG></FIELD>
                     <FIELD NAME='FldBlank'><SET>''</SET></FIELD>
                     <COLLECTION NAME='MyCollection'>
                         <TYPE>Voucher</TYPE>

@@ -25,7 +25,7 @@
                         <SCROLLED>Vertical</SCROLLED>
                     </PART>
                     <LINE NAME='MyLine01'>
-                        <FIELDS>Fld01,Fld02,Fld03,Fld04,Fld05,Fld06,Fld07,Fld08,Fld09,Fld10,Fld11,Fld12,Fld13</FIELDS>
+                        <FIELDS>Fld01,Fld02,Fld03,Fld04,Fld05,Fld06,Fld07,Fld08,Fld09,Fld10,Fld11,Fld12,Fld13,Fld14,Fld15,Fld16,Fld17,Fld18</FIELDS>
                     </LINE>
                     <FIELD NAME='Fld01'><SET>$Guid</SET><XMLTAG>VoucherGuid</XMLTAG></FIELD>
                     <FIELD NAME='Fld02'><SET>$VoucherNumber</SET><XMLTAG>VoucherNumber</XMLTAG></FIELD>
@@ -40,10 +40,15 @@
                     <FIELD NAME='Fld11'><SET>$$GSTTaxAmount:$VoucherTypeName:'IGST'</SET><XMLTAG>IGSTAmount</XMLTAG></FIELD>
                     <FIELD NAME='Fld12'><SET>if $$IsEmpty:$IRN then '' else $IRN</SET><XMLTAG>IRN</XMLTAG></FIELD>
                     <FIELD NAME='Fld13'><SET>if $$IsEmpty:$AlterId then '0' else $$String:$AlterId</SET><XMLTAG>AlterId</XMLTAG></FIELD>
+                    <FIELD NAME='Fld14'><SET>if $IsInterstate then 'Yes' else 'No'</SET><XMLTAG>IsInterState</XMLTAG></FIELD>
+                    <FIELD NAME='Fld15'><SET>if $IsRCMApplicable then 'Yes' else 'No'</SET><XMLTAG>IsRCMApplicable</XMLTAG></FIELD>
+                    <FIELD NAME='Fld16'><SET>$ExportType</SET><XMLTAG>ExportType</XMLTAG></FIELD>
+                    <FIELD NAME='Fld17'><SET>if $IsSEZParty then 'Yes' else 'No'</SET><XMLTAG>IsSEZParty</XMLTAG></FIELD>
+                    <FIELD NAME='Fld18'><SET>$GSTRegistrationType</SET><XMLTAG>GSTRegTypeDirect</XMLTAG></FIELD>
                     <FIELD NAME='FldBlank'><SET>''</SET></FIELD>
                     <COLLECTION NAME='MyCollection'>
                         <TYPE>Voucher</TYPE>
-                        <FETCH>GSTDetails,IRN</FETCH>
+                        <FETCH>GSTDetails,IRN,IsInterstate,IsRCMApplicable,ExportType,IsSEZParty,GSTRegistrationType</FETCH>
                         <FILTER>Fltr01,Fltr02,Fltr03</FILTER>
                     </COLLECTION>
                     <SYSTEM TYPE='Formulae' NAME='Fltr01'>NOT $IsCancelled</SYSTEM>

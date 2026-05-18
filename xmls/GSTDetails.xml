@@ -25,7 +25,7 @@
                         <SCROLLED>Vertical</SCROLLED>
                     </PART>
                     <LINE NAME='MyLine01'>
-                        <FIELDS>Fld01,Fld02,Fld03,Fld04,Fld05,Fld06,Fld07,Fld08,Fld09,Fld10,Fld11,Fld12,Fld13,Fld14,Fld15,Fld16,Fld17,Fld18,Fld19,Fld20,Fld21,Fld22</FIELDS>
+                        <FIELDS>Fld01,Fld02,Fld03,Fld04,Fld05,Fld06,Fld07,Fld08,Fld09,Fld10,Fld11,Fld12,Fld13,Fld14,Fld15,Fld16,Fld17,Fld18,Fld19,Fld20,Fld21,Fld22,Fld23,Fld24,Fld25</FIELDS>
                     </LINE>
                     <FIELD NAME='Fld01'><SET>$Guid</SET><XMLTAG>VoucherGuid</XMLTAG></FIELD>
                     <FIELD NAME='Fld02'><SET>$VoucherNumber</SET><XMLTAG>VoucherNumber</XMLTAG></FIELD>
@@ -49,6 +49,9 @@
                     <FIELD NAME='Fld20'><SET>if $IsNilRated then 'Yes' else 'No'</SET><XMLTAG>IsNilRated</XMLTAG></FIELD>
                     <FIELD NAME='Fld21'><SET>if $IsExempt then 'Yes' else 'No'</SET><XMLTAG>IsExempt</XMLTAG></FIELD>
                     <FIELD NAME='Fld22'><SET>$ITCEligibility</SET><XMLTAG>ITCEligibility</XMLTAG></FIELD>
+                    <FIELD NAME='Fld23'><SET>$$GSTTaxAmount:$VoucherTypeName:'Cess'</SET><XMLTAG>CessAmount</XMLTAG></FIELD>
+                    <FIELD NAME='Fld24'><SET>if $IsNonGST then 'Yes' else 'No'</SET><XMLTAG>IsNonGST</XMLTAG></FIELD>
+                    <FIELD NAME='Fld25'><SET>if $$IsEmpty:$GSTReturnDate then '' else $$PyrlYYYYMMDDFormat:$GSTReturnDate:'-'</SET><XMLTAG>GSTReturnDate</XMLTAG></FIELD>
                     <FIELD NAME='FldBlank'><SET>''</SET></FIELD>
                     <COLLECTION NAME='MyCollection'>
                         <TYPE>Voucher</TYPE>

@@ -62,7 +62,7 @@
                         
                     </PART>
                     <LINE NAME='MyLine01'>
-                        <FIELDS>Fld01,Fld02,Fld03,Fld04,Fld05,Fld06,Fld07,Fld08,Fld09,Fld10,Fld11,Fld12,Fld13,Fld14,Fld15</FIELDS>
+                        <FIELDS>Fld01,Fld02,Fld03,Fld04,Fld05,Fld06,Fld07,Fld08,Fld09,Fld10,Fld11,Fld12,Fld13,Fld14,Fld15,Fld16</FIELDS>
                         <XMLTAG>Voucher</XMLTAG>
                         <EXPLODE>MyPart02</EXPLODE>
                         <EXPLODE>MyPart04</EXPLODE>
@@ -127,6 +127,10 @@
                     <FIELD NAME='Fld15'>
                         <SET>if ($$IsOrderVch:$VoucherTypeName) then 1 else 0</SET>
                         <XMLTAG>isOrderVoucher</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld16'>
+                        <SET>if ($IsOptional) then 1 else 0</SET>
+                        <XMLTAG>isOptional</XMLTAG>
                     </FIELD>
                     <FIELD NAME='FldBlank'>
                         <SET>''</SET>
@@ -255,11 +259,10 @@
                         <TYPE>Vouchers</TYPE>
                         <Belongsto>Yes</Belongsto>
                         <FETCH>AlterId,Narration,PartyLedgerName,PlaceOfSupply,Allinventoryentries.List,Basicuserdescription.List,AllLedgerEntries.List,LedgerEntries.List,Billallocations.List</FETCH>
-                        <FILTER>Fltr01,Fltr02,DeltaFilter</FILTER>
+                        <FILTER>Fltr01,DeltaFilter</FILTER>
                         <KeepSource>().</KeepSource>
                     </COLLECTION>
                     <SYSTEM TYPE='Formulae' NAME='Fltr01'>NOT$IsCancelled</SYSTEM>
-                    <SYSTEM TYPE='Formulae' NAME='Fltr02'>NOT$IsOptional</SYSTEM>
                      <SYSTEM TYPE='Formulae' NAME='DeltaFilter'>$AlterId > $$ALTER_ID</SYSTEM>
                 </TDLMESSAGE>
             </TDL>

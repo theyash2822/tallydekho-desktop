@@ -28,7 +28,7 @@
                         <SCROLLED>Vertical</SCROLLED>
                     </PART>
                     <LINE NAME='MyLine01'>
-                        <FIELDS>Fld01,Fld02,Fld03</FIELDS>
+                        <FIELDS>Fld01,Fld02,Fld03,Fld04</FIELDS>
                     </LINE>
                     <FIELD NAME='Fld01'>
                         <SET>$Guid</SET>
@@ -42,16 +42,19 @@
                         <SET>$VoucherNumber</SET>
                         <XMLTAG>F02</XMLTAG>
                     </FIELD>
+                    <FIELD NAME='Fld04'>
+                        <SET>if ($IsOptional) then 1 else 0</SET>
+                        <XMLTAG>isOptional</XMLTAG>
+                    </FIELD>
                     <FIELD NAME='FldBlank'>
                         <SET>''</SET>
                     </FIELD>
                     <COLLECTION NAME='MyCollection'>
                         <TYPE>Voucher</TYPE>
                         <FETCH>AlterId</FETCH>
-                        <FILTER>Fltr01,Fltr02</FILTER>
+                        <FILTER>Fltr01</FILTER>
                     </COLLECTION>
                     <SYSTEM TYPE='Formulae' NAME='Fltr01'>NOT $IsCancelled</SYSTEM>
-                    <SYSTEM TYPE='Formulae' NAME='Fltr02'>NOT $IsOptional</SYSTEM>
                 </TDLMESSAGE>
             </TDL>
         </DESC>

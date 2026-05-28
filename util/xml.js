@@ -346,7 +346,11 @@ const postToTally = async (xmlBody) => {
       // Parse Tally XML response properly
       // Tally returns LINEERROR on failure, empty BODY or CREATED on success
       const hasLineError = data.includes('LINEERROR') || data.includes('<LINEERROR>');
-      const hasCancelled = data.includes('CANCELLED') && !data.includes('ISCANCELLED');
+      // hasCancelled: IMPORTRESULT contains <CANCELLED>N</CANCELLED> where N > 0.
+      // CANCELLED=0 is normal in every successful IMPORTRESULT — must NOT treat as failure.
+      // Also skip if ISCANCELLED is present (voucher-level field, not import result).
+      const cancelledMatch = data.match(/<CANCELLED>(\d+)<\/CANCELLED>/i);
+      const hasCancelled = cancelledMatch ? parseInt(cancelledMatch[1]) > 0 : false;
       const hasImportResult = data.includes('IMPORTRESULT') || data.includes('CREATED') || data.includes('ALTERED');
 
       info('[tally:write] response', {

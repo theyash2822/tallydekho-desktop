@@ -31,7 +31,7 @@
                     </PART>
                     <LINE NAME='MyLine01'>
                         <FIELDS>
-                            Fld01,Fld02,Fld03,Fld04,Fld05,Fld06,Fld07,Fld08,Fld09,Fld10,Fld11,Fld12,Fld13,Fld14,Fld15,Fld16,Fld17,Fld18,Fld19,Fld20,Fld21,Fld22,Fld23,Fld24
+                            Fld01,Fld02,Fld03,Fld04,Fld05,Fld06,Fld07,Fld08,Fld09,Fld10,Fld11,Fld12,Fld13,Fld14,Fld15,Fld16,Fld17,Fld18,Fld19,Fld20,Fld21,Fld22,Fld23,Fld24,Fld25,Fld26
                         </FIELDS>
                     </LINE>
                     <FIELD NAME='Fld01'>
@@ -137,6 +137,15 @@
                     <FIELD NAME='Fld24'>
                         <SET>$Description</SET>
                         <XMLTAG>Description</XMLTAG>
+                    </FIELD>
+                    <!-- Gap 4: Batch & expiry tracking flags -->
+                    <FIELD NAME='Fld25'>
+                        <SET>if $IsBatchWise then 'Yes' else 'No'</SET>
+                        <XMLTAG>MAINTAININBATCHES</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld26'>
+                        <SET>if $IsExpDtMaint then 'Yes' else 'No'</SET>
+                        <XMLTAG>USEEXPIRYDATES</XMLTAG>
                     </FIELD>
                     <FIELD NAME='FldBlank'>
                         <SET>''</SET>

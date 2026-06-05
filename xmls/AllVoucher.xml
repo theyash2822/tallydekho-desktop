@@ -166,7 +166,7 @@
                         <XMLTAG>VoucherNumber</XMLTAG>
                     </FIELD>
                     <LINE NAME='MyLine03'>
-                        <FIELDS>Fld01B,Fld02B,Fld03B,Fld04B,Fld05B,Fld06B,Fld07B,Fld08B</FIELDS>
+                        <FIELDS>Fld01B,Fld02B,Fld03B,Fld04B,Fld05B,Fld06B,Fld07B,Fld08B,Fld09B,Fld10B</FIELDS>
                         <XMLTAG>Batchallocations</XMLTAG>
                     </LINE>
                     <FIELD NAME='Fld01B'>
@@ -194,12 +194,22 @@
                         <XMLTAG>Amount</XMLTAG>
                     </FIELD>
                     <FIELD NAME='Fld07B'>
-                        <SET>$ExpiryDate</SET>
+                        <SET>if $$IsEmpty:$ExpiryDate then '' else $$PyrlYYYYMMDDFormat:$ExpiryDate:'-'</SET>
                         <XMLTAG>ExpiryDate</XMLTAG>
                     </FIELD>
                     <FIELD NAME='Fld08B'>
-                        <SET>$ManufacturingDate</SET>
+                        <SET>if $$IsEmpty:$ManufacturingDate then '' else $$PyrlYYYYMMDDFormat:$ManufacturingDate:'-'</SET>
                         <XMLTAG>ManufacturingDate</XMLTAG>
+                    </FIELD>
+                    <!-- Gap 2: ActualQty for physical stock qty at batch level -->
+                    <FIELD NAME='Fld09B'>
+                        <SET>$ActualQty</SET>
+                        <XMLTAG>ActualQty</XMLTAG>
+                    </FIELD>
+                    <!-- Gap 3: ExpiryPeriod — text like "31-Dec-2026", fallback when ExpiryDate is empty -->
+                    <FIELD NAME='Fld10B'>
+                        <SET>$ExpiryPeriod</SET>
+                        <XMLTAG>ExpiryPeriod</XMLTAG>
                     </FIELD>
                     <LINE NAME='MyLine04'>
                         <FIELDS>Fld01L,Fld02L,Fld03L</FIELDS>

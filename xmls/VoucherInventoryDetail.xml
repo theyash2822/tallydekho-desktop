@@ -38,7 +38,7 @@
                         <EXPLODE>MyPart02</EXPLODE>
                     </LINE>
                     <LINE NAME='MyLine02'>
-                        <FIELDS>Fld01,Fld02,Fld03,Fld04,Fld05,Fld06,Fld07,Fld08,Fld09,Fld10,Fld11,Fld12,Fld13</FIELDS>
+                        <FIELDS>Fld01,Fld02,Fld03,Fld04,Fld05,Fld06,Fld07,Fld08,Fld09,Fld10,Fld11,Fld12,Fld13,Fld14,Fld15</FIELDS>
                     </LINE>
                     <FIELD NAME='Fld01'><SET>$Guid</SET><XMLTAG>VoucherGuid</XMLTAG></FIELD>
                     <FIELD NAME='Fld02'><SET>$StockItemName</SET><XMLTAG>StockItemName</XMLTAG></FIELD>
@@ -53,6 +53,8 @@
                     <FIELD NAME='Fld11'><SET>$BaseUnits</SET><XMLTAG>Unit</XMLTAG></FIELD>
                     <FIELD NAME='Fld12'><SET>$$String:$HSNDetail[1].HSNCode</SET><XMLTAG>HSN</XMLTAG></FIELD>
                     <FIELD NAME='Fld13'><SET>if $$IsEmpty:$AlterId then '0' else $$String:$AlterId</SET><XMLTAG>AlterId</XMLTAG></FIELD>
+                    <FIELD NAME='Fld14'><SET>$ExpiryDate</SET><XMLTAG>ExpiryDate</XMLTAG></FIELD>
+                    <FIELD NAME='Fld15'><SET>$ManufacturingDate</SET><XMLTAG>ManufacturingDate</XMLTAG></FIELD>
                     <FIELD NAME='FldBlank'><SET>''</SET></FIELD>
                     <COLLECTION NAME='MyCollection'>
                         <TYPE>Voucher</TYPE>

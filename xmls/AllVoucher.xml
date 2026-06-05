@@ -166,7 +166,7 @@
                         <XMLTAG>VoucherNumber</XMLTAG>
                     </FIELD>
                     <LINE NAME='MyLine03'>
-                        <FIELDS>Fld01B,Fld02B,Fld03B,Fld04B,Fld05B,Fld06B</FIELDS>
+                        <FIELDS>Fld01B,Fld02B,Fld03B,Fld04B,Fld05B,Fld06B,Fld07B,Fld08B</FIELDS>
                         <XMLTAG>Batchallocations</XMLTAG>
                     </LINE>
                     <FIELD NAME='Fld01B'>
@@ -192,6 +192,14 @@
                     <FIELD NAME='Fld06B'>
                         <SET>$Amount</SET>
                         <XMLTAG>Amount</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld07B'>
+                        <SET>$ExpiryDate</SET>
+                        <XMLTAG>ExpiryDate</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld08B'>
+                        <SET>$ManufacturingDate</SET>
+                        <XMLTAG>ManufacturingDate</XMLTAG>
                     </FIELD>
                     <LINE NAME='MyLine04'>
                         <FIELDS>Fld01L,Fld02L,Fld03L</FIELDS>

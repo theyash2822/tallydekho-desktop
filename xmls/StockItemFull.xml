@@ -37,6 +37,7 @@
                         <Compute>SGSTRate:$GSTDetails[Last].StatewiseDetails[1, @@IsAnyState].RateDetails[1, ($$IsSysNameEqual:SGST:$GSTRateDutyHead)or($GSTRateDutyHead contains 'SGST/UTGST')].GSTRate</Compute>
                         <Compute>CESSRate:$GSTDetails[Last].StatewiseDetails[1, @@IsAnyState].RateDetails[1, @@IsAddlCess].GSTRate</Compute>
                         <Compute>REORDERLEVEL:$$StringFindAndReplace:($$Number:$$String:$ReorderLevel):'(-)':'-'</Compute>
+                        <Compute>MINIMUMORDERQTY:$$StringFindAndReplace:($$Number:$$String:$MinimumOrderQty):'(-)':'-'</Compute>
                         <Filter>Fltr01</Filter>
                     </COLLECTION>
                     <SYSTEM TYPE='Formulae' NAME='Fltr01'>$AlterId > $$ALTER_ID</SYSTEM>

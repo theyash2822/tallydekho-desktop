@@ -17,6 +17,8 @@
                         <TYPE>StockGroup</TYPE>
                         <NATIVEMETHOD>Name,Guid,ALTERID,Parent</NATIVEMETHOD>
                         <Compute>ParentGuid:$Guid:StockGroup:$Parent</Compute>
+                        <Compute>REORDERLEVEL:$$StringFindAndReplace:($$Number:$$String:$ReorderLevel):'(-)':'-'</Compute>
+                        <Compute>MINIMUMORDERQTY:$$StringFindAndReplace:($$Number:$$String:$MinimumOrderQty):'(-)':'-'</Compute>
                         <Filter>Fltr01</Filter>
                     </COLLECTION>
                     <SYSTEM TYPE='Formulae' NAME='Fltr01'>$AlterId > 0</SYSTEM>

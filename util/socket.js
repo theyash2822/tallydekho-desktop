@@ -139,6 +139,20 @@ module.exports = (window, socket) => {
       info("[tally:write] result", { jobId, status: result.status });
       if (typeof callback === "function") callback(response);
       socket.emit("tally:write:result", response);
+
+      // After a successful write, trigger a lightweight sync so Tally's auto-assigned
+      // voucher number gets pulled back and stored in app_vouchers via ingestProcessor.
+      // Delay 2s to let Tally finish numbering the entry before the sync pull.
+      if (result.status === true) {
+        setTimeout(() => {
+          if (store.get('isSyncing')) return; // ongoing sync will pick it up
+          const selectedCompanies = store.get('selectedCompanies') || [];
+          if (selectedCompanies.length > 0) {
+            info('[tally:write] triggering post-write sync to capture voucher number');
+            window.webContents.send('window:listener', { key: 'triggerPostWriteSync', value: Date.now() });
+          }
+        }, 2000);
+      }
     } catch (err) {
       error(err?.message, "tally:write");
       const response = { status: false, message: err?.message, jobId };

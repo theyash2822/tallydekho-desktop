@@ -1,0 +1,16 @@
+node_modules/
+dist_electron/
+renderer/dist/
+renderer/node_modules/
+build/
+.env
+.env.*
+*.log
+*.db
+
+# Sibling repos — never read from inside desktop
+../../td-backend/
+../../td-web-portal/
+../../tallydekho-mobile-V4/
+../../td-website/
+../../tallydekho-brain/

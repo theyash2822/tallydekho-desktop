@@ -145,6 +145,17 @@ export default function App() {
     }
   }, [selectedCompanies]);
 
+  // Post-write sync: fires after a successful tally:write to pull Tally's auto-assigned
+  // voucher number back into app_vouchers via ingestProcessor reconciliation.
+  // Uses refs so the effect always sees current isSyncing / selectedCompanies without stale closures.
+  useEffect(() => {
+    if (!window.tally || !state.triggerPostWriteSync) return;
+    if (isSyncingRef.current) return; // ongoing sync will pick it up
+    const companies = selectedCompaniesRef.current;
+    if (!companies?.length) return;
+    window.tally.startSync({ companies, isHardSync: false });
+  }, [state.triggerPostWriteSync]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     isSyncingRef.current = isSyncing;
   }, [isSyncing]);

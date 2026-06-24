@@ -122,6 +122,81 @@ module.exports = (window, socket) => {
     } catch (e) { error(e?.message, "pairing_confirmed"); }
   });
 
+  // sync:request - backend asks desktop to pull latest data (e.g. after a voucher write)
+  // to reconcile the Tally-assigned voucher number back into app_vouchers.
+  socket.on("sync:request", (payload) => {
+    info('[sync:request] received from backend', payload?.reason || '');
+    if (store.get('isSyncing')) {
+      info('[sync:request] already syncing — current sync will pick it up');
+      return;
+    }
+    const selectedCompanies = store.get('selectedCompanies') || [];
+    if (!selectedCompanies.length) {
+      info('[sync:request] no selected companies — skipping');
+      return;
+    }
+    // Trigger a lightweight normal sync via IPC to the renderer
+    setTimeout(() => {
+      if (window && window.webContents) {
+        window.webContents.send('window:listener', { key: 'triggerPostWriteSync', value: Date.now() });
+        info('[sync:request] triggered post-write sync');
+      }
+    }, 1500);
+  });
+
+  // pending_tally_writeback_available — Phase C targeted posting
+  // Backend sends this when desktop reconnects and there are offline entries.
+  // Desktop pulls, claims, posts, and reports result via API (no full sync).
+  socket.on("pending_tally_writeback_available", async (payload) => {
+    const { companyGuid, count } = payload || {};
+    if (!companyGuid || !count) return;
+    info(`[writeback] ${count} pending entries for company ${companyGuid}`);
+    const { axiosInstance } = require('./helper');
+    const deviceId = getDeviceProfile().deviceId;
+    try {
+      // Pull pending (max 10 per wake-up)
+      const pendingRes = await axiosInstance.post('/tally/desktop/writeback/pending', { companyGuid, limit: 10 });
+      const items = pendingRes.data?.data?.items || [];
+      if (!items.length) return;
+      info(`[writeback] processing ${items.length} entries`);
+
+      for (const item of items) {
+        if (!item.outboxId) continue;
+        try {
+          // Claim
+          const claimRes = await axiosInstance.post(`/tally/desktop/writeback/${item.outboxId}/claim`, {});
+          const claimData = claimRes.data?.data;
+          if (!claimData?.claimed || !claimData?.xml) {
+            info(`[writeback] entry ${item.outboxId} claim failed or no XML`);
+            continue;
+          }
+          // Post to Tally
+          const tallyResult = await postToTally(claimData.xml);
+          // Report result
+          await axiosInstance.post(`/tally/desktop/writeback/${item.outboxId}/result`, {
+            success:           tallyResult?.status === true,
+            tallyVoucherNumber: tallyResult?.voucherNumber || null,
+            tallyVoucherGuid:  tallyResult?.tallyId || null,
+            tallyAlterId:      tallyResult?.alterId || null,
+            errorCode:         tallyResult?.status === true ? null : 'TALLY_ERROR',
+            errorMessage:      tallyResult?.status === true ? null : (tallyResult?.message || 'Tally posting failed'),
+          });
+          info(`[writeback] entry ${item.outboxId} → ${tallyResult?.status === true ? 'success' : 'failed'}`);
+        } catch (entryErr) {
+          error(entryErr?.message, `writeback.entry.${item.outboxId}`);
+          // Release lock by reporting failure
+          try {
+            await axiosInstance.post(`/tally/desktop/writeback/${item.outboxId}/result`, {
+              success: false, errorCode: 'DESKTOP_ERROR', errorMessage: entryErr?.message,
+            });
+          } catch {}
+        }
+      }
+    } catch (err) {
+      error(err?.message, 'pending_tally_writeback_available');
+    }
+  });
+
   socket.on("tally:write", async (payload, callback) => {
     const { jobId, xml } = payload || {};
     info("[tally:write] received job", { jobId, xmlLength: xml?.length });

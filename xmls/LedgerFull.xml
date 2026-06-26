@@ -16,6 +16,7 @@
                     <COLLECTION ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No" NAME="Ledgers">
                         <TYPE>Ledger</TYPE>
                         <BELONGSTO>Yes</BELONGSTO>
+                        <FETCH>GSTRegistrationDetails,BankAccountDetails</FETCH>
                         <NATIVEMETHOD>Name,Guid,ALTERID,PARENT,OPENINGBALANCE,MAILINGNAME,LedgerMobile,Gsttypeofsupply</NATIVEMETHOD>
                         <Compute>Parentguid:$Guid:Group:$Parent</Compute>
                         <Compute>MAILINGADDRESS:if $$IsEmpty:$Address then '' else $$FullList:Address:$Addres</Compute>
@@ -27,8 +28,8 @@
                         <Compute>EMAIL:$EMAIL</Compute>
                         <Compute>PHONE:$LedgerPHONE</Compute>
                         <Compute>ITPAN:$IncomeTaxNumber</Compute>
-                        <Compute>GSTIN:$Partygstin</Compute>
-                        <Compute>GSTREGISTRATIONTYPE:$GSTREGISTRATIONTYPE</Compute>
+                        <Compute>GSTIN:$PartyGSTIN</Compute>
+                        <Compute>GSTREGISTRATIONTYPE:$GSTRegistrationType</Compute>
                         <Compute>GSTDUTYHEAD:$Gstdutyhead</Compute>
                         <Compute>TAXRATE:if $$IsEmpty:$RateOfTaxCalculation then '0' else $$String:$RateOfTaxCalculation</Compute>
                         <Compute>ALIAS:$OnlyAlias</Compute>

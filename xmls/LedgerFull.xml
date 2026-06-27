@@ -17,15 +17,15 @@
                         <TYPE>Ledger</TYPE>
                         <BELONGSTO>Yes</BELONGSTO>
                         <FETCH>GSTRegistrationDetails,BankAccountDetails</FETCH>
-                        <NATIVEMETHOD>Name,Guid,ALTERID,PARENT,OPENINGBALANCE,MAILINGNAME,LedgerMobile,Gsttypeofsupply</NATIVEMETHOD>
+                        <NATIVEMETHOD>Name,Guid,ALTERID,PARENT,OPENINGBALANCE,MAILINGNAME,LedgerMobile,Gsttypeofsupply,LedStateName,Email,Pincode,IncomeTaxNumber</NATIVEMETHOD>
                         <Compute>Parentguid:$Guid:Group:$Parent</Compute>
-                        <Compute>MAILINGADDRESS:if $$IsEmpty:$Address then '' else $$FullList:Address:$Addres</Compute>
+                        <Compute>MAILINGADDRESS:if $$IsEmpty:$Address then '' else $$FullList:Address:$Address</Compute>
                         <Compute>MAILINGSTATE:$LedStateName</Compute>
                         <Compute>MAILINGCOUNTRY:$CountryName</Compute>
                         <Compute>OPENINGBALANCE:if $$IsDebit:$OpeningBalance then -$$NumValue:$OpeningBalance else $$NumValue:$OpeningBalance</Compute>
                         <Compute>CLOSINGBALANCE:if $$IsDebit:$ClosingBalance then -$$NumValue:$ClosingBalance else $$NumValue:$ClosingBalance</Compute>
                         <Compute>Pincode:$Pincode</Compute>
-                        <Compute>EMAIL:$EMAIL</Compute>
+                        <Compute>EMAIL:$Email</Compute>
                         <Compute>PHONE:$LedgerPHONE</Compute>
                         <Compute>ITPAN:$IncomeTaxNumber</Compute>
                         <Compute>GSTIN:$PartyGSTIN</Compute>

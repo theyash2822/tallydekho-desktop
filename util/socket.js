@@ -124,10 +124,20 @@ module.exports = (window, socket) => {
 
   // sync:request - backend asks desktop to pull latest data (e.g. after a voucher write)
   // to reconcile the Tally-assigned voucher number back into app_vouchers.
+  //
+  // Phase 2a (2026-06-30): payload may include tallyIds (MASTERIDs from the
+  // freshly-written voucher(s)). These are logged for visibility today and
+  // will drive a targeted SingleVoucher.xml fetch once the renderer-side
+  // handler is in place (Phase 2b, follow-up). For now we still run the full
+  // post-write sync — but we bypass the 1.5s delay (was wasted wait time) and
+  // log the tallyIds so we can verify the upstream signal is wired correctly.
   socket.on("sync:request", (payload) => {
-    info('[sync:request] received from backend', payload?.reason || '');
+    const reason = payload?.reason || '';
+    const tallyIds = Array.isArray(payload?.tallyIds) ? payload.tallyIds.filter(Boolean) : [];
+    info('[sync:request] received from backend', reason, 'tallyIds:', tallyIds.join(',') || '(none)');
+
     if (store.get('isSyncing')) {
-      info('[sync:request] already syncing — current sync will pick it up');
+      info('[sync:request] already syncing — current sync will pick up new voucher(s)');
       return;
     }
     const selectedCompanies = store.get('selectedCompanies') || [];
@@ -135,13 +145,13 @@ module.exports = (window, socket) => {
       info('[sync:request] no selected companies — skipping');
       return;
     }
-    // Trigger a lightweight normal sync via IPC to the renderer
-    setTimeout(() => {
-      if (window && window.webContents) {
-        window.webContents.send('window:listener', { key: 'triggerPostWriteSync', value: Date.now() });
-        info('[sync:request] triggered post-write sync');
-      }
-    }, 1500);
+    // Trigger a post-write sync via IPC to the renderer. No 1.5s delay anymore
+    // (was a stale workaround for race conditions that have since been fixed
+    // with the isSyncing gate above).
+    if (window && window.webContents) {
+      window.webContents.send('window:listener', { key: 'triggerPostWriteSync', value: Date.now() });
+      info('[sync:request] triggered post-write sync');
+    }
   });
 
   // pending_tally_writeback_available — Phase C targeted posting

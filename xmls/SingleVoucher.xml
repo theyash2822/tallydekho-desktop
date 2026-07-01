@@ -1,0 +1,181 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!--
+  SingleVoucher.xml — fetch ONE voucher by MASTERID.
+
+  Used after a successful tally:write to pull back JUST the newly created voucher
+  (typically a Sales+Receipt pair) so the backend reconciler can mark it
+  synced/posted without running a full daybook sync.
+
+  Replaces the full AllVoucher.xml sync in the post-write trigger path.
+  Falls back to full sync if $$MASTER_ID is not provided.
+
+  Returns the same field shape as Voucher.xml (Guid, Reference, Narration,
+  PartyLedgerName, BILLALLOCATIONS, etc.) plus ALLLEDGERENTRIES so the
+  ingestProcessor can extract bill_ref_name / bill_type from BILLALLOCATIONS.LIST.
+-->
+<ENVELOPE>
+    <HEADER>
+        <VERSION>1</VERSION>
+        <TALLYREQUEST>Export</TALLYREQUEST>
+        <TYPE>Data</TYPE>
+        <ID>MyReportSingleVoucher</ID>
+    </HEADER>
+
+    <BODY>
+        <DESC>
+            <STATICVARIABLES>
+                <SVEXPORTFORMAT>XML (Data Interchange)</SVEXPORTFORMAT>
+                <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
+                <SVFROMDATE TYPE="Date">$$FROM_DATE</SVFROMDATE>
+                <SVTODATE TYPE="Date">$$TO_DATE</SVTODATE>
+            </STATICVARIABLES>
+            <TDL>
+                <TDLMESSAGE>
+                    <REPORT NAME='MyReportSingleVoucher'>
+                        <FORMS>MyForm</FORMS>
+                    </REPORT>
+                    <FORM NAME='MyForm'>
+                        <PARTS>MyPart01</PARTS>
+                    </FORM>
+                    <PART NAME='MyPart01'>
+                        <LINES>MyLine01</LINES>
+                        <REPEAT>MyLine01 : MyCollection</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
+                    </PART>
+                    <LINE NAME='MyLine01'>
+                        <FIELDS>
+                            Fld01,Fld02,Fld03,Fld04,Fld05,Fld06,Fld07,Fld08,Fld09,Fld10,Fld11,Fld12,Fld13,Fld14,Fld15
+                        </FIELDS>
+                        <EXPLODE>AllLedgerEntriesExplosion</EXPLODE>
+                    </LINE>
+                    <FIELD NAME='Fld01'>
+                        <SET>$Guid</SET>
+                        <XMLTAG>Guid</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld02'>
+                        <SET>if $$IsEmpty:$AlterId then '0' else $$String:$AlterId</SET>
+                        <XMLTAG>AlterId</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld03'>
+                        <SET>if $$IsEmpty:$Date then $$StrByCharCode:241 else $$PyrlYYYYMMDDFormat:$Date:'-'</SET>
+                        <XMLTAG>Date</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld04'>
+                        <SET>$VoucherTypeName</SET>
+                        <XMLTAG>VoucherTypeName</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld05'>
+                        <SET>$Guid:VoucherType:$VoucherTypeName</SET>
+                        <XMLTAG>VoucherTypeGuid</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld06'>
+                        <SET>$VoucherNumber</SET>
+                        <XMLTAG>VoucherNumber</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld07'>
+                        <SET>$Reference</SET>
+                        <XMLTAG>Reference</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld08'>
+                        <SET>$Narration</SET>
+                        <XMLTAG>Narration</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld09'>
+                        <SET>$PartyLedgerName</SET>
+                        <XMLTAG>PartyLedgerName</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld10'>
+                        <SET>if $$IsEmpty:$PartyLedgerName then '' else $Guid:Ledger:$PartyLedgerName</SET>
+                        <XMLTAG>PartyLedgerGuid</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld11'>
+                        <SET>$Amount:AllLedgerEntries:$LedgerName</SET>
+                        <XMLTAG>Amount</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld12'>
+                        <SET>if $IsInvoice then 1 else 0</SET>
+                        <XMLTAG>IsInvoice</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld13'>
+                        <SET>if $IsOptional then 1 else 0</SET>
+                        <XMLTAG>IsOptional</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld14'>
+                        <SET>if $IsCancelled then 1 else 0</SET>
+                        <XMLTAG>IsCancelled</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld15'>
+                        <SET>$$String:$MasterId</SET>
+                        <XMLTAG>MasterId</XMLTAG>
+                    </FIELD>
+
+                    <!-- Explode the AllLedgerEntries collection so BILLALLOCATIONS.LIST
+                         (which we set in tally-write.js with BILLTYPE=New Ref / Agst Ref)
+                         comes back attached to each ledger entry. The backend's
+                         extractFirstBillAllocation() reads this. -->
+                    <PART NAME='AllLedgerEntriesExplosion'>
+                        <LINES>AllLedgerEntriesLine</LINES>
+                        <REPEAT>AllLedgerEntriesLine : AllLedgerEntries</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
+                    </PART>
+                    <LINE NAME='AllLedgerEntriesLine'>
+                        <FIELDS>LedgerName,LedgerAmount,IsDeemedPositive,IsPartyLedger,BillAllocationsExplosion</FIELDS>
+                        <XMLTAG>ALLLEDGERENTRIES</XMLTAG>
+                    </LINE>
+                    <FIELD NAME='LedgerName'>
+                        <SET>$LedgerName</SET>
+                        <XMLTAG>LEDGERNAME</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='LedgerAmount'>
+                        <SET>$$String:$Amount</SET>
+                        <XMLTAG>AMOUNT</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='IsDeemedPositive'>
+                        <SET>if $IsDeemedPositive then 'Yes' else 'No'</SET>
+                        <XMLTAG>ISDEEMEDPOSITIVE</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='IsPartyLedger'>
+                        <SET>if $IsPartyLedger then 'Yes' else 'No'</SET>
+                        <XMLTAG>ISPARTYLEDGER</XMLTAG>
+                    </FIELD>
+
+                    <!-- Bill allocations sub-collection for this ledger entry. -->
+                    <FIELD NAME='BillAllocationsExplosion'>
+                        <REPEAT>BillAllocationLine : BillAllocations</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
+                    </FIELD>
+                    <LINE NAME='BillAllocationLine'>
+                        <FIELDS>BillName,BillType,BillAmount</FIELDS>
+                        <XMLTAG>BILLALLOCATIONS</XMLTAG>
+                    </LINE>
+                    <FIELD NAME='BillName'>
+                        <SET>$Name</SET>
+                        <XMLTAG>NAME</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='BillType'>
+                        <SET>$BillType</SET>
+                        <XMLTAG>BILLTYPE</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='BillAmount'>
+                        <SET>$$String:$Amount</SET>
+                        <XMLTAG>AMOUNT</XMLTAG>
+                    </FIELD>
+
+                    <FIELD NAME='FldBlank'>
+                        <SET>''</SET>
+                    </FIELD>
+
+                    <!-- Filter by MASTERID. Tally's $MasterId is an integer that comes
+                         back as LASTVCHID in the post-write response (saved on
+                         backend in write_queue.tally_id). -->
+                    <COLLECTION NAME='MyCollection'>
+                        <TYPE>Voucher</TYPE>
+                        <FETCH>AlterId,Narration,PartyLedgerName,MasterId,Reference,IsCancelled,IsOptional,AllLedgerEntries,BillAllocations</FETCH>
+                        <FILTER>FltrMasterId</FILTER>
+                    </COLLECTION>
+                    <SYSTEM TYPE='Formulae' NAME='FltrMasterId'>$$String:$MasterId = "$$MASTER_ID"</SYSTEM>
+                </TDLMESSAGE>
+            </TDL>
+        </DESC>
+    </BODY>
+</ENVELOPE>

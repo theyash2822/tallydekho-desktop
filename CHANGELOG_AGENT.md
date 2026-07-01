@@ -4,6 +4,28 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-07-01 — Phase 2a: sync:request tallyIds payload + SingleVoucher.xml stub
+
+**Task:** Foundation for targeted single-voucher post-write sync (avoids full daybook re-pull just to backfill one Tally voucher number).
+
+**Files Changed:**
+- `util/socket.js` — log `tallyIds` from `sync:request` payload (backend now sends MASTERIDs of freshly-written Sales+Receipt pair). Removed stale 1.5s `setTimeout` (dead workaround; `isSyncing` gate handles the race).
+- `xmls/SingleVoucher.xml` — new TDL to fetch ONE voucher by MASTERID. Same field shape as Voucher.xml + ALLLEDGERENTRIES so backend can extract `bill_ref_name` / `bill_type` from `BILLALLOCATIONS.LIST`.
+
+**Behavior Changed:**
+- Post-write sync fires immediately (no 1.5s delay). Existing full-sync path unchanged.
+- `tallyIds` payload is informational-only today — renderer-side handler wire-up is the follow-up (Phase 2b).
+
+**Tested:**
+- Node syntax check passed. No runtime path exercised yet (renderer handler not wired).
+
+**Risks:**
+- 🟡 If backend sends `tallyIds`, desktop still runs full sync (no regression). Once Phase 2b wires renderer handler, need to verify SingleVoucher.xml returns the same field shape.
+
+**Commits:** `3c43f00`
+
+---
+
 ## 2026-06-02 | Blueprint System Created
 Files changed: AGENTS.md, BLUEPRINT.md, DESKTOP_MAP.md, TALLY_XML_MAP.md, IPC_MAP.md, SYNC_PIPELINE.md, API_USAGE.md, TASK_ROUTING.md, KNOWN_ISSUES.md, CHANGELOG_AGENT.md, .agentignore
 Behavior changed: None (docs only)

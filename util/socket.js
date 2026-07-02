@@ -2,7 +2,7 @@ const getDeviceProfile = require("./deviceProfile");
 const { checkForUpdates } = require("./helper");
 const { info, error } = require("./logger");
 const store = require("./store.js");
-const { postToTally } = require("./xml");
+const { postToTally, fetchAndIngestSingleVouchers } = require("./xml");
 
 module.exports = (window, socket) => {
   // const socketId = socket.id;
@@ -125,15 +125,16 @@ module.exports = (window, socket) => {
   // sync:request - backend asks desktop to pull latest data (e.g. after a voucher write)
   // to reconcile the Tally-assigned voucher number back into app_vouchers.
   //
-  // Phase 2a (2026-06-30): payload may include tallyIds (MASTERIDs from the
-  // freshly-written voucher(s)). These are logged for visibility today and
-  // will drive a targeted SingleVoucher.xml fetch once the renderer-side
-  // handler is in place (Phase 2b, follow-up). For now we still run the full
-  // post-write sync — but we bypass the 1.5s delay (was wasted wait time) and
-  // log the tallyIds so we can verify the upstream signal is wired correctly.
-  socket.on("sync:request", (payload) => {
-    const reason = payload?.reason || '';
-    const tallyIds = Array.isArray(payload?.tallyIds) ? payload.tallyIds.filter(Boolean) : [];
+  // Phase 2a (2026-06-30): payload may include tallyIds (MASTERIDs) + companyName + companyGuid.
+  // Phase 2b (2026-07-02): if tallyIds present AND companyGuid matches a currently
+  // paired/selected company, fetch ONLY those vouchers via SingleVoucher.xml
+  // (fast, targeted). Silent fallback to full sync on any failure or missing
+  // preconditions. Auto/Manual/Hard sync paths are NOT affected.
+  socket.on("sync:request", async (payload) => {
+    const reason      = payload?.reason || '';
+    const tallyIds    = Array.isArray(payload?.tallyIds) ? payload.tallyIds.filter(Boolean) : [];
+    const companyName = payload?.companyName || null;
+    const companyGuid = payload?.companyGuid || null;
     info('[sync:request] received from backend', reason, 'tallyIds:', tallyIds.join(',') || '(none)');
 
     if (store.get('isSyncing')) {
@@ -145,12 +146,38 @@ module.exports = (window, socket) => {
       info('[sync:request] no selected companies — skipping');
       return;
     }
-    // Trigger a post-write sync via IPC to the renderer. No 1.5s delay anymore
-    // (was a stale workaround for race conditions that have since been fixed
-    // with the isSyncing gate above).
+
+    // Phase 2b: try targeted single-voucher fetch first if we have everything we need
+    // AND the requested company is one this desktop is paired to (safety net for
+    // multi-tenant / stale-socket edge cases).
+    const companyMatches = companyGuid && selectedCompanies.some(c => c?.guid === companyGuid);
+    const canTargetedFetch = tallyIds.length && companyName && companyGuid && companyMatches;
+
+    if (canTargetedFetch) {
+      try {
+        const result = await fetchAndIngestSingleVouchers({ companyName, companyGuid, tallyIds });
+        if (result?.status) {
+          info(`[sync:request] targeted SingleVoucher.xml fetch OK — ${result.count} row(s) ingested`);
+          return; // done — no full sync needed
+        }
+        info('[sync:request] targeted fetch failed, falling back to full sync:', result?.message);
+      } catch (err) {
+        error(err?.message, 'sync:request.targeted');
+        info('[sync:request] targeted fetch threw, falling back to full sync');
+      }
+    } else if (tallyIds.length) {
+      // We got tallyIds but couldn't use the targeted path — log why for debugging.
+      info('[sync:request] targeted path skipped:',
+        !companyName ? 'no companyName' :
+        !companyGuid ? 'no companyGuid' :
+        !companyMatches ? `companyGuid ${companyGuid} not in selectedCompanies` :
+        'unknown');
+    }
+
+    // Fallback — trigger a full post-write sync via IPC to the renderer.
     if (window && window.webContents) {
       window.webContents.send('window:listener', { key: 'triggerPostWriteSync', value: Date.now() });
-      info('[sync:request] triggered post-write sync');
+      info('[sync:request] triggered full post-write sync (fallback path)');
     }
   });
 

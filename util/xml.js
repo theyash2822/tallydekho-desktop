@@ -1213,12 +1213,125 @@ const stopTallySyncHandler = (code) => {
   stopTallySyncCode = code;
 };
 
+// ---------------------------------------------------------------------------
+// Phase 2b (2026-07-02): Targeted post-write sync
+// ---------------------------------------------------------------------------
+// After a successful tally:write, backend emits sync:request with tallyIds
+// (MASTERIDs of the freshly-created vouchers). Instead of running a full
+// AllVoucher.xml sync, fetch ONLY those vouchers via SingleVoucher.xml and
+// push them through the existing /ingest/init → /chunk → /complete pipeline,
+// which already triggers the Receipt reconciler + bill-alloc parser in
+// ingestProcessor.processVouchers.
+//
+// Falls back to full sync silently on any failure (see socket.js sync:request
+// handler). Auto / Manual / Hard sync paths are untouched — this only
+// replaces the post-write sync trigger when tallyIds are provided.
+const fetchAndIngestSingleVouchers = async ({ companyName, companyGuid, tallyIds }) => {
+  if (!companyName || !companyGuid || !Array.isArray(tallyIds) || !tallyIds.length) {
+    return { status: false, message: 'Missing companyName / companyGuid / tallyIds' };
+  }
+
+  const uniqIds = Array.from(new Set(tallyIds.map(String).filter(Boolean)));
+  if (!uniqIds.length) return { status: false, message: 'No valid tallyIds' };
+
+  info(`[single-voucher] fetching ${uniqIds.length} voucher(s) from Tally for ${companyName}`);
+
+  // Wide date window — SingleVoucher.xml filters by MASTERID, but Tally still
+  // requires SVFROMDATE/SVTODATE. Cover a big range so we never miss the
+  // record (backdated entries, future-dated etc.).
+  const FROM_DATE = '20200101';
+  const TO_DATE   = '20500101';
+
+  const collected = [];
+  for (const masterId of uniqIds) {
+    const response = await getData('SingleVoucher.xml', [
+      { key: '$$COMPANY_NAME', value: companyName },
+      { key: '$$FROM_DATE',    value: FROM_DATE },
+      { key: '$$TO_DATE',      value: TO_DATE },
+      { key: '$$MASTER_ID',    value: masterId },
+    ]);
+    if (!response.status) {
+      info(`[single-voucher] Tally fetch failed for MASTERID=${masterId}: ${response.message}`);
+      // One failure aborts the batch → caller will fall back to full sync,
+      // which is safe (full sync will pick up all pending vouchers).
+      return { status: false, message: `Tally fetch failed for MASTERID=${masterId}: ${response.message}` };
+    }
+    const json = parser.parse(response.data);
+    const rows = normalizeEnvelope(json.ENVELOPE) || [];
+    if (!rows.length) {
+      info(`[single-voucher] Tally returned 0 rows for MASTERID=${masterId} — may not exist yet, will fall back to full sync`);
+      return { status: false, message: `MASTERID=${masterId} not found in Tally response` };
+    }
+    for (const item of rows) {
+      collected.push({
+        ...item,
+        COMPANY_NAME:    companyName,
+        XML:             'SingleVoucher.xml',
+        FROM_DATE:       FROM_DATE,
+        TO_DATE:         TO_DATE,
+        COMPANY_GUID:    companyGuid,
+        YEAR_ID:         null,
+        _RECORD_TYPE:    'voucher',
+        _FINANCIAL_YEAR: null, // ingestProcessor derives from voucher.date
+      });
+    }
+  }
+
+  if (!collected.length) {
+    return { status: false, message: 'No voucher records collected' };
+  }
+
+  info(`[single-voucher] collected ${collected.length} row(s), pushing to backend ingest`);
+
+  // Minimal ingest handshake — same endpoints as the full sync pipeline.
+  let uploadId;
+  try {
+    const initRes = (await axiosInstance.post('/ingest/init', {}, { timeout: 15_000 })).data;
+    uploadId = initRes?.data?.uploadId;
+    if (!uploadId) return { status: false, message: 'ingest/init returned no uploadId' };
+  } catch (err) {
+    return { status: false, message: `ingest/init failed: ${err?.message}` };
+  }
+
+  // Ship as a single JSON array (payload is tiny — 1-2 vouchers typically).
+  try {
+    await axiosInstance.post('/ingest/chunk', collected, {
+      headers: {
+        'Content-Type':  'application/json',
+        'upload-id':     uploadId,
+        'stream-name':   'vouchers',
+        'chunk-index':   '0',
+        'company-guid':  companyGuid,
+      },
+      timeout: 30_000,
+    });
+  } catch (err) {
+    return { status: false, message: `ingest/chunk failed: ${err?.response?.data?.message || err?.message}` };
+  }
+
+  try {
+    await axiosInstance.post('/ingest/complete', {
+      uploadId,
+      companyGuid,
+      voucherCount: collected.length,
+      recordCount:  collected.length,
+      isHardSync:   false,
+    }, { timeout: 15_000 });
+  } catch (err) {
+    return { status: false, message: `ingest/complete failed: ${err?.response?.data?.message || err?.message}` };
+  }
+
+  info(`[single-voucher] ingest complete — ${collected.length} voucher row(s) processed`);
+  return { status: true, count: collected.length };
+};
+
 module.exports = {
   getCompanyDestinations,
   getCompanies,
   syncTallyData,
   stopTallySyncHandler,
   postToTally,
+  fetchAndIngestSingleVouchers,
 };
 
 // console.dir(json, { depth: null, colors: true, maxArrayLength: null });

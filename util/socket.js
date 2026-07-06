@@ -2,7 +2,7 @@ const getDeviceProfile = require("./deviceProfile");
 const { checkForUpdates } = require("./helper");
 const { info, error } = require("./logger");
 const store = require("./store.js");
-const { postToTally, fetchFromTally, fetchAndIngestSingleVouchers } = require("./xml");
+const { postToTally, fetchAndIngestSingleVouchers } = require("./xml");
 
 module.exports = (window, socket) => {
   // const socketId = socket.id;
@@ -270,30 +270,6 @@ module.exports = (window, socket) => {
       const response = { status: false, message: err?.message, jobId };
       if (typeof callback === "function") callback(response);
       socket.emit("tally:write:result", response);
-    }
-  });
-
-  // ── tally:read — forward Export Collection XML to Tally, return raw response
-  // Sibling to tally:write. Used by backend's /api/tally/masters/* routes for
-  // fetching country + state master lists from Tally. Zero side effects on
-  // existing write pipeline — separate event, separate function.
-  socket.on("tally:read", async (payload, callback) => {
-    const { jobId, xml } = payload || {};
-    info("[tally:read] received job", { jobId, xmlLength: xml?.length });
-    if (!xml) {
-      const result = { status: false, message: "No XML provided", jobId };
-      if (typeof callback === "function") callback(result);
-      return;
-    }
-    try {
-      const result = await fetchFromTally(xml);
-      const response = { ...result, jobId };
-      info("[tally:read] result", { jobId, status: result.status, length: result.data?.length });
-      if (typeof callback === "function") callback(response);
-    } catch (err) {
-      error(err?.message, "tally:read");
-      const response = { status: false, message: err?.message, jobId };
-      if (typeof callback === "function") callback(response);
     }
   });
 

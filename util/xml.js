@@ -1325,12 +1325,46 @@ const fetchAndIngestSingleVouchers = async ({ companyName, companyGuid, tallyIds
   return { status: true, count: collected.length };
 };
 
+// ── fetchFromTally — send a READ XML (Export Collection) to Tally, return raw body
+// Sibling to postToTally. Purpose: master fetch (countries, states, etc.).
+// Does NOT parse write-specific fields (LINEERROR / CREATED / ALTERED / LASTVCHID).
+// Returns the raw XML string so the backend can parse the collection as needed.
+// Used by socket.on('tally:read') handler.
+const fetchFromTally = async (xmlBody) => {
+  const TALLY_URL = tallyUrl();
+  try {
+    const response = await axios.post(TALLY_URL, xmlBody, {
+      headers: {
+        'Content-Type': 'text/xml',
+        Accept: 'application/xml, text/xml, */*',
+      },
+      timeout: 10000,
+    });
+    const data = typeof response.data === 'string' ? response.data : String(response.data || '');
+    info('[tally:read] response', {
+      url: TALLY_URL,
+      length: data.length,
+      preview: data.slice(0, 160),
+    });
+    return { status: true, data };
+  } catch (err) {
+    error(err?.message, 'fetchFromTally');
+    return {
+      status: false,
+      message: err?.code === 'ECONNREFUSED'
+        ? `Cannot connect to Tally at ${tallyUrl()}. Is Tally Prime running?`
+        : err?.message || 'Tally not reachable',
+    };
+  }
+};
+
 module.exports = {
   getCompanyDestinations,
   getCompanies,
   syncTallyData,
   stopTallySyncHandler,
   postToTally,
+  fetchFromTally,
   fetchAndIngestSingleVouchers,
 };
 

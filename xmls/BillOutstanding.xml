@@ -1,9 +1,10 @@
 <?xml version='1.0' encoding='utf-8'?>
 <!--
-  Bill-wise outstanding — V5 (2026-07-09)
-  V4 failed with "Error in TDL. 'Collection:TDKBOPendingBillsV4' Could not find description!"
-  Tally's TDL parser cannot resolve collection names containing digits or unusual suffixes.
-  V5 uses plain alpha-only names throughout.
+  Bill-wise outstanding — V6 (2026-07-09)
+  V4 crashed Tally with "Collection:TDKBOPendingBillsV4 Could not find description!"
+  V5 stripped digits from names. V6 additionally removes <CLEARED>No</CLEARED>
+  (a DSL-only property that XML-embedded TDL rejects) — the filter is folded
+  into the FILTER formula instead.
 
   Response shape (BILLROW rows, matches processBillOutstanding parser):
     LedgerName, BillName, BillDate, DueDate, Amount, PendingAmount, DrCr, LedgerParent
@@ -79,12 +80,11 @@
 
           <COLLECTION NAME="TDKPendingBills">
             <TYPE>Bill</TYPE>
-            <CLEARED>No</CLEARED>
-            <FETCH>Name,Parent,BillDate,BillCreditPeriod,OpeningBalance,ClosingBalance</FETCH>
-            <FILTER>TDKNonBlankBill</FILTER>
+            <FETCH>Name,Parent,BillDate,BillCreditPeriod,OpeningBalance,ClosingBalance,IsCleared</FETCH>
+            <FILTER>TDKBillIsPending</FILTER>
           </COLLECTION>
 
-          <SYSTEM TYPE="Formulae" NAME="TDKNonBlankBill">NOT $$IsEmpty:$Name</SYSTEM>
+          <SYSTEM TYPE="Formulae" NAME="TDKBillIsPending">(NOT $$IsEmpty:$Name) AND (NOT $$IsZero:$ClosingBalance)</SYSTEM>
 
         </TDLMESSAGE>
       </TDL>

@@ -1,22 +1,26 @@
 <?xml version='1.0' encoding='utf-8'?>
 <!--
-  Bill-wise outstanding — REWRITE (2026-07-09)
-  Purpose: for every Sundry Debtor + Sundry Creditor ledger, emit one row per pending bill.
-  Response shape targets our processBillOutstanding parser (ingestProcessor.js:1931):
-      LedgerName, BillName, BillDate, DueDate, Amount, PendingAmount, BillType, AlterId, VoucherGuid
+  Bill-wise outstanding — V4 REWRITE (2026-07-09)
+  Translated from user's working DSL TDL (TDKBillOutstanding_v3.tdl) which produced
+  the verified response XML with 2,167 pending bills across all Sundry Debtor +
+  Creditor ledgers, including all 5 Aai Gee Krishi bills.
 
-  Design:
-    - Outer walker: Ledger collection filtered to Sundry Debtor/Creditor parents.
-    - Inner walker: BillAllocations sub-collection (Tally-native), one row per bill.
-    - Uses WALK to descend into BillAllocations so $..Name resolves to the ledger's name.
-    - Filter for non-zero pending bills only (skip fully-cleared or synthetic rows).
+  Key pattern (from working V3 DSL):
+    - Collection Type: Bill  (Tally-native, no ledger-walk needed)
+    - Filter: Cleared="No"   (Tally-managed pending flag; skip cleared bills)
+    - Bill object exposes: $Name, $Parent, $BillDate, $BillCreditPeriod,
+      $OpeningBalance, $ClosingBalance directly (no context climbing).
+
+  Response fields (matches processBillOutstanding parser exactly):
+      LedgerName, BillName, BillDate, DueDate, Amount, PendingAmount,
+      BillType (empty for now), AlterId (empty), VoucherGuid (empty), DrCr, LedgerParent
 -->
 <ENVELOPE>
   <HEADER>
     <VERSION>1</VERSION>
     <TALLYREQUEST>Export</TALLYREQUEST>
     <TYPE>Data</TYPE>
-    <ID>TDKBillOutstandingReport</ID>
+    <ID>TDKBillOutstandingReportV4</ID>
   </HEADER>
   <BODY>
     <DESC>
@@ -26,77 +30,69 @@
       </STATICVARIABLES>
       <TDL>
         <TDLMESSAGE>
-          <REPORT NAME="TDKBillOutstandingReport">
-            <FORMS>TDKBillOutstandingForm</FORMS>
+
+          <REPORT NAME="TDKBillOutstandingReportV4">
+            <FORMS>TDKBOFormV4</FORMS>
           </REPORT>
 
-          <FORM NAME="TDKBillOutstandingForm">
-            <PARTS>TDKBillOutstandingPart</PARTS>
+          <FORM NAME="TDKBOFormV4">
+            <PARTS>TDKBOBodyPartV4</PARTS>
             <XMLTAG>ENVELOPE</XMLTAG>
           </FORM>
 
-          <PART NAME="TDKBillOutstandingPart">
-            <LINES>TDKBillOutstandingLine</LINES>
-            <REPEAT>TDKBillOutstandingLine : TDKBillOutstandingCollection</REPEAT>
+          <PART NAME="TDKBOBodyPartV4">
+            <LINES>TDKBODetailLineV4</LINES>
+            <REPEAT>TDKBODetailLineV4 : TDKBOPendingBillsV4</REPEAT>
             <SCROLLED>Vertical</SCROLLED>
           </PART>
 
-          <LINE NAME="TDKBillOutstandingLine">
-            <FIELDS>FldLedger,FldBill,FldBillDate,FldDueDate,FldAmount,FldPending,FldBillType,FldAlter,FldGuid</FIELDS>
+          <LINE NAME="TDKBODetailLineV4">
+            <FIELDS>TDKBOLedgerName,TDKBOBillName,TDKBOBillDate,TDKBODueDate,TDKBOAmount,TDKBOPendingAmount,TDKBODrCr,TDKBOLedgerParent</FIELDS>
             <XMLTAG>BILLROW</XMLTAG>
           </LINE>
 
-          <FIELD NAME="FldLedger">
-            <SET>$..Name</SET>
+          <FIELD NAME="TDKBOLedgerName">
+            <SET>$Parent</SET>
             <XMLTAG>LedgerName</XMLTAG>
           </FIELD>
-          <FIELD NAME="FldBill">
+          <FIELD NAME="TDKBOBillName">
             <SET>$Name</SET>
             <XMLTAG>BillName</XMLTAG>
           </FIELD>
-          <FIELD NAME="FldBillDate">
-            <SET>if $$IsEmpty:$BillDate then "" else $$PyrlYYYYMMDDFormat:$BillDate:"-"</SET>
+          <FIELD NAME="TDKBOBillDate">
+            <SET>$BillDate</SET>
             <XMLTAG>BillDate</XMLTAG>
           </FIELD>
-          <FIELD NAME="FldDueDate">
-            <SET>if $$IsEmpty:$BillCreditPeriod then "" else $$PyrlYYYYMMDDFormat:($BillDate + $BillCreditPeriod):"-"</SET>
+          <FIELD NAME="TDKBODueDate">
+            <SET>if $$IsEmpty:$BillCreditPeriod then "" else ($BillDate + $BillCreditPeriod)</SET>
             <XMLTAG>DueDate</XMLTAG>
           </FIELD>
-          <FIELD NAME="FldAmount">
-            <SET>if $$IsDebit:$Amount then -$$NumValue:$Amount else $$NumValue:$Amount</SET>
+          <FIELD NAME="TDKBOAmount">
+            <SET>$OpeningBalance</SET>
             <XMLTAG>Amount</XMLTAG>
           </FIELD>
-          <FIELD NAME="FldPending">
-            <SET>if $$IsDebit:$ClosingBalance then -$$NumValue:$ClosingBalance else $$NumValue:$ClosingBalance</SET>
+          <FIELD NAME="TDKBOPendingAmount">
+            <SET>$ClosingBalance</SET>
             <XMLTAG>PendingAmount</XMLTAG>
           </FIELD>
-          <FIELD NAME="FldBillType">
-            <SET>$BillType</SET>
-            <XMLTAG>BillType</XMLTAG>
+          <FIELD NAME="TDKBODrCr">
+            <SET>if $$IsDr:$ClosingBalance then "Dr" else "Cr"</SET>
+            <XMLTAG>DrCr</XMLTAG>
           </FIELD>
-          <FIELD NAME="FldAlter">
-            <SET>$$String:$AlterId</SET>
-            <XMLTAG>AlterId</XMLTAG>
-          </FIELD>
-          <FIELD NAME="FldGuid">
-            <SET>$..Guid</SET>
-            <XMLTAG>VoucherGuid</XMLTAG>
+          <FIELD NAME="TDKBOLedgerParent">
+            <SET>$Parent</SET>
+            <XMLTAG>LedgerParent</XMLTAG>
           </FIELD>
 
-          <COLLECTION NAME="TDKBillOutstandingCollection">
-            <SOURCE COLLECTION>TDKLedgerBillsCollection</SOURCE COLLECTION>
-            <WALK>BillAllocations</WALK>
-            <FILTER>FltrNonZero</FILTER>
+          <COLLECTION NAME="TDKBOPendingBillsV4">
+            <TYPE>Bill</TYPE>
+            <CLEARED>No</CLEARED>
+            <FETCH>Name,Parent,BillDate,BillCreditPeriod,OpeningBalance,ClosingBalance</FETCH>
+            <FILTER>TDKBONonBlankBillV4</FILTER>
           </COLLECTION>
 
-          <COLLECTION NAME="TDKLedgerBillsCollection">
-            <TYPE>Ledger</TYPE>
-            <FETCH>Name,Parent,BillAllocations,AlterId,Guid</FETCH>
-            <FILTER>FltrDebtorCreditor</FILTER>
-          </COLLECTION>
+          <SYSTEM TYPE="Formulae" NAME="TDKBONonBlankBillV4">NOT $$IsEmpty:$Name</SYSTEM>
 
-          <SYSTEM TYPE="Formulae" NAME="FltrDebtorCreditor">$$IsSundryDebtorOrCreditor:$Parent</SYSTEM>
-          <SYSTEM TYPE="Formulae" NAME="FltrNonZero">NOT $$IsZero:$ClosingBalance</SYSTEM>
         </TDLMESSAGE>
       </TDL>
     </DESC>

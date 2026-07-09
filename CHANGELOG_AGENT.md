@@ -95,3 +95,18 @@ _Add new entries at top._
 
 ### Commit
 `b4fbcd2` — pushed to `tallydekho-desktop`
+
+## 2026-07-09 — BillOutstanding.xml TDL rewrite
+
+**Problem:** `bill_outstanding` table was silently empty across all installs — `syncHelper` never replaces `$$FROM_DATE`/`$$TO_DATE` placeholders (only `$$COMPANY_NAME` + `$$ALTER_ID`), so Tally received literal `$$FROM_DATE` and rejected the request. Compounded by structurally broken TDL (used `BillAllocations` as an undefined collection name inside REPEAT).
+
+**Fix (`xmls/BillOutstanding.xml`):**
+- Removed unused `SVFROMDATE`/`SVTODATE` static variables (bill-wise outstanding is as-of-today, no date range needed).
+- Rewritten TDL structure pattern-matched to user-supplied working Aai Gee `Ledger Outstandings` XML export:
+  - Outer collection `TDKLedgerBillsCollection` walks Ledger with `<FETCH>BillAllocations</FETCH>` and filter `IsSundryDebtorOrCreditor`.
+  - Middle collection `TDKBillOutstandingCollection` uses `<SOURCE COLLECTION>` + `<WALK>BillAllocations` to descend into per-bill rows.
+  - Filter `NOT IsZero:$ClosingBalance` skips cleared bills.
+- Fields emitted (match `processBillOutstanding` ingestion parser exactly):
+  `LedgerName` (`$..Name` — ledger context via double-dot), `BillName` (`$Name`), `BillDate`, `DueDate` (derived from `$BillDate + $BillCreditPeriod`), `Amount`, `PendingAmount` (`$ClosingBalance` sign-flipped for Dr), `BillType`, `AlterId`, `VoucherGuid` (`$..Guid` — ledger's guid).
+
+**User action:** `git pull` on desktop repo, restart desktop app, run Hard Sync. `bill_outstanding` table should populate.

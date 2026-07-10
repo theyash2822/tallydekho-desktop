@@ -1,12 +1,17 @@
 <?xml version='1.0' encoding='utf-8'?>
 <!--
-  Bill-wise outstanding — V6 (2026-07-09)
-  V4 crashed Tally with "Collection:TDKBOPendingBillsV4 Could not find description!"
-  V5 stripped digits from names. V6 additionally removes <CLEARED>No</CLEARED>
-  (a DSL-only property that XML-embedded TDL rejects) — the filter is folded
-  into the FILTER formula instead.
+  Bill-wise outstanding — V7 (2026-07-10)
+  V4 crashed Tally ("Collection:TDKBOPendingBillsV4 Could not find description!").
+  V5 stripped digits from names. V6 removed <CLEARED>No</CLEARED>.
+  V7 forensic fixes (aligned with 20+ working production XMLs):
+    1. SVEXPORTFORMAT: $$SysName:XMLFormat  →  XML (Data Interchange)
+       ($$SysName:XMLFormat is a DSL-only alias; embedded TDL can't resolve it.)
+    2. Removed <XMLTAG>ENVELOPE</XMLTAG> from FORM and <XMLTAG>BILLROW</XMLTAG>
+       from LINE. No working XML uses FORM/LINE XMLTAGs — Tally's default
+       response shape (repeated field tags directly under <ENVELOPE>) is what
+       the desktop parser (normalizeEnvelope) already expects.
 
-  Response shape (BILLROW rows, matches processBillOutstanding parser):
+  Response shape (parallel field arrays under <ENVELOPE>, matches processBillOutstanding parser):
     LedgerName, BillName, BillDate, DueDate, Amount, PendingAmount, DrCr, LedgerParent
 -->
 <ENVELOPE>
@@ -19,7 +24,7 @@
   <BODY>
     <DESC>
       <STATICVARIABLES>
-        <SVEXPORTFORMAT>$$SysName:XMLFormat</SVEXPORTFORMAT>
+        <SVEXPORTFORMAT>XML (Data Interchange)</SVEXPORTFORMAT>
         <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
       </STATICVARIABLES>
       <TDL>
@@ -31,7 +36,6 @@
 
           <FORM NAME="TDKPendingBillsForm">
             <PARTS>TDKPendingBillsPart</PARTS>
-            <XMLTAG>ENVELOPE</XMLTAG>
           </FORM>
 
           <PART NAME="TDKPendingBillsPart">
@@ -42,7 +46,6 @@
 
           <LINE NAME="TDKPendingBillsLine">
             <FIELDS>TDKLedgerName,TDKBillName,TDKBillDate,TDKDueDate,TDKAmount,TDKPendingAmount,TDKDrCr,TDKLedgerParent</FIELDS>
-            <XMLTAG>BILLROW</XMLTAG>
           </LINE>
 
           <FIELD NAME="TDKLedgerName">

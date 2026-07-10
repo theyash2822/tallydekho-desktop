@@ -1,49 +1,54 @@
 <?xml version='1.0' encoding='utf-8'?>
-<!--
-  Bill-wise outstanding — V9 (2026-07-10)
-
-  V4→V8 all embedded the TDL definition inline in the HTTP request. That
-  doesn't work for <TYPE>Bill</TYPE> collections — Tally silently rejects
-  or returns empty. V4 crashed loudly ("Could not find description"),
-  V5→V8 returned empty responses on every sync.
-
-  V9 = the proven 2-piece architecture from user's collaborator package
-  (produced 2167 BILLROW rows on this exact Tally on 2026-07-09):
-
-  Piece 1: TDKBillOutstanding.tdl — a full DSL TDL file that Tally
-           loads to register the TDKBillOutstandingWorking report.
-           Registered on demand via registerTdl() in util/xml.js
-           (POST TDL to Tally over HTTP; happens once per sync).
-
-  Piece 2 (this file): a minimal request envelope referencing the
-           already-registered report by ID. NO inline TDL. Tally runs
-           the pre-registered report and streams BILLROW rows.
-
-  Response shape: <ENVELOPE><BILLROW>...</BILLROW>...</ENVELOPE>
-  Encoding: UTF-16 LE with BOM (handled in getData via decodeTallyResponse).
-  Fields per row: LedgerName, BillName, BillDate, DueDate, Amount,
-                  PendingAmount, DrCr, LedgerParent
-
-  Filtering (Dr-only, non-zero pending, per-ledger) happens in backend
-  processBillOutstanding + /api/party/outstanding-bills — NOT in TDL.
-
-  SVFROMDATE / SVTODATE scoped to current FY, substituted by desktop.
--->
+<!-- Bill-wise outstanding: party, bill ref, due date, pending amount -->
 <ENVELOPE>
-  <HEADER>
-    <VERSION>1</VERSION>
-    <TALLYREQUEST>Export</TALLYREQUEST>
-    <TYPE>Data</TYPE>
-    <ID>TDKBillOutstandingWorking</ID>
-  </HEADER>
-  <BODY>
-    <DESC>
-      <STATICVARIABLES>
-        <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
-        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        <SVFROMDATE TYPE="Date">$$FROM_DATE</SVFROMDATE>
-        <SVTODATE TYPE="Date">$$TO_DATE</SVTODATE>
-      </STATICVARIABLES>
-    </DESC>
-  </BODY>
+    <HEADER>
+        <VERSION>1</VERSION>
+        <TALLYREQUEST>Export</TALLYREQUEST>
+        <TYPE>Data</TYPE>
+        <ID>MyReportLedgerTable</ID>
+    </HEADER>
+    <BODY>
+        <DESC>
+            <STATICVARIABLES>
+                <SVEXPORTFORMAT>XML (Data Interchange)</SVEXPORTFORMAT>
+                <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
+                <SVFROMDATE TYPE="Date">$$FROM_DATE</SVFROMDATE>
+                <SVTODATE TYPE="Date">$$TO_DATE</SVTODATE>
+            </STATICVARIABLES>
+            <TDL>
+                <TDLMESSAGE>
+                    <REPORT NAME='MyReportLedgerTable'><FORMS>MyForm</FORMS></REPORT>
+                    <FORM NAME='MyForm'><PARTS>MyPart01</PARTS></FORM>
+                    <PART NAME='MyPart01'>
+                        <LINES>MyLine01</LINES>
+                        <REPEAT>MyLine01 : MyCollection</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
+                    </PART>
+                    <PART NAME='MyPart02'>
+                        <LINES>MyLine02</LINES>
+                        <REPEAT>MyLine02 : BillAllocations</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
+                    </PART>
+                    <LINE NAME='MyLine01'><FIELDS>FldBlank</FIELDS><EXPLODE>MyPart02</EXPLODE></LINE>
+                    <LINE NAME='MyLine02'><FIELDS>Fld01,Fld02,Fld03,Fld04,Fld05,Fld06,Fld07,Fld08,Fld09</FIELDS></LINE>
+                    <FIELD NAME='Fld01'><SET>$Guid</SET><XMLTAG>VoucherGuid</XMLTAG></FIELD>
+                    <FIELD NAME='Fld02'><SET>$..Name</SET><XMLTAG>LedgerName</XMLTAG></FIELD>
+                    <FIELD NAME='Fld03'><SET>$Name</SET><XMLTAG>BillName</XMLTAG></FIELD>
+                    <FIELD NAME='Fld04'><SET>if $$IsEmpty:$BillDate then $$StrByCharCode:241 else $$PyrlYYYYMMDDFormat:$BillDate:'-'</SET><XMLTAG>BillDate</XMLTAG></FIELD>
+                    <FIELD NAME='Fld05'><SET>if $$IsEmpty:$DueDate then $$StrByCharCode:241 else $$PyrlYYYYMMDDFormat:$DueDate:'-'</SET><XMLTAG>DueDate</XMLTAG></FIELD>
+                    <FIELD NAME='Fld06'><SET>if $$IsDebit:$Amount then -$$NumValue:$Amount else $$NumValue:$Amount</SET><XMLTAG>Amount</XMLTAG></FIELD>
+                    <FIELD NAME='Fld07'><SET>if $$IsDebit:$ClosingBalance then -$$NumValue:$ClosingBalance else $$NumValue:$ClosingBalance</SET><XMLTAG>PendingAmount</XMLTAG></FIELD>
+                    <FIELD NAME='Fld08'><SET>$BillType</SET><XMLTAG>BillType</XMLTAG></FIELD>
+                    <FIELD NAME='Fld09'><SET>if $$IsEmpty:$AlterId then '0' else $$String:$AlterId</SET><XMLTAG>AlterId</XMLTAG></FIELD>
+                    <FIELD NAME='FldBlank'><SET>''</SET></FIELD>
+                    <COLLECTION NAME='MyCollection'>
+                        <TYPE>Ledger</TYPE>
+                        <FETCH>BillAllocations</FETCH>
+                        <FILTER>Fltr01</FILTER>
+                    </COLLECTION>
+                    <SYSTEM TYPE='Formulae' NAME='Fltr01'>$$IsSundryDebtorOrCreditor:$Parent</SYSTEM>
+                </TDLMESSAGE>
+            </TDL>
+        </DESC>
+    </BODY>
 </ENVELOPE>

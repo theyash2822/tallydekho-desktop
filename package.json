@@ -121,7 +121,6 @@
         "form-data": "^4.0.4",
         "fs-extra": "^11.3.2",
         "got": "^14.4.9",
-        "iconv-lite": "^0.7.3",
         "node-machine-id": "^1.1.12",
         "socket.io-client": "^4.8.1"
     }

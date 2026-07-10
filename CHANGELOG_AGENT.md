@@ -4,39 +4,6 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
-## 2026-07-10 — BillOutstanding V9: 2-piece TDL architecture (auto-register + working export)
-**Commit:** `89d5e41`
-**Files:** `xmls/TDKBillOutstanding.tdl` (NEW), `xmls/BillOutstanding.xml`, `util/xml.js`, `package.json`, `package-lock.json`
-**Behavior:** V4→V8 all failed because inline-TDL data-requests don't work for `<TYPE>Bill</TYPE>` collections (Tally silently returns empty). V8 device-verified failing this session. V9 pivots to the proven 2-piece architecture from user's collaborator package (produced 2167 BILLROW rows on this Tally 2026-07-09):
-1. **NEW `xmls/TDKBillOutstanding.tdl`** — full DSL TDL file defining `TDKBillOutstandingWorking` report + collection.
-2. **NEW `registerTdl()` in `util/xml.js`** — uploads the .tdl body to Tally over HTTP with `TALLYREQUEST=Import`. Called once at sync start, idempotent, in-memory (re-registered every sync, cheap).
-3. **Rewrote `xmls/BillOutstanding.xml`** as a 15-line data-request envelope referencing the pre-registered report by ID. No inline TDL. `SVEXPORTFORMAT=$$SysName:XML` (matches working package). `SVFROMDATE`/`SVTODATE` from current FY window.
-4. **NEW `decodeTallyResponse()` in `util/xml.js`** — Tally emits UTF-16 LE with BOM for this custom report. Old `getData()` treated everything as UTF-8 string → mojibake → 0 records silently. New impl requests `arraybuffer`, sniffs BOM, decodes UTF-16 LE / BE / UTF-8 accordingly.
-5. **Moved `BillOutstanding.xml`** out of date-less `masterXmls` loop into a per-company `syncHelperWithDate` call using the LATEST FY window (needs `SVFROMDATE`/`SVTODATE`).
-6. **Added `iconv-lite@^0.7.3`** dep for UTF-16 decoding.
-**Tested:** `node --check util/xml.js` clean. Backend restarted with matching companion commit (`ece0692` in tallydekho-backend-services). Awaiting Windows device test: `git pull` on desktop → restart → hard sync → Mac backend `SELECT COUNT(*) FROM bill_outstanding` must be non-zero.
-**Risks:** (1) Tally's import envelope format may vary by Tally Prime version — if `registerTdl` fails, log will show LINEERROR and next fetch returns empty. Manual fallback: user adds .tdl path via `F1 > TDL Management` (one-time, persistent). (2) Company name substitution in request envelope must match Tally's exact active company name; existing `$$COMPANY_NAME` replacer pattern handles this.
-
----
-
-## 2026-07-10 — BillOutstanding TDL V8: pivot from REPORT to COLLECTION export path
-**Commit:** `0731473`
-**Files:** `xmls/BillOutstanding.xml`
-**Behavior:** V7 device-verified failing — `bill_outstanding` DB still 0 rows, zero `processBillOutstanding` log lines in backend, BillOutstanding.xml records never reached `/ingest/*`. Root cause deeper than V7 assumed: **V4→V7 all used REPORT-based export** (`<HEADER><TYPE>Data</TYPE>` + `REPORT/FORM/PART/LINE/FIELD` scaffolding). Every working master XML (`LedgerFull`, `GroupMaster`, `UnitFull`, `VoucherTypeFull`, `StockGroupFull`) uses **COLLECTION-based export** (`<HEADER><TYPE>Collection</TYPE>` + a single `<COLLECTION>` block with `<Compute>` fields). V8 rewrites BillOutstanding.xml in that COLLECTION-based pattern: `TYPE=Collection`, `ID=TDKPendingBills`, one `<COLLECTION NAME="TDKPendingBills">` with `<TYPE>Bill</TYPE>`, `<FETCH>` list, native `<FILTER>TDKBillIsPending</FILTER>`, and eight `<Compute>` output fields matching the V3 DSL response shape exactly. `<SYSTEM TYPE="Formulae">` filter formula unchanged from V6/V7. No FORM / PART / LINE / FIELD blocks. Backend + parser (`normalizeEnvelope`, `processBillOutstanding`) unchanged.
-**Tested:** `xmllint --noout` clean. Awaiting Windows device verification: `git pull` on desktop → restart app → hard sync → `SELECT COUNT(*) FROM bill_outstanding;` should be non-zero (V3 reference produced 2167 rows).
-**Risks:** If V8 also returns empty, Tally is likely rejecting `<TYPE>Bill</TYPE>` collection without extra DSL scaffolding (System:Variable, Menu items). Fallback plan C: iterate `<TYPE>Ledger</TYPE>` and drill into `$BillAllocations` sub-collection (pattern used by GSTDetails.xml with `$$GSTTaxableValue`).
-
----
-
-## 2026-07-10 — BillOutstanding TDL V7: forensic fix for empty `bill_outstanding` table
-**Commit:** `d23aa8d`
-**Files:** `xmls/BillOutstanding.xml`
-**Behavior:** V4→V6 iterations all left `bill_outstanding` table empty across every install (Tally rejected the report). Forensic diff of V6 against 20+ working production XMLs (GSTDetails, FullLedger, Master, VoucherType, etc.) surfaced two root causes: (1) `<SVEXPORTFORMAT>$$SysName:XMLFormat</SVEXPORTFORMAT>` is a DSL-only alias that embedded TDL can't resolve — replaced with literal `XML (Data Interchange)` (the pattern every working XML uses); (2) `<XMLTAG>ENVELOPE</XMLTAG>` on FORM and `<XMLTAG>BILLROW</XMLTAG>` on LINE — no working XML uses FORM/LINE XMLTAGs. Removed both. Tally's default response shape (parallel field arrays under `<ENVELOPE>`) is exactly what `normalizeEnvelope` in `util/tallyHelper.js` already parses. Collection block (Type: Bill, FETCH list, FILTER: TDKBillIsPending) and SYSTEM Formulae unchanged from V6.
-**Tested:** `xmllint --noout` clean. Awaiting Windows device verification: `git pull` on desktop → restart app → sync → `SELECT COUNT(*) FROM bill_outstanding;` should be non-zero.
-**Risks:** If Tally still rejects V7, fallback plan B: iterate `Type: Ledger` and drill into `$BillAllocations` sub-collection (the pattern GSTDetails uses for `$$GSTTaxableValue`).
-
----
-
 ## 2026-07-02 — Phase 2b: Targeted SingleVoucher.xml fetch for post-write sync
 **Commit:** `d3d4a45`
 **Files:** `util/xml.js`, `util/socket.js`
@@ -128,18 +95,3 @@ _Add new entries at top._
 
 ### Commit
 `b4fbcd2` — pushed to `tallydekho-desktop`
-
-## 2026-07-09 — BillOutstanding.xml TDL rewrite
-
-**Problem:** `bill_outstanding` table was silently empty across all installs — `syncHelper` never replaces `$$FROM_DATE`/`$$TO_DATE` placeholders (only `$$COMPANY_NAME` + `$$ALTER_ID`), so Tally received literal `$$FROM_DATE` and rejected the request. Compounded by structurally broken TDL (used `BillAllocations` as an undefined collection name inside REPEAT).
-
-**Fix (`xmls/BillOutstanding.xml`):**
-- Removed unused `SVFROMDATE`/`SVTODATE` static variables (bill-wise outstanding is as-of-today, no date range needed).
-- Rewritten TDL structure pattern-matched to user-supplied working Aai Gee `Ledger Outstandings` XML export:
-  - Outer collection `TDKLedgerBillsCollection` walks Ledger with `<FETCH>BillAllocations</FETCH>` and filter `IsSundryDebtorOrCreditor`.
-  - Middle collection `TDKBillOutstandingCollection` uses `<SOURCE COLLECTION>` + `<WALK>BillAllocations` to descend into per-bill rows.
-  - Filter `NOT IsZero:$ClosingBalance` skips cleared bills.
-- Fields emitted (match `processBillOutstanding` ingestion parser exactly):
-  `LedgerName` (`$..Name` — ledger context via double-dot), `BillName` (`$Name`), `BillDate`, `DueDate` (derived from `$BillDate + $BillCreditPeriod`), `Amount`, `PendingAmount` (`$ClosingBalance` sign-flipped for Dr), `BillType`, `AlterId`, `VoucherGuid` (`$..Guid` — ledger's guid).
-
-**User action:** `git pull` on desktop repo, restart desktop app, run Hard Sync. `bill_outstanding` table should populate.

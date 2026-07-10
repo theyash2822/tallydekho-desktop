@@ -1,9 +1,7 @@
 const { XMLParser } = require("fast-xml-parser");
 const path = require("path");
-const { readFile, writeFile, mkdir } = require("fs").promises;
+const { readFile } = require("fs").promises;
 const axios = require("axios");
-const iconv = require("iconv-lite");
-const os = require("os");
 
 const { error, info } = require("./logger");
 const store = require("./store");
@@ -284,98 +282,6 @@ const tallyUrl = () => {
 let totalVouchers = 0;
 let stopTallySyncCode = null;
 
-// Decode Tally HTTP response bytes to a UTF-8 string.
-// Tally sometimes emits UTF-16 LE (with BOM FF FE) for report exports
-// (notably: TDKBillOutstandingWorking / bill outstanding). Without this,
-// fast-xml-parser sees mojibake and silently returns 0 records.
-function decodeTallyResponse(data) {
-  if (data == null) return "";
-  // Node axios may return string, Buffer, or ArrayBuffer
-  let buf;
-  if (Buffer.isBuffer(data)) buf = data;
-  else if (data instanceof ArrayBuffer) buf = Buffer.from(new Uint8Array(data));
-  else if (typeof data === "string") {
-    // Already string — but may still contain a leading BOM that trips the parser
-    return data.replace(/^\uFEFF/, "");
-  } else {
-    return String(data);
-  }
-
-  // UTF-16 LE with BOM (FF FE)
-  if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) {
-    return iconv.decode(buf, "utf16-le").replace(/^\uFEFF/, "");
-  }
-  // UTF-16 BE with BOM (FE FF)
-  if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) {
-    return iconv.decode(buf, "utf16-be").replace(/^\uFEFF/, "");
-  }
-  // Default: UTF-8, strip optional BOM
-  return buf.toString("utf8").replace(/^\uFEFF/, "");
-}
-
-// registerTdl - upload a local .tdl file into Tally's live session.
-//
-// Tally accepts a TDL definition uploaded over HTTP via an <ENVELOPE> with
-// <HEADER><TYPE>Import</TYPE><ID>All Masters</ID></HEADER> where the body
-// contains the raw TDL definitions. The definitions live in memory for the
-// current Tally session (re-registered every sync — cheap, idempotent).
-//
-// Used for reports that can't be defined inline in a data-request envelope
-// (notably: <TYPE>Bill</TYPE> collections). See xmls/TDKBillOutstanding.tdl.
-const registerTdl = async (tdlFileName) => {
-  const TALLY_URL = tallyUrl();
-  try {
-    const tdlPath = path.join(__dirname, "..", "xmls", tdlFileName);
-    const tdlBody = await readFile(tdlPath, "utf8");
-
-    // Wrap TDL body inside a Tally import envelope
-    const envelope = `<?xml version="1.0" encoding="utf-8"?>
-<ENVELOPE>
-  <HEADER>
-    <VERSION>1</VERSION>
-    <TALLYREQUEST>Import</TALLYREQUEST>
-    <TYPE>Data</TYPE>
-    <ID>TDLImport</ID>
-  </HEADER>
-  <BODY>
-    <DESC>
-      <STATICVARIABLES>
-        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-      </STATICVARIABLES>
-      <TDL>
-<![CDATA[
-${tdlBody}
-]]>
-      </TDL>
-    </DESC>
-  </BODY>
-</ENVELOPE>`;
-
-    const response = await axios.post(TALLY_URL, envelope, {
-      headers: {
-        "Content-Type": "text/xml",
-        Accept: "application/xml, text/xml, */*",
-      },
-      responseType: "arraybuffer",
-      timeout: 15000,
-    });
-
-    const body = decodeTallyResponse(response.data);
-    const hasError = /<LINEERROR>/i.test(body);
-    if (hasError) {
-      const match = body.match(/<LINEERROR>(.*?)<\/LINEERROR>/s);
-      const errMsg = match ? match[1].trim() : "TDL registration error";
-      error(`[tdl:register] ${tdlFileName} failed: ${errMsg}`, "registerTdl");
-      return { status: false, message: errMsg };
-    }
-    info(`[tdl:register] ${tdlFileName} registered ok (${body.length} bytes response)`);
-    return { status: true };
-  } catch (err) {
-    error(err?.message, `registerTdl:${tdlFileName}`);
-    return { status: false, message: err?.message };
-  }
-};
-
 const getData = async (filePath, replacer = []) => {
   const TALLY_URL = tallyUrl();
 
@@ -407,40 +313,9 @@ const getData = async (filePath, replacer = []) => {
           "Content-Type": "text/xml",
           Accept: "application/xml, text/xml, */*",
         },
-        // Get bytes back so we can detect + decode UTF-16 LE BOM responses
-        // that Tally emits for some custom TDL reports (e.g. BillOutstanding).
-        responseType: "arraybuffer",
         timeout: 15000 * 4,
       });
-      const decoded = decodeTallyResponse(response.data);
-
-      // V9 DIAGNOSTIC (2026-07-10): dump BillOutstanding responses to disk
-      // so we can inspect exactly what Tally returned. Small files, safe to
-      // overwrite each sync. Remove/gate once V9 is verified in production.
-      if (filePath === "BillOutstanding.xml") {
-        try {
-          const dir = path.join(os.tmpdir(), "tallydekho-diag");
-          await mkdir(dir, { recursive: true });
-          const rawBuf = Buffer.isBuffer(response.data)
-            ? response.data
-            : (response.data instanceof ArrayBuffer
-                ? Buffer.from(new Uint8Array(response.data))
-                : Buffer.from(String(response.data), "utf8"));
-          const rawPath = path.join(dir, "BillOutstanding.raw.xml");
-          const decPath = path.join(dir, "BillOutstanding.decoded.xml");
-          await writeFile(rawPath, rawBuf);
-          await writeFile(decPath, decoded, "utf8");
-          const firstBytesHex = rawBuf.slice(0, 8).toString("hex");
-          const preview = decoded.slice(0, 400).replace(/\s+/g, " ");
-          info(`[diag:BillOutstanding] bytes=${rawBuf.length} firstBytesHex=${firstBytesHex} decoded=${decoded.length} preview=${preview}`);
-          info(`[diag:BillOutstanding] raw saved to: ${rawPath}`);
-          info(`[diag:BillOutstanding] decoded saved to: ${decPath}`);
-        } catch (e) {
-          info(`[diag:BillOutstanding] dump failed: ${e.message}`);
-        }
-      }
-
-      return { status: true, data: decoded, message: "" };
+      return { status: true, data: response.data, message: "" };
     } catch (err) {
       error(err?.message, filePath);
       if (++attempt >= 3 || filePath == "TallyDestination.xml") {
@@ -929,14 +804,6 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
 
   sendMessage("Fetching Masters");
 
-  // Register any TDL files needed for custom reports that can't be inlined
-  // in a data-request envelope (e.g. <TYPE>Bill</TYPE> collections). This is
-  // idempotent and cheap; Tally re-registers on every sync.
-  await registerTdl("TDKBillOutstanding.tdl");
-
-  // BillOutstanding.xml is fetched separately below (needs FY dates from
-  // each company's current year — kept out of the alterId-driven masterXmls
-  // loop, which is date-less).
   const masterXmls = [
     "CostCategory.xml",
     "CostCentre.xml",
@@ -949,6 +816,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
     "StockCategory.xml",
     "StockOpeningBalance.xml",
     "CurrencyMaster.xml",     // Currency masters
+    "BillOutstanding.xml",    // Bill-wise outstanding (receivables/payables ageing)
   ];
 
   for (let i = 0; i < companies.length; i++) {
@@ -1075,26 +943,6 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
     const trimmedName = name.length > 20 ? `${name.slice(0, 20)}...` : name;
 
     sendMessage(`Fetching ${trimmedName} Data`);
-
-    // ── BillOutstanding.xml ── once per company, scoped to the LATEST FY.
-    // Uses the registered TDL report TDKBillOutstandingWorking (see registerTdl
-    // call at sync start). Requires SVFROMDATE/SVTODATE; picks the last year in
-    // the company.years list (current FY window).
-    if (years.length > 0) {
-      const currentYear = years[years.length - 1];
-      const currentYearId = yearIds[companyGuid][currentYear.finYear];
-      const billOutstandingResponse = await syncHelperWithDate({
-        xml: "BillOutstanding.xml",
-        companyName: name,
-        alterId: 0,
-        fromDate: currentYear.begin,
-        toDate:   currentYear.end,
-        companyGuid,
-        yearId: currentYearId,
-      });
-      promises.push(billOutstandingResponse);
-      info(`[sync] BillOutstanding.xml fetched for ${name}: ${billOutstandingResponse.length} rows`);
-    }
 
     // ── OpeningBalanceDiff.xml ── once per company (not per FY)
     // Fetches per-ledger signed opening balances at company's BOOKSFROM date.
@@ -1484,7 +1332,6 @@ module.exports = {
   stopTallySyncHandler,
   postToTally,
   fetchAndIngestSingleVouchers,
-  registerTdl,
 };
 
 // console.dir(json, { depth: null, colors: true, maxArrayLength: null });

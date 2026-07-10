@@ -4,6 +4,15 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-07-10 — BillOutstanding TDL V8: pivot from REPORT to COLLECTION export path
+**Commit:** `0731473`
+**Files:** `xmls/BillOutstanding.xml`
+**Behavior:** V7 device-verified failing — `bill_outstanding` DB still 0 rows, zero `processBillOutstanding` log lines in backend, BillOutstanding.xml records never reached `/ingest/*`. Root cause deeper than V7 assumed: **V4→V7 all used REPORT-based export** (`<HEADER><TYPE>Data</TYPE>` + `REPORT/FORM/PART/LINE/FIELD` scaffolding). Every working master XML (`LedgerFull`, `GroupMaster`, `UnitFull`, `VoucherTypeFull`, `StockGroupFull`) uses **COLLECTION-based export** (`<HEADER><TYPE>Collection</TYPE>` + a single `<COLLECTION>` block with `<Compute>` fields). V8 rewrites BillOutstanding.xml in that COLLECTION-based pattern: `TYPE=Collection`, `ID=TDKPendingBills`, one `<COLLECTION NAME="TDKPendingBills">` with `<TYPE>Bill</TYPE>`, `<FETCH>` list, native `<FILTER>TDKBillIsPending</FILTER>`, and eight `<Compute>` output fields matching the V3 DSL response shape exactly. `<SYSTEM TYPE="Formulae">` filter formula unchanged from V6/V7. No FORM / PART / LINE / FIELD blocks. Backend + parser (`normalizeEnvelope`, `processBillOutstanding`) unchanged.
+**Tested:** `xmllint --noout` clean. Awaiting Windows device verification: `git pull` on desktop → restart app → hard sync → `SELECT COUNT(*) FROM bill_outstanding;` should be non-zero (V3 reference produced 2167 rows).
+**Risks:** If V8 also returns empty, Tally is likely rejecting `<TYPE>Bill</TYPE>` collection without extra DSL scaffolding (System:Variable, Menu items). Fallback plan C: iterate `<TYPE>Ledger</TYPE>` and drill into `$BillAllocations` sub-collection (pattern used by GSTDetails.xml with `$$GSTTaxableValue`).
+
+---
+
 ## 2026-07-10 — BillOutstanding TDL V7: forensic fix for empty `bill_outstanding` table
 **Commit:** `d23aa8d`
 **Files:** `xmls/BillOutstanding.xml`

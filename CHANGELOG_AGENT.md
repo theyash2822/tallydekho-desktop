@@ -4,6 +4,21 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-07-10 — BillOutstanding V9: 2-piece TDL architecture (auto-register + working export)
+**Commit:** `89d5e41`
+**Files:** `xmls/TDKBillOutstanding.tdl` (NEW), `xmls/BillOutstanding.xml`, `util/xml.js`, `package.json`, `package-lock.json`
+**Behavior:** V4→V8 all failed because inline-TDL data-requests don't work for `<TYPE>Bill</TYPE>` collections (Tally silently returns empty). V8 device-verified failing this session. V9 pivots to the proven 2-piece architecture from user's collaborator package (produced 2167 BILLROW rows on this Tally 2026-07-09):
+1. **NEW `xmls/TDKBillOutstanding.tdl`** — full DSL TDL file defining `TDKBillOutstandingWorking` report + collection.
+2. **NEW `registerTdl()` in `util/xml.js`** — uploads the .tdl body to Tally over HTTP with `TALLYREQUEST=Import`. Called once at sync start, idempotent, in-memory (re-registered every sync, cheap).
+3. **Rewrote `xmls/BillOutstanding.xml`** as a 15-line data-request envelope referencing the pre-registered report by ID. No inline TDL. `SVEXPORTFORMAT=$$SysName:XML` (matches working package). `SVFROMDATE`/`SVTODATE` from current FY window.
+4. **NEW `decodeTallyResponse()` in `util/xml.js`** — Tally emits UTF-16 LE with BOM for this custom report. Old `getData()` treated everything as UTF-8 string → mojibake → 0 records silently. New impl requests `arraybuffer`, sniffs BOM, decodes UTF-16 LE / BE / UTF-8 accordingly.
+5. **Moved `BillOutstanding.xml`** out of date-less `masterXmls` loop into a per-company `syncHelperWithDate` call using the LATEST FY window (needs `SVFROMDATE`/`SVTODATE`).
+6. **Added `iconv-lite@^0.7.3`** dep for UTF-16 decoding.
+**Tested:** `node --check util/xml.js` clean. Backend restarted with matching companion commit (`ece0692` in tallydekho-backend-services). Awaiting Windows device test: `git pull` on desktop → restart → hard sync → Mac backend `SELECT COUNT(*) FROM bill_outstanding` must be non-zero.
+**Risks:** (1) Tally's import envelope format may vary by Tally Prime version — if `registerTdl` fails, log will show LINEERROR and next fetch returns empty. Manual fallback: user adds .tdl path via `F1 > TDL Management` (one-time, persistent). (2) Company name substitution in request envelope must match Tally's exact active company name; existing `$$COMPANY_NAME` replacer pattern handles this.
+
+---
+
 ## 2026-07-10 — BillOutstanding TDL V8: pivot from REPORT to COLLECTION export path
 **Commit:** `0731473`
 **Files:** `xmls/BillOutstanding.xml`

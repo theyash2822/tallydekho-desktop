@@ -4,6 +4,15 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-07-10 — BillOutstanding TDL V7: forensic fix for empty `bill_outstanding` table
+**Commit:** `d23aa8d`
+**Files:** `xmls/BillOutstanding.xml`
+**Behavior:** V4→V6 iterations all left `bill_outstanding` table empty across every install (Tally rejected the report). Forensic diff of V6 against 20+ working production XMLs (GSTDetails, FullLedger, Master, VoucherType, etc.) surfaced two root causes: (1) `<SVEXPORTFORMAT>$$SysName:XMLFormat</SVEXPORTFORMAT>` is a DSL-only alias that embedded TDL can't resolve — replaced with literal `XML (Data Interchange)` (the pattern every working XML uses); (2) `<XMLTAG>ENVELOPE</XMLTAG>` on FORM and `<XMLTAG>BILLROW</XMLTAG>` on LINE — no working XML uses FORM/LINE XMLTAGs. Removed both. Tally's default response shape (parallel field arrays under `<ENVELOPE>`) is exactly what `normalizeEnvelope` in `util/tallyHelper.js` already parses. Collection block (Type: Bill, FETCH list, FILTER: TDKBillIsPending) and SYSTEM Formulae unchanged from V6.
+**Tested:** `xmllint --noout` clean. Awaiting Windows device verification: `git pull` on desktop → restart app → sync → `SELECT COUNT(*) FROM bill_outstanding;` should be non-zero.
+**Risks:** If Tally still rejects V7, fallback plan B: iterate `Type: Ledger` and drill into `$BillAllocations` sub-collection (the pattern GSTDetails uses for `$$GSTTaxableValue`).
+
+---
+
 ## 2026-07-02 — Phase 2b: Targeted SingleVoucher.xml fetch for post-write sync
 **Commit:** `d3d4a45`
 **Files:** `util/xml.js`, `util/socket.js`

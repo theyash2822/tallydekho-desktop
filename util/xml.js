@@ -1,8 +1,9 @@
 const { XMLParser } = require("fast-xml-parser");
 const path = require("path");
-const { readFile } = require("fs").promises;
+const { readFile, writeFile, mkdir } = require("fs").promises;
 const axios = require("axios");
 const iconv = require("iconv-lite");
+const os = require("os");
 
 const { error, info } = require("./logger");
 const store = require("./store");
@@ -412,6 +413,33 @@ const getData = async (filePath, replacer = []) => {
         timeout: 15000 * 4,
       });
       const decoded = decodeTallyResponse(response.data);
+
+      // V9 DIAGNOSTIC (2026-07-10): dump BillOutstanding responses to disk
+      // so we can inspect exactly what Tally returned. Small files, safe to
+      // overwrite each sync. Remove/gate once V9 is verified in production.
+      if (filePath === "BillOutstanding.xml") {
+        try {
+          const dir = path.join(os.tmpdir(), "tallydekho-diag");
+          await mkdir(dir, { recursive: true });
+          const rawBuf = Buffer.isBuffer(response.data)
+            ? response.data
+            : (response.data instanceof ArrayBuffer
+                ? Buffer.from(new Uint8Array(response.data))
+                : Buffer.from(String(response.data), "utf8"));
+          const rawPath = path.join(dir, "BillOutstanding.raw.xml");
+          const decPath = path.join(dir, "BillOutstanding.decoded.xml");
+          await writeFile(rawPath, rawBuf);
+          await writeFile(decPath, decoded, "utf8");
+          const firstBytesHex = rawBuf.slice(0, 8).toString("hex");
+          const preview = decoded.slice(0, 400).replace(/\s+/g, " ");
+          info(`[diag:BillOutstanding] bytes=${rawBuf.length} firstBytesHex=${firstBytesHex} decoded=${decoded.length} preview=${preview}`);
+          info(`[diag:BillOutstanding] raw saved to: ${rawPath}`);
+          info(`[diag:BillOutstanding] decoded saved to: ${decPath}`);
+        } catch (e) {
+          info(`[diag:BillOutstanding] dump failed: ${e.message}`);
+        }
+      }
+
       return { status: true, data: decoded, message: "" };
     } catch (err) {
       error(err?.message, filePath);

@@ -1,25 +1,31 @@
 <?xml version='1.0' encoding='utf-8'?>
 <!--
-  Bill-wise outstanding — V7 (2026-07-10)
-  V4 crashed Tally ("Collection:TDKBOPendingBillsV4 Could not find description!").
-  V5 stripped digits from names. V6 removed <CLEARED>No</CLEARED>.
-  V7 forensic fixes (aligned with 20+ working production XMLs):
-    1. SVEXPORTFORMAT: $$SysName:XMLFormat  →  XML (Data Interchange)
-       ($$SysName:XMLFormat is a DSL-only alias; embedded TDL can't resolve it.)
-    2. Removed <XMLTAG>ENVELOPE</XMLTAG> from FORM and <XMLTAG>BILLROW</XMLTAG>
-       from LINE. No working XML uses FORM/LINE XMLTAGs — Tally's default
-       response shape (repeated field tags directly under <ENVELOPE>) is what
-       the desktop parser (normalizeEnvelope) already expects.
+  Bill-wise outstanding — V8 (2026-07-10)
 
-  Response shape (parallel field arrays under <ENVELOPE>, matches processBillOutstanding parser):
+  V4→V7 all used REPORT-based export (TYPE=Data + REPORT/FORM/PART/LINE/FIELD
+  scaffolding). V7 device-tested: `bill_outstanding` DB still 0 rows, no
+  processBillOutstanding log line ever fired → Tally silently returned empty.
+
+  V8 pivots to COLLECTION-based export — the exact pattern used by
+  LedgerFull.xml, GroupMaster.xml, UnitFull.xml, VoucherTypeFull.xml,
+  StockGroupFull.xml (all shipping thousands of rows reliably every sync).
+
+  Key differences vs V7:
+    • HEADER TYPE=Collection (not Data), ID=TDKPendingBills (not TDKPendingBillsReport)
+    • No REPORT / FORM / PART / LINE / FIELD blocks
+    • Just <COLLECTION> with <Compute> fields — Tally exports collection directly
+    • FILTER declared inline on the collection (native TDL filter, same formula)
+
+  Response shape (parallel field arrays under <ENVELOPE>, matches
+  processBillOutstanding parser + normalizeEnvelope):
     LedgerName, BillName, BillDate, DueDate, Amount, PendingAmount, DrCr, LedgerParent
 -->
 <ENVELOPE>
   <HEADER>
     <VERSION>1</VERSION>
     <TALLYREQUEST>Export</TALLYREQUEST>
-    <TYPE>Data</TYPE>
-    <ID>TDKPendingBillsReport</ID>
+    <TYPE>Collection</TYPE>
+    <ID>TDKPendingBills</ID>
   </HEADER>
   <BODY>
     <DESC>
@@ -29,66 +35,20 @@
       </STATICVARIABLES>
       <TDL>
         <TDLMESSAGE>
-
-          <REPORT NAME="TDKPendingBillsReport">
-            <FORMS>TDKPendingBillsForm</FORMS>
-          </REPORT>
-
-          <FORM NAME="TDKPendingBillsForm">
-            <PARTS>TDKPendingBillsPart</PARTS>
-          </FORM>
-
-          <PART NAME="TDKPendingBillsPart">
-            <LINES>TDKPendingBillsLine</LINES>
-            <REPEAT>TDKPendingBillsLine : TDKPendingBills</REPEAT>
-            <SCROLLED>Vertical</SCROLLED>
-          </PART>
-
-          <LINE NAME="TDKPendingBillsLine">
-            <FIELDS>TDKLedgerName,TDKBillName,TDKBillDate,TDKDueDate,TDKAmount,TDKPendingAmount,TDKDrCr,TDKLedgerParent</FIELDS>
-          </LINE>
-
-          <FIELD NAME="TDKLedgerName">
-            <SET>$Parent</SET>
-            <XMLTAG>LedgerName</XMLTAG>
-          </FIELD>
-          <FIELD NAME="TDKBillName">
-            <SET>$Name</SET>
-            <XMLTAG>BillName</XMLTAG>
-          </FIELD>
-          <FIELD NAME="TDKBillDate">
-            <SET>$BillDate</SET>
-            <XMLTAG>BillDate</XMLTAG>
-          </FIELD>
-          <FIELD NAME="TDKDueDate">
-            <SET>if $$IsEmpty:$BillCreditPeriod then "" else ($BillDate + $BillCreditPeriod)</SET>
-            <XMLTAG>DueDate</XMLTAG>
-          </FIELD>
-          <FIELD NAME="TDKAmount">
-            <SET>$OpeningBalance</SET>
-            <XMLTAG>Amount</XMLTAG>
-          </FIELD>
-          <FIELD NAME="TDKPendingAmount">
-            <SET>$ClosingBalance</SET>
-            <XMLTAG>PendingAmount</XMLTAG>
-          </FIELD>
-          <FIELD NAME="TDKDrCr">
-            <SET>if $$IsDr:$ClosingBalance then "Dr" else "Cr"</SET>
-            <XMLTAG>DrCr</XMLTAG>
-          </FIELD>
-          <FIELD NAME="TDKLedgerParent">
-            <SET>$Parent</SET>
-            <XMLTAG>LedgerParent</XMLTAG>
-          </FIELD>
-
-          <COLLECTION NAME="TDKPendingBills">
+          <COLLECTION ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No" NAME="TDKPendingBills">
             <TYPE>Bill</TYPE>
             <FETCH>Name,Parent,BillDate,BillCreditPeriod,OpeningBalance,ClosingBalance,IsCleared</FETCH>
             <FILTER>TDKBillIsPending</FILTER>
+            <Compute>LedgerName:$Parent</Compute>
+            <Compute>BillName:$Name</Compute>
+            <Compute>BillDate:$BillDate</Compute>
+            <Compute>DueDate:if $$IsEmpty:$BillCreditPeriod then "" else ($BillDate + $BillCreditPeriod)</Compute>
+            <Compute>Amount:$OpeningBalance</Compute>
+            <Compute>PendingAmount:$ClosingBalance</Compute>
+            <Compute>DrCr:if $$IsDr:$ClosingBalance then "Dr" else "Cr"</Compute>
+            <Compute>LedgerParent:$Parent</Compute>
           </COLLECTION>
-
           <SYSTEM TYPE="Formulae" NAME="TDKBillIsPending">(NOT $$IsEmpty:$Name) AND (NOT $$IsZero:$ClosingBalance)</SYSTEM>
-
         </TDLMESSAGE>
       </TDL>
     </DESC>

@@ -1,56 +1,49 @@
 <?xml version='1.0' encoding='utf-8'?>
 <!--
-  Bill-wise outstanding — V8 (2026-07-10)
+  Bill-wise outstanding — V9 (2026-07-10)
 
-  V4→V7 all used REPORT-based export (TYPE=Data + REPORT/FORM/PART/LINE/FIELD
-  scaffolding). V7 device-tested: `bill_outstanding` DB still 0 rows, no
-  processBillOutstanding log line ever fired → Tally silently returned empty.
+  V4→V8 all embedded the TDL definition inline in the HTTP request. That
+  doesn't work for <TYPE>Bill</TYPE> collections — Tally silently rejects
+  or returns empty. V4 crashed loudly ("Could not find description"),
+  V5→V8 returned empty responses on every sync.
 
-  V8 pivots to COLLECTION-based export — the exact pattern used by
-  LedgerFull.xml, GroupMaster.xml, UnitFull.xml, VoucherTypeFull.xml,
-  StockGroupFull.xml (all shipping thousands of rows reliably every sync).
+  V9 = the proven 2-piece architecture from user's collaborator package
+  (produced 2167 BILLROW rows on this exact Tally on 2026-07-09):
 
-  Key differences vs V7:
-    • HEADER TYPE=Collection (not Data), ID=TDKPendingBills (not TDKPendingBillsReport)
-    • No REPORT / FORM / PART / LINE / FIELD blocks
-    • Just <COLLECTION> with <Compute> fields — Tally exports collection directly
-    • FILTER declared inline on the collection (native TDL filter, same formula)
+  Piece 1: TDKBillOutstanding.tdl — a full DSL TDL file that Tally
+           loads to register the TDKBillOutstandingWorking report.
+           Registered on demand via registerTdl() in util/xml.js
+           (POST TDL to Tally over HTTP; happens once per sync).
 
-  Response shape (parallel field arrays under <ENVELOPE>, matches
-  processBillOutstanding parser + normalizeEnvelope):
-    LedgerName, BillName, BillDate, DueDate, Amount, PendingAmount, DrCr, LedgerParent
+  Piece 2 (this file): a minimal request envelope referencing the
+           already-registered report by ID. NO inline TDL. Tally runs
+           the pre-registered report and streams BILLROW rows.
+
+  Response shape: <ENVELOPE><BILLROW>...</BILLROW>...</ENVELOPE>
+  Encoding: UTF-16 LE with BOM (handled in getData via decodeTallyResponse).
+  Fields per row: LedgerName, BillName, BillDate, DueDate, Amount,
+                  PendingAmount, DrCr, LedgerParent
+
+  Filtering (Dr-only, non-zero pending, per-ledger) happens in backend
+  processBillOutstanding + /api/party/outstanding-bills — NOT in TDL.
+
+  SVFROMDATE / SVTODATE scoped to current FY, substituted by desktop.
 -->
 <ENVELOPE>
   <HEADER>
     <VERSION>1</VERSION>
     <TALLYREQUEST>Export</TALLYREQUEST>
-    <TYPE>Collection</TYPE>
-    <ID>TDKPendingBills</ID>
+    <TYPE>Data</TYPE>
+    <ID>TDKBillOutstandingWorking</ID>
   </HEADER>
   <BODY>
     <DESC>
       <STATICVARIABLES>
-        <SVEXPORTFORMAT>XML (Data Interchange)</SVEXPORTFORMAT>
         <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVFROMDATE TYPE="Date">$$FROM_DATE</SVFROMDATE>
+        <SVTODATE TYPE="Date">$$TO_DATE</SVTODATE>
       </STATICVARIABLES>
-      <TDL>
-        <TDLMESSAGE>
-          <COLLECTION ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No" NAME="TDKPendingBills">
-            <TYPE>Bill</TYPE>
-            <FETCH>Name,Parent,BillDate,BillCreditPeriod,OpeningBalance,ClosingBalance,IsCleared</FETCH>
-            <FILTER>TDKBillIsPending</FILTER>
-            <Compute>LedgerName:$Parent</Compute>
-            <Compute>BillName:$Name</Compute>
-            <Compute>BillDate:$BillDate</Compute>
-            <Compute>DueDate:if $$IsEmpty:$BillCreditPeriod then "" else ($BillDate + $BillCreditPeriod)</Compute>
-            <Compute>Amount:$OpeningBalance</Compute>
-            <Compute>PendingAmount:$ClosingBalance</Compute>
-            <Compute>DrCr:if $$IsDr:$ClosingBalance then "Dr" else "Cr"</Compute>
-            <Compute>LedgerParent:$Parent</Compute>
-          </COLLECTION>
-          <SYSTEM TYPE="Formulae" NAME="TDKBillIsPending">(NOT $$IsEmpty:$Name) AND (NOT $$IsZero:$ClosingBalance)</SYSTEM>
-        </TDLMESSAGE>
-      </TDL>
     </DESC>
   </BODY>
 </ENVELOPE>

@@ -1,0 +1,173 @@
+;; -----------------------------------------------------------------------------
+;; TallyDekho - Bill Outstanding WORKING
+;; File    : TDKBillOutstanding_WORKING.tdl
+;;
+;; IMPORTANT:
+;; This is based on the V3 "Bill Debug" report which is confirmed working
+;; from exported XML: new outstanding.xml.
+;;
+;; Do NOT use:
+;; - Cleared : No
+;; - Ledger filter inside TDL
+;; - Sundry Debtor / Creditor group filter
+;;
+;; Backend/agent should filter by LedgerName after parsing XML.
+;;
+;; Menu:
+;;   Gateway of Tally > TallyDekho Bill Outstanding Working
+;;
+;; XML Report ID:
+;;   TDKBillOutstandingWorking
+;;
+;; XML Fields:
+;;   ENVELOPE / BILLROW
+;;   LedgerName, BillName, BillDate, DueDate, Amount, PendingAmount, DrCr, LedgerParent
+;; -----------------------------------------------------------------------------
+
+[#Menu: Gateway of Tally]
+    Add     : Item : TallyDekho Bill Outstanding Working : Display : TDKBillOutstandingWorking
+
+[Report: TDKBillOutstandingWorking]
+    Form          : TDKBO Working Form
+    Title         : "TallyDekho Bill Outstanding Working"
+    Variable      : SVFromDate, SVToDate
+    Keep XML Case : Yes
+
+[Form: TDKBO Working Form]
+    Parts   : TDKBO Working Title Part, TDKBO Working Header Part, TDKBO Working Body Part
+    Width   : 100% Screen
+    Height  : 100% Screen
+    Button  : ExportButton, ChangePeriod
+    XML Tag : ENVELOPE
+
+[Part: TDKBO Working Title Part]
+    Lines   : TDKBO Working Title Line
+
+[Line: TDKBO Working Title Line]
+    Fields  : TDKBO Working Title Field
+
+[Field: TDKBO Working Title Field]
+    Use     : Name Field
+    Set As  : "TallyDekho Bill Outstanding Working"
+    Style   : Large Bold
+    Width   : 140
+
+[Part: TDKBO Working Header Part]
+    Lines   : TDKBO Working Header Line
+
+[Line: TDKBO Working Header Line]
+    Fields  : TDKBO Working Hdr Ledger, TDKBO Working Hdr Bill, TDKBO Working Hdr BillDate, TDKBO Working Hdr DueDate, TDKBO Working Hdr Amount, TDKBO Working Hdr Pending, TDKBO Working Hdr DrCr, TDKBO Working Hdr Parent
+    Border  : Thin Bottom
+
+[Field: TDKBO Working Hdr Ledger]
+    Use     : Name Field
+    Set As  : "LedgerName"
+    Style   : Normal Bold
+    Width   : 35
+
+[Field: TDKBO Working Hdr Bill]
+    Use     : Name Field
+    Set As  : "BillName"
+    Style   : Normal Bold
+    Width   : 25
+
+[Field: TDKBO Working Hdr BillDate]
+    Use     : Name Field
+    Set As  : "BillDate"
+    Style   : Normal Bold
+    Width   : 15
+
+[Field: TDKBO Working Hdr DueDate]
+    Use     : Name Field
+    Set As  : "DueDate"
+    Style   : Normal Bold
+    Width   : 15
+
+[Field: TDKBO Working Hdr Amount]
+    Use     : Name Field
+    Set As  : "Amount"
+    Style   : Normal Bold
+    Width   : 18
+
+[Field: TDKBO Working Hdr Pending]
+    Use     : Name Field
+    Set As  : "PendingAmount"
+    Style   : Normal Bold
+    Width   : 18
+
+[Field: TDKBO Working Hdr DrCr]
+    Use     : Name Field
+    Set As  : "DrCr"
+    Style   : Normal Bold
+    Width   : 8
+
+[Field: TDKBO Working Hdr Parent]
+    Use     : Name Field
+    Set As  : "LedgerParent"
+    Style   : Normal Bold
+    Width   : 35
+
+[Part: TDKBO Working Body Part]
+    Lines   : TDKBO Working Detail Line
+    Repeat  : TDKBO Working Detail Line : TDKBO Working All Bills
+    Scroll  : Vertical
+
+[Line: TDKBO Working Detail Line]
+    Fields  : TDKBO Working LedgerName, TDKBO Working BillName, TDKBO Working BillDate, TDKBO Working DueDate, TDKBO Working Amount, TDKBO Working PendingAmount, TDKBO Working DrCr, TDKBO Working LedgerParent
+    XML Tag : BILLROW
+
+[Field: TDKBO Working LedgerName]
+    Use     : Name Field
+    Set As  : If NOT $$IsEmpty:$DSPAccName:Ledger:$Parent Then $DSPAccName:Ledger:$Parent Else $Parent
+    Width   : 35
+    XML Tag : LedgerName
+
+[Field: TDKBO Working BillName]
+    Use     : Name Field
+    Set As  : $Name
+    Width   : 25
+    XML Tag : BillName
+
+[Field: TDKBO Working BillDate]
+    Use     : Uni Date Field
+    Set As  : $BillDate
+    Width   : 15
+    XML Tag : BillDate
+
+[Field: TDKBO Working DueDate]
+    Use     : Uni Date Field
+    Set As  : If $$IsEmpty:$BillCreditPeriod Then "" Else $BillDate + $BillCreditPeriod
+    Width   : 15
+    XML Tag : DueDate
+
+[Field: TDKBO Working Amount]
+    Use     : Amount Field
+    Set As  : $OpeningBalance
+    Width   : 18
+    XML Tag : Amount
+
+[Field: TDKBO Working PendingAmount]
+    Use     : Amount Field
+    Set As  : $ClosingBalance
+    Width   : 18
+    XML Tag : PendingAmount
+
+[Field: TDKBO Working DrCr]
+    Use     : Name Field
+    Set As  : If $$IsDr:$ClosingBalance Then "Dr" Else "Cr"
+    Width   : 8
+    XML Tag : DrCr
+
+[Field: TDKBO Working LedgerParent]
+    Use     : Name Field
+    Set As  : $Parent
+    Width   : 35
+    XML Tag : LedgerParent
+
+[Collection: TDKBO Working All Bills]
+    Type       : Bill
+    Fetch      : Name, Parent, BillDate, BillCreditPeriod, OpeningBalance, ClosingBalance
+    Filter     : TDKBO Working Non Blank Bill
+
+[System: Formula]
+    TDKBO Working Non Blank Bill : NOT $$IsEmpty:$Name

@@ -426,6 +426,16 @@ app.whenReady().then(async () => {
 
   store.set("forceUpdate", false);
   const response = await registerDevice();
+
+  // Option B: silent TDL install into C:\Program Files\TallyPrime (Windows only)
+  try {
+    const { ensureBillOutstandingTdl } = require("./util/ensureBillOutstandingTdl");
+    const tdlResult = ensureBillOutstandingTdl();
+    info("[tdl] boot ensureBillOutstandingTdl", tdlResult);
+  } catch (e) {
+    info("[tdl] boot ensure failed (non-fatal):", e?.message);
+  }
+
   if (!response.status) {
     if (isDev) {
       // In dev mode: log warning and fall through to createWindow() at the bottom

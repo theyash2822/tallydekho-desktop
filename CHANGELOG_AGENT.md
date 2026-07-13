@@ -4,6 +4,19 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-07-13 — BillOutstanding Option B: minimal TDL + tally.ini inject + dated sync
+**Files:** `xmls/TDKBillOutstanding.tdl` (NEW), `xmls/BillOutstanding.xml`, `util/ensureBillOutstandingTdl.js` (NEW), `util/xml.js`, `main.js`, `package.json` (+iconv-lite)
+**Behavior:**
+- Ships a **minimal** sync-safe TDL (no Gateway menu, no `$DSPAccName`, no due-date math, no Cleared/ledger filters).
+- On boot + every sync start: copies TDL to `C:\Program Files\TallyPrime\` and ensures `tally.ini` has `User TDL Files=Yes` + `TDL=<path>` (silent, no dialog).
+- `BillOutstanding.xml` is a thin export envelope for report `TDKBillOutstandingWorking`.
+- Removed from date-less `masterXmls`; fetched once per company via `syncHelperWithDate` using latest selected FY window.
+- `getData` decodes UTF-16 LE/BE BOM via iconv-lite; BILLROW nested rows mapped explicitly (not parallel-array normalize).
+**Tested:** `node --check` on changed JS files. Device Hard Sync + DB count pending on Windows.
+**Risks:** Writing under Program Files may fail without elevation (logged, non-fatal). Tally must reload TDL (restart Tally after first inject). Minimal TDL still uses `Type:Bill` — if Tally crashes, stop and revise TDL further.
+
+---
+
 ## 2026-07-02 — Phase 2b: Targeted SingleVoucher.xml fetch for post-write sync
 **Commit:** `d3d4a45`
 **Files:** `util/xml.js`, `util/socket.js`

@@ -2,12 +2,60 @@ const { XMLParser } = require("fast-xml-parser");
 const path = require("path");
 const { readFile } = require("fs").promises;
 const axios = require("axios");
+const iconv = require("iconv-lite");
 
 const { error, info } = require("./logger");
 const store = require("./store");
 const createFinancialYears = require("./createFinancialYears");
 const { normalizeEnvelope } = require("./tallyHelper");
 const { axiosInstance } = require("./helper");
+const { ensureBillOutstandingTdl } = require("./ensureBillOutstandingTdl");
+
+/** Decode Tally HTTP body — custom reports may return UTF-16 LE with BOM. */
+function decodeTallyResponse(data) {
+  const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+  if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) {
+    return iconv.decode(buf, "utf16-le");
+  }
+  if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) {
+    return iconv.decode(buf, "utf16-be");
+  }
+  if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) {
+    return buf.slice(3).toString("utf8");
+  }
+  const sample = buf.slice(0, Math.min(120, buf.length));
+  let nulls = 0;
+  for (let i = 0; i < sample.length; i++) if (sample[i] === 0) nulls++;
+  if (sample.length > 20 && nulls > sample.length / 4) {
+    return iconv.decode(buf, "utf16-le");
+  }
+  return buf.toString("utf8");
+}
+
+/** BILLROW nested objects from TDKBillOutstandingWorking — not parallel field arrays. */
+function rowsFromBillOutstandingEnvelope(envelope) {
+  if (!envelope) return [];
+  const raw = envelope.BILLROW ?? envelope.BillRow;
+  if (raw != null) {
+    const arr = Array.isArray(raw) ? raw : [raw];
+    return arr
+      .filter((r) => r && typeof r === "object")
+      .map((r) => ({
+        LedgerName: String(r.LedgerName ?? r.LEDGERNAME ?? ""),
+        BillName: String(r.BillName ?? r.BILLNAME ?? ""),
+        BillDate: r.BillDate ?? r.BILLDATE ?? null,
+        DueDate: r.DueDate ?? r.DUEDATE ?? null,
+        Amount: r.Amount ?? r.AMOUNT ?? 0,
+        PendingAmount: r.PendingAmount ?? r.PENDINGAMOUNT ?? 0,
+        DrCr: r.DrCr ?? r.DRCR ?? null,
+        BillType: r.BillType ?? r.BILLTYPE ?? r.DrCr ?? r.DRCR ?? null,
+        LedgerParent: String(r.LedgerParent ?? r.LEDGERPARENT ?? ""),
+        VoucherGuid: r.VoucherGuid ?? r.VOUCHERGUID ?? null,
+        AlterId: r.AlterId ?? r.ALTERID ?? 0,
+      }));
+  }
+  return normalizeEnvelope(envelope);
+}
 
 const parser = new XMLParser({
   //   ignoreAttributes: false,
@@ -313,9 +361,11 @@ const getData = async (filePath, replacer = []) => {
           "Content-Type": "text/xml",
           Accept: "application/xml, text/xml, */*",
         },
+        responseType: "arraybuffer",
         timeout: 15000 * 4,
       });
-      return { status: true, data: response.data, message: "" };
+      const decoded = decodeTallyResponse(response.data);
+      return { status: true, data: decoded, message: "" };
     } catch (err) {
       error(err?.message, filePath);
       if (++attempt >= 3 || filePath == "TallyDestination.xml") {
@@ -661,7 +711,12 @@ const syncHelperWithDate = async ({
   const json = parser.parse(response.data);
 
   const financialYear = computeFinancialYear(fromDate);
-  const normalizeData = normalizeEnvelope(json.ENVELOPE).map((item) => ({
+  const envelope = json.ENVELOPE || json.Envelope || {};
+  const baseRows =
+    xml === "BillOutstanding.xml"
+      ? rowsFromBillOutstandingEnvelope(envelope)
+      : normalizeEnvelope(envelope);
+  const normalizeData = baseRows.map((item) => ({
     ...item,
     COMPANY_NAME:    companyName,
     XML:             xml,
@@ -733,6 +788,14 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
   stopTallySyncCode = null;
   const sendProgress = createTallySyncProgressSender(windowContent);
   const sendMessage = tallySyncMessageSender(windowContent);
+
+  // Option B: ensure minimal Bill Outstanding TDL is listed in tally.ini (silent)
+  try {
+    const tdlResult = ensureBillOutstandingTdl();
+    info("[tdl] ensureBillOutstandingTdl", tdlResult);
+  } catch (e) {
+    info("[tdl] ensureBillOutstandingTdl threw (non-fatal):", e?.message);
+  }
 
   const startTime = new Date().getTime();
 
@@ -816,7 +879,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
     "StockCategory.xml",
     "StockOpeningBalance.xml",
     "CurrencyMaster.xml",     // Currency masters
-    "BillOutstanding.xml",    // Bill-wise outstanding (receivables/payables ageing)
+    // BillOutstanding.xml moved to per-company syncHelperWithDate (needs FY dates + pre-loaded TDL)
   ];
 
   for (let i = 0; i < companies.length; i++) {
@@ -964,6 +1027,37 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
       info('[sync] OpeningBalanceDiff.xml fetched for', name, 'at date', obDiffDateStr);
     } else {
       info('[sync] OpeningBalanceDiff.xml skipped — no booksFrom/startingFrom for', name);
+    }
+
+    // Bill outstanding — once per company per sync (needs pre-loaded TDKBillOutstanding.tdl)
+    if (years.length > 0) {
+      const outstandingYear = [...years].sort((a, b) =>
+        String(b.end || "").localeCompare(String(a.end || ""))
+      )[0];
+      const fromDate = String(outstandingYear.begin || "").replace(/-/g, "");
+      const toDate = String(outstandingYear.end || "").replace(/-/g, "");
+      try {
+        const billOutstandingResponse = await syncHelperWithDate({
+          xml: "BillOutstanding.xml",
+          companyName: name,
+          alterId: 0,
+          fromDate,
+          toDate,
+          companyGuid,
+          yearId: yearIds[companyGuid]?.[outstandingYear.finYear] || null,
+        });
+        promises.push(billOutstandingResponse);
+        info("[sync] BillOutstanding.xml", {
+          company: name,
+          fromDate,
+          toDate,
+          rows: Array.isArray(billOutstandingResponse)
+            ? billOutstandingResponse.length
+            : 0,
+        });
+      } catch (e) {
+        info("[sync] BillOutstanding.xml failed (non-fatal):", e?.message);
+      }
     }
 
     for (let j = 0; j < years.length; j++) {

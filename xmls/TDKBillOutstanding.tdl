@@ -1,0 +1,79 @@
+;; -----------------------------------------------------------------------------
+;; TallyDekho - Bill Outstanding (minimal / sync-safe)
+;; Report ID: TDKBillOutstandingWorking
+;;
+;; Design goals vs previous WORKING.tdl:
+;; - NO Gateway menu hook (sync-only; less UI crash surface)
+;; - NO $DSPAccName formula (known heavy / fragile)
+;; - NO BillDate + BillCreditPeriod due-date math
+;; - NO Cleared:No / ledger / sundry filters (those emptied or stressed Tally)
+;; - Simple Type:Bill collection; filter blank bill names only
+;; - XML shape: ENVELOPE / BILLROW / field tags (matches proven export)
+;; -----------------------------------------------------------------------------
+
+[Report: TDKBillOutstandingWorking]
+    Form          : TDKBO Form
+    Title         : "TallyDekho Bill Outstanding"
+    Variable      : SVFromDate, SVToDate
+    Keep XML Case : Yes
+
+[Form: TDKBO Form]
+    Parts   : TDKBO Body
+    XML Tag : ENVELOPE
+
+[Part: TDKBO Body]
+    Lines   : TDKBO Line
+    Repeat  : TDKBO Line : TDKBO Bills
+    Scroll  : Vertical
+
+[Line: TDKBO Line]
+    Fields  : TDKBO LedgerName, TDKBO BillName, TDKBO BillDate, TDKBO DueDate, TDKBO Amount, TDKBO PendingAmount, TDKBO DrCr, TDKBO LedgerParent
+    XML Tag : BILLROW
+
+[Field: TDKBO LedgerName]
+    Use     : Name Field
+    Set As  : $Parent
+    XML Tag : LedgerName
+
+[Field: TDKBO BillName]
+    Use     : Name Field
+    Set As  : $Name
+    XML Tag : BillName
+
+[Field: TDKBO BillDate]
+    Use     : Name Field
+    Set As  : $BillDate
+    XML Tag : BillDate
+
+[Field: TDKBO DueDate]
+    Use     : Name Field
+    Set As  : ""
+    XML Tag : DueDate
+
+[Field: TDKBO Amount]
+    Use     : Name Field
+    Set As  : $OpeningBalance
+    XML Tag : Amount
+
+[Field: TDKBO PendingAmount]
+    Use     : Name Field
+    Set As  : $ClosingBalance
+    XML Tag : PendingAmount
+
+[Field: TDKBO DrCr]
+    Use     : Name Field
+    Set As  : If $$IsDr:$ClosingBalance Then "Dr" Else "Cr"
+    XML Tag : DrCr
+
+[Field: TDKBO LedgerParent]
+    Use     : Name Field
+    Set As  : $Parent
+    XML Tag : LedgerParent
+
+[Collection: TDKBO Bills]
+    Type   : Bill
+    Fetch  : Name, Parent, BillDate, BillCreditPeriod, OpeningBalance, ClosingBalance
+    Filter : TDKBO NonBlankBill
+
+[System: Formula]
+    TDKBO NonBlankBill : NOT $$IsEmpty:$Name

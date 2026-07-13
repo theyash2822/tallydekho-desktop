@@ -4,6 +4,13 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-07-13 — BillOutstanding TDL: safe BillDate format (YYYY-MM-DD)
+**Files:** `xmls/TDKBillOutstanding.tdl`
+**Behavior:** BillDate uses `$$PyrlYYYYMMDDFormat` (empty-safe). DueDate stays blank (no credit-period math — crash risk). Desktop copies updated TDL into TallyPrime folder on boot/sync.
+**Test:** Restart Tally after pull → Hard Sync → `bill_outstanding.bill_date` should be non-null for most rows.
+
+---
+
 ## 2026-07-13 — BillOutstanding Option B: minimal TDL + tally.ini inject + dated sync
 **Files:** `xmls/TDKBillOutstanding.tdl` (NEW), `xmls/BillOutstanding.xml`, `util/ensureBillOutstandingTdl.js` (NEW), `util/xml.js`, `main.js`, `package.json` (+iconv-lite)
 **Behavior:**

@@ -42,7 +42,7 @@
 
 [Field: TDKBO BillDate]
     Use     : Name Field
-    Set As  : $BillDate
+    Set As  : If $$IsEmpty:$BillDate Then "" Else $$PyrlYYYYMMDDFormat:$BillDate:"-"
     XML Tag : BillDate
 
 [Field: TDKBO DueDate]

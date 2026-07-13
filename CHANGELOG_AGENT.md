@@ -4,6 +4,14 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-07-13 — tally:write: CREATED=0 is failure (stop false Posted)
+**Files:** `util/xml.js`
+**Behavior:** If Tally returns `CREATED=0` and `ALTERED=0` (often with `EXCEPTIONS>0` and no LINEERROR), treat as **failure**. Previously returned `status:true` → backend marked audit trail Posted while voucher never existed in Tally.
+**Test:** Re-submit Payment after pull+restart desktop; failed import must show error, not Posted.
+**Risks:** None — real creates still have CREATED≥1.
+
+---
+
 ## 2026-07-13 — BillOutstanding TDL: safe BillDate format (YYYY-MM-DD)
 **Files:** `xmls/TDKBillOutstanding.tdl`
 **Behavior:** BillDate uses `$$PyrlYYYYMMDDFormat` (empty-safe). DueDate stays blank (no credit-period math — crash risk). Desktop copies updated TDL into TallyPrime folder on boot/sync.

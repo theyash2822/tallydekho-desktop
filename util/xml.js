@@ -426,13 +426,31 @@ const postToTally = async (xmlBody) => {
       // Success: parse internal IDs from response
       const createdMatch  = data.match(/<CREATED>(\d+)<\/CREATED>/i);
       const alteredMatch  = data.match(/<ALTERED>(\d+)<\/ALTERED>/i);
+      const exceptionsMatch = data.match(/<EXCEPTIONS>(\d+)<\/EXCEPTIONS>/i);
       const lastVchMatch  = data.match(/<LASTVCHID>(.*?)<\/LASTVCHID>/i);
       const vchNumMatch   = data.match(/<VOUCHERNUMBER>(.*?)<\/VOUCHERNUMBER>/i);
-      const created       = createdMatch  ? parseInt(createdMatch[1])  : 0;
-      const altered       = alteredMatch  ? parseInt(alteredMatch[1])  : 0;
-      const tallyId       = lastVchMatch  ? lastVchMatch[1].trim()     : null;
+      const created       = createdMatch  ? parseInt(createdMatch[1], 10)  : 0;
+      const altered       = alteredMatch  ? parseInt(alteredMatch[1], 10)  : 0;
+      const exceptions    = exceptionsMatch ? parseInt(exceptionsMatch[1], 10) : 0;
+      const tallyIdRaw    = lastVchMatch  ? lastVchMatch[1].trim()     : null;
+      const tallyId       = (tallyIdRaw && tallyIdRaw !== '0') ? tallyIdRaw : null;
       const voucherNumber = vchNumMatch   ? vchNumMatch[1].trim()      : null;
-      return { status: true, message: 'Entry created in Tally', data, tallyId, voucherNumber, created, altered };
+
+      // Tally often returns HTTP 200 with CREATED=0 + EXCEPTIONS>0 and NO <LINEERROR>.
+      // That must NOT be treated as success (false "Posted" in audit trail).
+      if (created === 0 && altered === 0) {
+        const excMatch = data.match(/<EXCEPTIONS\.LIST>[\s\S]*?<DESC>([\s\S]*?)<\/DESC>/i)
+          || data.match(/<ERRORDESCRIPTION>([\s\S]*?)<\/ERRORDESCRIPTION>/i);
+        const excMsg = excMatch ? excMatch[1].replace(/<[^>]+>/g, '').trim() : '';
+        const msg = excMsg
+          || (exceptions > 0
+            ? `Tally rejected the entry (${exceptions} exception${exceptions > 1 ? 's' : ''})`
+            : 'Tally did not create the voucher (CREATED=0)');
+        info('[tally:write] treated as failure', { created, altered, exceptions, tallyIdRaw, preview: data.slice(0, 400) });
+        return { status: false, message: msg, data, created, altered, exceptions, tallyId: null, voucherNumber: null };
+      }
+
+      return { status: true, message: 'Entry created in Tally', data, tallyId, voucherNumber, created, altered, exceptions };
     } catch (err) {
       error(err?.message, 'postToTally');
       if (++attempt >= 2) {

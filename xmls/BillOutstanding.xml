@@ -1,124 +1,54 @@
 <?xml version='1.0' encoding='utf-8'?>
-<!--
-  Bill-wise outstanding — V10 (2026-07-10)
-  Inline XML-TDL — DSL-to-XML translation by TDL developer.
-  Source: BillOutstanding.inline.xml from collaborator package.
-
-  Key improvements over V4-V9:
-  - KEEPXMLCASE=Yes (critical — triggers proper XML tag output)
-  - SVEXPORTFORMAT=$$SysName:XML (matches working DSL, proven)
-  - <USE>Name Field</USE> / <USE>Amount Field</USE> etc — proper base field inheritance
-  - All identifiers match working DSL exactly (TDKBO Working All Bills, etc.)
-  - FORM stripped to body-only (no Title/Header parts — data export only)
-  - <XMLTAG>BILLROW</XMLTAG> on LINE — correct position
-
-  Dates hardcoded to wide range (2000-01-01 → 2099-12-31) so ALL pending
-  bills are returned regardless of FY — correct for receipt voucher picker.
-  $$COMPANY_NAME is replaced at runtime by syncHelper.
-
-  Response shape: <ENVELOPE><BILLROW>...</BILLROW>...</ENVELOPE>
-  Fields: LedgerName, BillName, BillDate, DueDate, Amount, PendingAmount, DrCr, LedgerParent
-  Encoding: may be UTF-16 LE with BOM — handle in parser if response is empty.
--->
+<!-- Bill-wise outstanding: party, bill ref, due date, pending amount -->
 <ENVELOPE>
-  <HEADER>
-    <VERSION>1</VERSION>
-    <TALLYREQUEST>Export</TALLYREQUEST>
-    <TYPE>Data</TYPE>
-    <ID>TDKBillOutstandingWorking</ID>
-  </HEADER>
-  <BODY>
-    <DESC>
-      <STATICVARIABLES>
-        <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
-        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        <SVFROMDATE TYPE="Date">20000101</SVFROMDATE>
-        <SVTODATE TYPE="Date">20991231</SVTODATE>
-      </STATICVARIABLES>
-      <TDL>
-        <TDLMESSAGE>
-
-          <REPORT NAME="TDKBillOutstandingWorking" ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
-            <FORMS>TDKBO Working Form</FORMS>
-            <TITLE>TallyDekho Bill Outstanding Working</TITLE>
-            <VARIABLES>SVFromDate, SVToDate</VARIABLES>
-            <KEEPXMLCASE>Yes</KEEPXMLCASE>
-          </REPORT>
-
-          <FORM NAME="TDKBO Working Form" ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
-            <PARTS>TDKBO Working Body Part</PARTS>
-            <XMLTAG>ENVELOPE</XMLTAG>
-          </FORM>
-
-          <PART NAME="TDKBO Working Body Part" ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
-            <LINES>TDKBO Working Detail Line</LINES>
-            <REPEAT>TDKBO Working Detail Line : TDKBO Working All Bills</REPEAT>
-            <SCROLLED>Vertical</SCROLLED>
-          </PART>
-
-          <LINE NAME="TDKBO Working Detail Line" ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
-            <FIELDS>TDKBO Working LedgerName, TDKBO Working BillName, TDKBO Working BillDate, TDKBO Working DueDate, TDKBO Working Amount, TDKBO Working PendingAmount, TDKBO Working DrCr, TDKBO Working LedgerParent</FIELDS>
-            <XMLTAG>BILLROW</XMLTAG>
-          </LINE>
-
-          <FIELD NAME="TDKBO Working LedgerName" ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
-            <USE>Name Field</USE>
-            <SET>If NOT $$IsEmpty:$DSPAccName:Ledger:$Parent Then $DSPAccName:Ledger:$Parent Else $Parent</SET>
-            <XMLTAG>LedgerName</XMLTAG>
-          </FIELD>
-
-          <FIELD NAME="TDKBO Working BillName" ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
-            <USE>Name Field</USE>
-            <SET>$Name</SET>
-            <XMLTAG>BillName</XMLTAG>
-          </FIELD>
-
-          <FIELD NAME="TDKBO Working BillDate" ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
-            <USE>Uni Date Field</USE>
-            <SET>$BillDate</SET>
-            <XMLTAG>BillDate</XMLTAG>
-          </FIELD>
-
-          <FIELD NAME="TDKBO Working DueDate" ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
-            <USE>Uni Date Field</USE>
-            <SET>If $$IsEmpty:$BillCreditPeriod Then "" Else $BillDate + $BillCreditPeriod</SET>
-            <XMLTAG>DueDate</XMLTAG>
-          </FIELD>
-
-          <FIELD NAME="TDKBO Working Amount" ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
-            <USE>Amount Field</USE>
-            <SET>$OpeningBalance</SET>
-            <XMLTAG>Amount</XMLTAG>
-          </FIELD>
-
-          <FIELD NAME="TDKBO Working PendingAmount" ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
-            <USE>Amount Field</USE>
-            <SET>$ClosingBalance</SET>
-            <XMLTAG>PendingAmount</XMLTAG>
-          </FIELD>
-
-          <FIELD NAME="TDKBO Working DrCr" ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
-            <USE>Name Field</USE>
-            <SET>If $$IsDr:$ClosingBalance Then "Dr" Else "Cr"</SET>
-            <XMLTAG>DrCr</XMLTAG>
-          </FIELD>
-
-          <FIELD NAME="TDKBO Working LedgerParent" ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
-            <USE>Name Field</USE>
-            <SET>$Parent</SET>
-            <XMLTAG>LedgerParent</XMLTAG>
-          </FIELD>
-
-          <COLLECTION NAME="TDKBO Working All Bills" ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
-            <TYPE>Bill</TYPE>
-            <FETCH>Name, Parent, BillDate, BillCreditPeriod, OpeningBalance, ClosingBalance</FETCH>
-            <FILTER>TDKBO Working Non Blank Bill</FILTER>
-          </COLLECTION>
-
-          <SYSTEM TYPE="Formulae" NAME="TDKBO Working Non Blank Bill">NOT $$IsEmpty:$Name</SYSTEM>
-
-        </TDLMESSAGE>
-      </TDL>
-    </DESC>
-  </BODY>
+    <HEADER>
+        <VERSION>1</VERSION>
+        <TALLYREQUEST>Export</TALLYREQUEST>
+        <TYPE>Data</TYPE>
+        <ID>MyReportLedgerTable</ID>
+    </HEADER>
+    <BODY>
+        <DESC>
+            <STATICVARIABLES>
+                <SVEXPORTFORMAT>XML (Data Interchange)</SVEXPORTFORMAT>
+                <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
+                <SVFROMDATE TYPE="Date">$$FROM_DATE</SVFROMDATE>
+                <SVTODATE TYPE="Date">$$TO_DATE</SVTODATE>
+            </STATICVARIABLES>
+            <TDL>
+                <TDLMESSAGE>
+                    <REPORT NAME='MyReportLedgerTable'><FORMS>MyForm</FORMS></REPORT>
+                    <FORM NAME='MyForm'><PARTS>MyPart01</PARTS></FORM>
+                    <PART NAME='MyPart01'>
+                        <LINES>MyLine01</LINES>
+                        <REPEAT>MyLine01 : MyCollection</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
+                    </PART>
+                    <PART NAME='MyPart02'>
+                        <LINES>MyLine02</LINES>
+                        <REPEAT>MyLine02 : BillAllocations</REPEAT>
+                        <SCROLLED>Vertical</SCROLLED>
+                    </PART>
+                    <LINE NAME='MyLine01'><FIELDS>FldBlank</FIELDS><EXPLODE>MyPart02</EXPLODE></LINE>
+                    <LINE NAME='MyLine02'><FIELDS>Fld01,Fld02,Fld03,Fld04,Fld05,Fld06,Fld07,Fld08,Fld09</FIELDS></LINE>
+                    <FIELD NAME='Fld01'><SET>$Guid</SET><XMLTAG>VoucherGuid</XMLTAG></FIELD>
+                    <FIELD NAME='Fld02'><SET>$..Name</SET><XMLTAG>LedgerName</XMLTAG></FIELD>
+                    <FIELD NAME='Fld03'><SET>$Name</SET><XMLTAG>BillName</XMLTAG></FIELD>
+                    <FIELD NAME='Fld04'><SET>if $$IsEmpty:$BillDate then $$StrByCharCode:241 else $$PyrlYYYYMMDDFormat:$BillDate:'-'</SET><XMLTAG>BillDate</XMLTAG></FIELD>
+                    <FIELD NAME='Fld05'><SET>if $$IsEmpty:$DueDate then $$StrByCharCode:241 else $$PyrlYYYYMMDDFormat:$DueDate:'-'</SET><XMLTAG>DueDate</XMLTAG></FIELD>
+                    <FIELD NAME='Fld06'><SET>if $$IsDebit:$Amount then -$$NumValue:$Amount else $$NumValue:$Amount</SET><XMLTAG>Amount</XMLTAG></FIELD>
+                    <FIELD NAME='Fld07'><SET>if $$IsDebit:$ClosingBalance then -$$NumValue:$ClosingBalance else $$NumValue:$ClosingBalance</SET><XMLTAG>PendingAmount</XMLTAG></FIELD>
+                    <FIELD NAME='Fld08'><SET>$BillType</SET><XMLTAG>BillType</XMLTAG></FIELD>
+                    <FIELD NAME='Fld09'><SET>if $$IsEmpty:$AlterId then '0' else $$String:$AlterId</SET><XMLTAG>AlterId</XMLTAG></FIELD>
+                    <FIELD NAME='FldBlank'><SET>''</SET></FIELD>
+                    <COLLECTION NAME='MyCollection'>
+                        <TYPE>Ledger</TYPE>
+                        <FETCH>BillAllocations</FETCH>
+                        <FILTER>Fltr01</FILTER>
+                    </COLLECTION>
+                    <SYSTEM TYPE='Formulae' NAME='Fltr01'>$$IsSundryDebtorOrCreditor:$Parent</SYSTEM>
+                </TDLMESSAGE>
+            </TDL>
+        </DESC>
+    </BODY>
 </ENVELOPE>

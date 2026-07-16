@@ -4,6 +4,14 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-07-16 — FETCH IsOptional on Simplified + AllVoucher
+**Files:** `xmls/SimplifiedVoucher.xml`, `xmls/AllVoucher.xml`
+**Behavior:** Collection FETCH now includes `IsOptional` so `$IsOptional` exports 1/0 correctly. Without FETCH, Simplified always sent `isOptional:0` and backend falsely ran Optional→Regular.
+**Test:** Pull desktop + restart; create optional Receipt → sync must keep Optional chip (not Regular + Orig. Optional).
+**Risks:** Low — additive FETCH only.
+
+---
+
 ## 2026-07-13 — tally:write: CREATED=0 is failure (stop false Posted)
 **Files:** `util/xml.js`
 **Behavior:** If Tally returns `CREATED=0` and `ALTERED=0` (often with `EXCEPTIONS>0` and no LINEERROR), treat as **failure**. Previously returned `status:true` → backend marked audit trail Posted while voucher never existed in Tally.

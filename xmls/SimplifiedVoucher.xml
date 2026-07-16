@@ -59,7 +59,9 @@
                     </FIELD>
                     <COLLECTION NAME='MyCollection'>
                         <TYPE>Voucher</TYPE>
-                        <FETCH>AlterId,Reference</FETCH>
+                        <!-- IsOptional must be FETCHed — without it $IsOptional reads empty
+                             and always exports 0, which falsely triggers Optional→Regular. -->
+                        <FETCH>AlterId,Reference,IsOptional</FETCH>
                         <FILTER>Fltr01</FILTER>
                     </COLLECTION>
                     <SYSTEM TYPE='Formulae' NAME='Fltr01'>NOT $IsCancelled</SYSTEM>

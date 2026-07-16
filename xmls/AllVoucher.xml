@@ -276,7 +276,7 @@
                     <COLLECTION NAME='MyCollection'>
                         <TYPE>Vouchers</TYPE>
                         <Belongsto>Yes</Belongsto>
-                        <FETCH>AlterId,Narration,PartyLedgerName,PlaceOfSupply,Allinventoryentries.List,Basicuserdescription.List,AllLedgerEntries.List,LedgerEntries.List,Billallocations.List</FETCH>
+                        <FETCH>AlterId,Reference,Narration,PartyLedgerName,PlaceOfSupply,Allinventoryentries.List,Basicuserdescription.List,AllLedgerEntries.List,LedgerEntries.List,Billallocations.List</FETCH>
                         <FILTER>Fltr01,DeltaFilter</FILTER>
                         <KeepSource>().</KeepSource>
                     </COLLECTION>

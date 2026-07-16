@@ -28,7 +28,7 @@
                         <SCROLLED>Vertical</SCROLLED>
                     </PART>
                     <LINE NAME='MyLine01'>
-                        <FIELDS>Fld01,Fld02,Fld03,Fld04</FIELDS>
+                        <FIELDS>Fld01,Fld02,Fld03,Fld04,Fld05</FIELDS>
                     </LINE>
                     <FIELD NAME='Fld01'>
                         <SET>$Guid</SET>
@@ -46,12 +46,20 @@
                         <SET>if ($IsOptional) then 1 else 0</SET>
                         <XMLTAG>isOptional</XMLTAG>
                     </FIELD>
+                    <!-- 2026-07-16: return Tally Reference so backend can reconcile
+                         TDK-SAL/RCP/PAY/JOR/CON without narration anchors.
+                         Existing vouchers are not rewritten in Tally; only future
+                         sync payloads gain this field (null refs can fill from Tally truth). -->
+                    <FIELD NAME='Fld05'>
+                        <SET>$Reference</SET>
+                        <XMLTAG>Reference</XMLTAG>
+                    </FIELD>
                     <FIELD NAME='FldBlank'>
                         <SET>''</SET>
                     </FIELD>
                     <COLLECTION NAME='MyCollection'>
                         <TYPE>Voucher</TYPE>
-                        <FETCH>AlterId</FETCH>
+                        <FETCH>AlterId,Reference</FETCH>
                         <FILTER>Fltr01</FILTER>
                     </COLLECTION>
                     <SYSTEM TYPE='Formulae' NAME='Fltr01'>NOT $IsCancelled</SYSTEM>

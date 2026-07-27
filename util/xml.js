@@ -285,12 +285,14 @@ async function sendOneChunk(client, uploadId, streamName, idx, body, gzip) {
   }
 }
 
-const initSync = async (companies) => {
+const initSync = async (companies, isHardSync = false) => {
   let response;
 
   try {
+    // isHardSync → backend purges selected company GUID tally data, then rebuilds via ingest
     response = await axiosInstance.post("/desktop/init-sync", {
       companies,
+      isHardSync: !!isHardSync,
     });
     response = response.data;
   } catch (err) {
@@ -837,7 +839,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
   sendProgress(0);
   sendMessage("Initializing");
 
-  let syncedData = await initSync(companies);
+  let syncedData = await initSync(companies, isHardSync);
 
   info("[sync] data", syncedData);
 

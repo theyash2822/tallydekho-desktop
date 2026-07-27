@@ -4,7 +4,13 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
-## 2026-07-16 — FETCH IsOptional on Simplified + AllVoucher
+## 2026-07-27 — Hard sync passes isHardSync to init-sync (rebuild)
+**Files:** `util/xml.js`
+**Behavior:** `initSync(companies, isHardSync)` sends `isHardSync` to `POST /desktop/init-sync`. Backend purges selected GUID tally data then desktop continues full fetch (existing alterIds=0 path). UI unchanged. Normal sync unchanged.
+**Test:** Hard Sync one company → cloud voucher count drops then refills; second company not selected stays intact. Normal Sync still delta-only.
+**Risks:** If Hard Sync fails after purge, cloud is empty until a successful sync completes — re-run Hard Sync.
+
+---
 **Files:** `xmls/SimplifiedVoucher.xml`, `xmls/AllVoucher.xml`
 **Behavior:** Collection FETCH now includes `IsOptional` so `$IsOptional` exports 1/0 correctly. Without FETCH, Simplified always sent `isOptional:0` and backend falsely ran Optional→Regular.
 **Test:** Pull desktop + restart; create optional Receipt → sync must keep Optional chip (not Regular + Orig. Optional).

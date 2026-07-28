@@ -30,9 +30,9 @@ Defined in `preload.js`.
 | tally.version() | tally:version | Reads version from Windows registry |
 | tally.connected() | tally:connected | Checks Tally HTTP on localhost:9000 |
 | tally.companies() | tally:companies | Fetches company list from Tally |
-| tally.tdlHealth() | tally:tdl_health | Bill Outstanding TDL health (path detect + ini/tdl status) |
-| tally.tdlSetup(dir?) | tally:tdl_setup | Copy TDL + link tally.ini; optional folder override |
-| tally.tdlSelectPath() | tally:tdl_select_path | Folder dialog then setup; returns {cancelled\|health} |
+| tally.tdlHealth() | tally:tdl_health | Bill Outstanding TDL health (disk + live probe) |
+| tally.tdlSetup(dir?) | tally:tdl_setup | Copy TDL + quoted tally.ini; restart Tally with /TDL if not live |
+| tally.tdlSelectPath() | tally:tdl_select_path | Folder dialog then setup+activate; returns {cancelled\|health} |
 | tally.startSync(args) | tally:start_sync | Triggers full Tally sync |
 | tally.syncProgress(cb) | tally:sync_progress | Event listener for sync progress |
 | tally.stopSync(args) | tally:stop_sync | Stops ongoing sync |

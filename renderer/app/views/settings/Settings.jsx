@@ -14,8 +14,23 @@ function statusTone(level) {
 function statusLabel(health) {
   if (!health) return "Checking…";
   if (health.skipped) return "Not required";
+  if (health.status === "ok" && health.liveLoaded === true) return "Ready";
+  if (health.status === "ok" && health.liveLoaded === false) return "Installed";
   if (health.status === "ok") return "Ready";
   return "Needs setup";
+}
+
+function noteAfterSetup(h) {
+  if (h?.status === "ok" && h?.liveLoaded) {
+    if (h?.activateResult?.status) {
+      return "Activated — Tally was restarted with the TDL. Sync when ready (no manual load).";
+    }
+    return "Active in Tally — no manual TDL load needed. Sync when ready.";
+  }
+  if (h?.activateResult && !h.activateResult.status) {
+    return h.activateResult.message || "Could not restart Tally — open Tally, then Retry setup.";
+  }
+  return h?.applyResult?.hint || h?.message || "Setup incomplete — select Tally folder.";
 }
 
 export default function Settings() {
@@ -84,11 +99,7 @@ export default function Settings() {
     try {
       const h = await window.tally.tdlSetup();
       setTdlHealth(h);
-      if (h?.status === "ok") {
-        setTdlNote("Setup complete. Restart Tally Prime now, then sync again.");
-      } else {
-        setTdlNote(h?.applyResult?.hint || h?.message || "Setup incomplete — select Tally folder.");
-      }
+      setTdlNote(noteAfterSetup(h));
     } catch (e) {
       setTdlNote(e?.message || "Setup failed");
     } finally {
@@ -108,15 +119,7 @@ export default function Settings() {
       }
       if (res?.health) {
         setTdlHealth(res.health);
-        if (res.health.status === "ok") {
-          setTdlNote("Setup complete. Restart Tally Prime now, then sync again.");
-        } else {
-          setTdlNote(
-            res.health.applyResult?.hint ||
-              res.health.message ||
-              "Could not finish setup in that folder."
-          );
-        }
+        setTdlNote(noteAfterSetup(res.health));
       } else if (res?.message) {
         setTdlNote(res.message);
       }
@@ -253,6 +256,27 @@ export default function Settings() {
               />
             </label>
             <label className="flex items-center gap-2">
+              In Tally
+              <input
+                readOnly
+                value={
+                  tdlHealth?.skipped
+                    ? "N/A"
+                    : tdlHealth?.liveLoaded === true
+                    ? `Active ✓${
+                        tdlHealth?.liveBillRows != null
+                          ? ` (${tdlHealth.liveBillRows} bills)`
+                          : ""
+                      }`
+                    : tdlHealth?.liveLoaded === false
+                    ? "Not loaded"
+                    : "—"
+                }
+                className="ml-auto border rounded-md px-2 py-1 w-40 bg-[#F5F4EF]"
+                style={{ borderColor: "#E9E8E3" }}
+              />
+            </label>
+            <label className="flex items-center gap-2">
               Detected via
               <input
                 readOnly
@@ -269,12 +293,20 @@ export default function Settings() {
             </div>
           )}
 
-          {/* Ready on disk ≠ loaded in running Tally — always guide restart */}
-          {tdlHealth?.status === "ok" && !tdlHealth?.skipped && (
+          {tdlHealth?.status === "ok" &&
+            tdlHealth?.liveLoaded === true &&
+            !tdlHealth?.skipped && (
+              <div className="mt-3 text-xs" style={{ color: "#2D7D46" }}>
+                Bill Outstanding is active — no manual TDL load needed. Sync
+                when ready.
+              </div>
+            )}
+
+          {tdlHealth?.liveLoaded === false && !tdlHealth?.skipped && (
             <div className="mt-3 text-xs" style={{ color: "#D97706" }}>
-              TDL is installed. If Tally was already open,{" "}
-              <span className="font-semibold">restart Tally Prime</span>, then
-              sync again so Bill Outstanding can load.
+              Files are on disk but Tally has not loaded the report yet. Click{" "}
+              <span className="font-semibold">Retry setup</span> — the app will
+              restart Tally with the TDL (no F1 manual load).
             </div>
           )}
 
@@ -282,7 +314,10 @@ export default function Settings() {
             <div
               className="mt-2 text-xs"
               style={{
-                color: tdlHealth?.status === "ok" ? "#2D7D46" : "#D97706",
+                color:
+                  tdlHealth?.status === "ok" && tdlHealth?.liveLoaded
+                    ? "#2D7D46"
+                    : "#D97706",
               }}
             >
               {tdlNote}

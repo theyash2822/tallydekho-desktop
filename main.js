@@ -427,11 +427,15 @@ app.whenReady().then(async () => {
   store.set("forceUpdate", false);
   const response = await registerDevice();
 
-  // Option B: path-aware TDL install (Windows). Status also shown in Settings → Tally Connection.
+  // Option B: path-aware TDL install on boot (no Tally restart — sync/Settings Retry activate if needed)
   try {
     const { ensureBillOutstandingTdl } = require("./util/ensureBillOutstandingTdl");
-    const tdlResult = await ensureBillOutstandingTdl();
-    info("[tdl] boot ensureBillOutstandingTdl", tdlResult);
+    const tdlResult = await ensureBillOutstandingTdl({ allowRestart: false });
+    info("[tdl] boot ensureBillOutstandingTdl", {
+      status: tdlResult?.status,
+      liveLoaded: tdlResult?.liveLoaded,
+      message: tdlResult?.message,
+    });
   } catch (e) {
     info("[tdl] boot ensure failed (non-fatal):", e?.message);
   }

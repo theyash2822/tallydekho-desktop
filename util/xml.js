@@ -54,7 +54,8 @@ function rowsFromBillOutstandingEnvelope(envelope) {
         AlterId: r.AlterId ?? r.ALTERID ?? 0,
       }));
   }
-  return normalizeEnvelope(envelope);
+  // No BILLROW = TDL not loaded or empty — do not fall back to HEADER/BODY junk
+  return [];
 }
 
 const parser = new XMLParser({
@@ -809,10 +810,20 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
   const sendProgress = createTallySyncProgressSender(windowContent);
   const sendMessage = tallySyncMessageSender(windowContent);
 
-  // Option B: ensure Bill Outstanding TDL (path-aware; Settings shows status if blocked)
+  // Option B: ensure TDL on disk; if not live-loaded, restart Tally with /TDL (no manual F1)
   try {
-    const tdlResult = await ensureBillOutstandingTdl();
-    info("[tdl] ensureBillOutstandingTdl", tdlResult);
+    const companyName = companies[0]?.name || "";
+    const tdlResult = await ensureBillOutstandingTdl({
+      companyName,
+      allowRestart: true,
+    });
+    info("[tdl] ensureBillOutstandingTdl", {
+      status: tdlResult?.status,
+      liveLoaded: tdlResult?.liveLoaded,
+      billRows: tdlResult?.liveBillRows,
+      activated: !!tdlResult?.activateResult?.status,
+      message: tdlResult?.message,
+    });
   } catch (e) {
     info("[tdl] ensureBillOutstandingTdl threw (non-fatal):", e?.message);
   }

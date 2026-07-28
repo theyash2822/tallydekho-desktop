@@ -4,11 +4,19 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-07-28 — Bill Outstanding: auto-activate TDL (no manual F1)
+**Files:** `util/ensureBillOutstandingTdl.js`, `util/xml.js`, `util/ipcRegistry.js`, `main.js`, `renderer/app/views/settings/Settings.jsx`
+**Behavior:** Quoted `TDL="…"` in tally.ini (fixes `TallyPrime (1)` paths). Live probe for `<BILLROW>`. If not loaded, Settings Retry / Sync restart Tally with official `/TDL:"path"` — no manual F1 load. Boot only installs files (no restart). Ready = live active, not just files on disk.
+**Test:** Fresh Tally session without F1 load → Settings Retry or Sync → In Tally Active → Bill Outstanding rows sync. No HTTP Import.
+**Risks:** Activate kills `tally.exe` briefly — save Tally work first. Port wait may timeout on slow PCs.
+
+---
+
 ## 2026-07-28 — Settings: restart Tally tip when TDL Ready
 **Files:** `renderer/app/views/settings/Settings.jsx`
 **Behavior:** When Bill Outstanding TDL status is Ready, show amber note to restart Tally Prime then sync (install ≠ loaded). Setup success notes also say restart now.
 **Test:** Settings → Ready badge → see restart tip; Retry setup success → green note mentions restart.
-**Risks:** None — copy only.
+**Risks:** None — copy only. Superseded by auto-activate entry above.
 
 ---
 **Files:** `util/ensureBillOutstandingTdl.js`, `util/ipcRegistry.js`, `preload.js`, `main.js`, `util/xml.js`, `renderer/app/views/settings/Settings.jsx`, `IPC_MAP.md`

@@ -86,7 +86,8 @@ ipcMain.handle("tally:tdl_health", async () => {
 ipcMain.handle("tally:tdl_setup", async (_event, optionalDir) => {
   try {
     const { setupTdl } = require("./ensureBillOutstandingTdl");
-    return await setupTdl(optionalDir || null);
+    // allowRestart: activate via official /TDL restart if live probe fails (no manual F1)
+    return await setupTdl(optionalDir || null, { allowRestart: true });
   } catch (e) {
     error(e?.message || String(e), "tally:tdl_setup");
     return {
@@ -111,7 +112,7 @@ ipcMain.handle("tally:tdl_select_path", async () => {
       return { status: false, cancelled: true };
     }
     const { setupTdl } = require("./ensureBillOutstandingTdl");
-    const health = await setupTdl(result.filePaths[0]);
+    const health = await setupTdl(result.filePaths[0], { allowRestart: true });
     return { status: true, health };
   } catch (e) {
     error(e?.message || String(e), "tally:tdl_select_path");

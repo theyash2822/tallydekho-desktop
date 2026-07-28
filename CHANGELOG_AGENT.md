@@ -4,7 +4,13 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
-## 2026-07-28 — Settings: Bill Outstanding TDL health (path-aware, not silent)
+## 2026-07-28 — Settings: restart Tally tip when TDL Ready
+**Files:** `renderer/app/views/settings/Settings.jsx`
+**Behavior:** When Bill Outstanding TDL status is Ready, show amber note to restart Tally Prime then sync (install ≠ loaded). Setup success notes also say restart now.
+**Test:** Settings → Ready badge → see restart tip; Retry setup success → green note mentions restart.
+**Risks:** None — copy only.
+
+---
 **Files:** `util/ensureBillOutstandingTdl.js`, `util/ipcRegistry.js`, `preload.js`, `main.js`, `util/xml.js`, `renderer/app/views/settings/Settings.jsx`, `IPC_MAP.md`
 **Behavior:** Detects Tally folder (saved → registry → process → common paths). Settings → Tally Connection shows TDL status + Check / Select folder / Retry. Auto-copy + ini link; guides user when auto fails (no silent fail). Path persisted in store.
 **Test:** Settings → see TDL section; if Needs setup → Select Tally folder → Retry → Ready. Restart Tally after link. Sync still uses ensure on start.

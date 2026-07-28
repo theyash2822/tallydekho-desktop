@@ -85,7 +85,7 @@ export default function Settings() {
       const h = await window.tally.tdlSetup();
       setTdlHealth(h);
       if (h?.status === "ok") {
-        setTdlNote("Setup complete. Restart Tally Prime if it was already open.");
+        setTdlNote("Setup complete. Restart Tally Prime now, then sync again.");
       } else {
         setTdlNote(h?.applyResult?.hint || h?.message || "Setup incomplete — select Tally folder.");
       }
@@ -109,7 +109,7 @@ export default function Settings() {
       if (res?.health) {
         setTdlHealth(res.health);
         if (res.health.status === "ok") {
-          setTdlNote("Setup complete. Restart Tally Prime if it was already open.");
+          setTdlNote("Setup complete. Restart Tally Prime now, then sync again.");
         } else {
           setTdlNote(
             res.health.applyResult?.hint ||
@@ -266,6 +266,15 @@ export default function Settings() {
           {missingList.length > 0 && (
             <div className="mt-3 text-xs" style={{ color: "#C0392B" }}>
               Missing: {missingList.join(" · ")}
+            </div>
+          )}
+
+          {/* Ready on disk ≠ loaded in running Tally — always guide restart */}
+          {tdlHealth?.status === "ok" && !tdlHealth?.skipped && (
+            <div className="mt-3 text-xs" style={{ color: "#D97706" }}>
+              TDL is installed. If Tally was already open,{" "}
+              <span className="font-semibold">restart Tally Prime</span>, then
+              sync again so Bill Outstanding can load.
             </div>
           )}
 

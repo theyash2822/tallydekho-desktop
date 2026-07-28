@@ -4,6 +4,14 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-07-28 — Bill Outstanding activate: fix /TDL argv + /LOAD company
+**Files:** `util/ensureBillOutstandingTdl.js`, `util/xml.js`
+**Behavior:** Activate now uses `/TDL:TDKBillOutstanding.tdl` (no embedded quotes) via `cmd start`, plus `/LOAD:companyNumber` so probe can see BILLROW after restart. Retries live probe after activate.
+**Test:** Close Tally company session → Settings Retry setup → Tally reopens with company → In Tally Active → Sync fills outstanding. No F1.
+**Risks:** taskkill briefly closes Tally; wrong companyNumber skips /LOAD (open company manually then Check now).
+
+---
+
 ## 2026-07-28 — Bill Outstanding: auto-activate TDL (no manual F1)
 **Files:** `util/ensureBillOutstandingTdl.js`, `util/xml.js`, `util/ipcRegistry.js`, `main.js`, `renderer/app/views/settings/Settings.jsx`
 **Behavior:** Quoted `TDL="…"` in tally.ini (fixes `TallyPrime (1)` paths). Live probe for `<BILLROW>`. If not loaded, Settings Retry / Sync restart Tally with official `/TDL:"path"` — no manual F1 load. Boot only installs files (no restart). Ready = live active, not just files on disk.

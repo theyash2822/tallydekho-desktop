@@ -399,9 +399,14 @@ async function waitForTallyPort(timeoutMs = 45000) {
 }
 
 /**
- * Official activation: restart Tally with /TDL:"path" so report loads without manual F1.
+ * Official activation: restart Tally with /TDL so report loads without manual F1.
+ *
+ * Tally docs: argv is `/TDL:path` (or `/TDL:filename` if file is in Tally folder).
+ * Do NOT embed extra quotes inside the argv — that breaks paths like "TallyPrime (1)".
+ * Prefer filename-only since we copy TDKBillOutstanding.tdl into the Tally folder.
+ * /LOAD:companyNumber reopens the company so the live probe can see BILLROW.
  */
-async function activateTdlByRestartingTally(tallyDir, destTdl) {
+async function activateTdlByRestartingTally(tallyDir, destTdl, opts = {}) {
   if (process.platform !== "win32") {
     return { status: false, message: "Windows only" };
   }
@@ -413,23 +418,40 @@ async function activateTdlByRestartingTally(tallyDir, destTdl) {
     return { status: false, message: "TDL file missing — run setup first" };
   }
 
-  info("[tdl] activating via Tally restart + /TDL", { exe, destTdl });
+  const companyNumber = opts.companyNumber != null && String(opts.companyNumber).trim() !== ""
+    ? String(opts.companyNumber).trim()
+    : null;
+
+  // Filename-only: TDL lives in tallyDir (copied by applyTdlToDir)
+  const args = [`/TDL:${TDL_FILENAME}`];
+  if (companyNumber) {
+    args.unshift(`/LOAD:${companyNumber}`);
+  }
+
+  info("[tdl] activating via Tally restart + /TDL", {
+    exe,
+    args,
+    destTdl,
+    companyNumber,
+  });
+
   await execFileAsync("taskkill", ["/IM", "tally.exe", "/F"]);
-  await new Promise((r) => setTimeout(r, 2000));
+  await new Promise((r) => setTimeout(r, 2500));
 
   try {
-    const child = spawn(exe, [`/TDL:"${destTdl}"`], {
-      cwd: tallyDir,
-      detached: true,
-      stdio: "ignore",
-      windowsHide: false,
-    });
+    // cmd `start` is the reliable way to launch a GUI Tally from Electron
+    // start "" /D "dir" tally.exe /LOAD:n /TDL:file.tdl
+    const child = spawn(
+      process.env.ComSpec || "cmd.exe",
+      ["/c", "start", "", "/D", tallyDir, "tally.exe", ...args],
+      { detached: true, stdio: "ignore", windowsHide: true }
+    );
     child.unref();
   } catch (e) {
     return { status: false, message: e?.message || "Failed to start Tally" };
   }
 
-  const up = await waitForTallyPort(60000);
+  const up = await waitForTallyPort(90000);
   if (!up) {
     return {
       status: false,
@@ -437,16 +459,33 @@ async function activateTdlByRestartingTally(tallyDir, destTdl) {
     };
   }
 
-  // Give TDL a moment to register after Gateway appears
-  await new Promise((r) => setTimeout(r, 3000));
-  return { status: true, message: "Tally restarted with Bill Outstanding TDL" };
+  // Company + TDL load needs more than Gateway HTTP up
+  await new Promise((r) => setTimeout(r, companyNumber ? 10000 : 5000));
+  return {
+    status: true,
+    message: companyNumber
+      ? "Tally restarted with Bill Outstanding TDL + company loaded"
+      : "Tally restarted with Bill Outstanding TDL — open your company if probe still fails",
+    args,
+    companyNumber,
+  };
+}
+
+function selectedCompanyMeta() {
+  const c = store.get("selectedCompanies")?.[0] || {};
+  return {
+    companyName: c.name || "",
+    companyNumber: c.companyNumber ?? c.COMPANYNUMBER ?? null,
+  };
 }
 
 /**
- * @param {{ companyName?: string, allowRestart?: boolean }} [opts]
+ * @param {{ companyName?: string, companyNumber?: string|number, allowRestart?: boolean }} [opts]
  */
 async function ensureBillOutstandingTdl(opts = {}) {
-  const companyName = opts.companyName || store.get("selectedCompanies")?.[0]?.name || "";
+  const meta = selectedCompanyMeta();
+  const companyName = opts.companyName || meta.companyName || "";
+  const companyNumber = opts.companyNumber ?? meta.companyNumber;
   const allowRestart = !!opts.allowRestart;
 
   const detected = await detectTallyInstallPath();
@@ -463,9 +502,15 @@ async function ensureBillOutstandingTdl(opts = {}) {
   let activateResult = null;
 
   if (!live.loaded && allowRestart && applyResult.status) {
-    activateResult = await activateTdlByRestartingTally(detected.path, destTdl);
+    activateResult = await activateTdlByRestartingTally(detected.path, destTdl, {
+      companyNumber,
+    });
     if (activateResult.status) {
-      live = await probeBillOutstandingLive(companyName);
+      // Retry probe a few times — company load is slow after /LOAD
+      for (let i = 0; i < 4 && !live.loaded; i++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        live = await probeBillOutstandingLive(companyName);
+      }
     }
   }
 
@@ -482,12 +527,15 @@ async function ensureBillOutstandingTdl(opts = {}) {
     billRows: health.liveBillRows,
     allowRestart,
     activated: !!activateResult?.status,
+    companyNumber: companyNumber || null,
+    activateArgs: activateResult?.args || null,
   });
   return health;
 }
 
 async function getTdlHealth(opts = {}) {
-  const companyName = opts.companyName || store.get("selectedCompanies")?.[0]?.name || "";
+  const meta = selectedCompanyMeta();
+  const companyName = opts.companyName || meta.companyName || "";
   const detected = await detectTallyInstallPath();
   if (!detected.path) {
     return buildHealth({ tallyDir: null, detectSource: detected.source });
@@ -525,8 +573,10 @@ async function setupTdl(optionalDir, opts = {}) {
     return buildHealth({ tallyDir: null, detectSource: "none" });
   }
 
+  const meta = selectedCompanyMeta();
   return ensureBillOutstandingTdl({
-    companyName: opts.companyName || store.get("selectedCompanies")?.[0]?.name || "",
+    companyName: opts.companyName || meta.companyName || "",
+    companyNumber: opts.companyNumber ?? meta.companyNumber,
     allowRestart: opts.allowRestart !== false,
   });
 }

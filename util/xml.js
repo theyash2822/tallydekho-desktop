@@ -810,11 +810,13 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
   const sendProgress = createTallySyncProgressSender(windowContent);
   const sendMessage = tallySyncMessageSender(windowContent);
 
-  // Option B: ensure TDL on disk; if not live-loaded, restart Tally with /TDL (no manual F1)
+  // Option B: ensure TDL on disk; if not live-loaded, restart Tally with /TDL+/LOAD (no manual F1)
   try {
     const companyName = companies[0]?.name || "";
+    const companyNumber = companies[0]?.companyNumber ?? null;
     const tdlResult = await ensureBillOutstandingTdl({
       companyName,
+      companyNumber,
       allowRestart: true,
     });
     info("[tdl] ensureBillOutstandingTdl", {
@@ -822,6 +824,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
       liveLoaded: tdlResult?.liveLoaded,
       billRows: tdlResult?.liveBillRows,
       activated: !!tdlResult?.activateResult?.status,
+      activateArgs: tdlResult?.activateResult?.args || null,
       message: tdlResult?.message,
     });
   } catch (e) {

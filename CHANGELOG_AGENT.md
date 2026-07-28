@@ -4,6 +4,14 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-07-28 — Settings: Bill Outstanding TDL health (path-aware, not silent)
+**Files:** `util/ensureBillOutstandingTdl.js`, `util/ipcRegistry.js`, `preload.js`, `main.js`, `util/xml.js`, `renderer/app/views/settings/Settings.jsx`, `IPC_MAP.md`
+**Behavior:** Detects Tally folder (saved → registry → process → common paths). Settings → Tally Connection shows TDL status + Check / Select folder / Retry. Auto-copy + ini link; guides user when auto fails (no silent fail). Path persisted in store.
+**Test:** Settings → see TDL section; if Needs setup → Select Tally folder → Retry → Ready. Restart Tally after link. Sync still uses ensure on start.
+**Risks:** Writing under Program Files may need Admin; user must pick correct folder if auto-detect fails.
+
+---
+
 ## 2026-07-27 — Hard sync passes isHardSync to init-sync (rebuild)
 **Files:** `util/xml.js`
 **Behavior:** `initSync(companies, isHardSync)` sends `isHardSync` to `POST /desktop/init-sync`. Backend purges selected GUID tally data then desktop continues full fetch (existing alterIds=0 path). UI unchanged. Normal sync unchanged.
@@ -11,6 +19,8 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 **Risks:** If Hard Sync fails after purge, cloud is empty until a successful sync completes — re-run Hard Sync.
 
 ---
+
+## 2026-07-16 — FETCH IsOptional on Simplified + AllVoucher
 **Files:** `xmls/SimplifiedVoucher.xml`, `xmls/AllVoucher.xml`
 **Behavior:** Collection FETCH now includes `IsOptional` so `$IsOptional` exports 1/0 correctly. Without FETCH, Simplified always sent `isOptional:0` and backend falsely ran Optional→Regular.
 **Test:** Pull desktop + restart; create optional Receipt → sync must keep Optional chip (not Regular + Orig. Optional).

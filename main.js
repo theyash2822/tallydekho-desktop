@@ -427,10 +427,10 @@ app.whenReady().then(async () => {
   store.set("forceUpdate", false);
   const response = await registerDevice();
 
-  // Option B: silent TDL install into C:\Program Files\TallyPrime (Windows only)
+  // Option B: path-aware TDL install (Windows). Status also shown in Settings → Tally Connection.
   try {
     const { ensureBillOutstandingTdl } = require("./util/ensureBillOutstandingTdl");
-    const tdlResult = ensureBillOutstandingTdl();
+    const tdlResult = await ensureBillOutstandingTdl();
     info("[tdl] boot ensureBillOutstandingTdl", tdlResult);
   } catch (e) {
     info("[tdl] boot ensure failed (non-fatal):", e?.message);

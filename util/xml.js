@@ -809,9 +809,9 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
   const sendProgress = createTallySyncProgressSender(windowContent);
   const sendMessage = tallySyncMessageSender(windowContent);
 
-  // Option B: ensure minimal Bill Outstanding TDL is listed in tally.ini (silent)
+  // Option B: ensure Bill Outstanding TDL (path-aware; Settings shows status if blocked)
   try {
-    const tdlResult = ensureBillOutstandingTdl();
+    const tdlResult = await ensureBillOutstandingTdl();
     info("[tdl] ensureBillOutstandingTdl", tdlResult);
   } catch (e) {
     info("[tdl] ensureBillOutstandingTdl threw (non-fatal):", e?.message);

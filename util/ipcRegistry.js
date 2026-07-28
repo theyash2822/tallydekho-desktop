@@ -68,6 +68,57 @@ ipcMain.handle("tally:version", async () => {
   return version.registryKey || `${version.product} ${version.displayVersion}`;
 });
 
+ipcMain.handle("tally:tdl_health", async () => {
+  try {
+    const { getTdlHealth } = require("./ensureBillOutstandingTdl");
+    return await getTdlHealth();
+  } catch (e) {
+    error(e?.message || String(e), "tally:tdl_health");
+    return {
+      status: "blocked",
+      level: "danger",
+      message: e?.message || "TDL health check failed",
+      missing: [e?.message || "unknown error"],
+    };
+  }
+});
+
+ipcMain.handle("tally:tdl_setup", async (_event, optionalDir) => {
+  try {
+    const { setupTdl } = require("./ensureBillOutstandingTdl");
+    return await setupTdl(optionalDir || null);
+  } catch (e) {
+    error(e?.message || String(e), "tally:tdl_setup");
+    return {
+      status: "blocked",
+      level: "danger",
+      message: e?.message || "TDL setup failed",
+      missing: [e?.message || "unknown error"],
+    };
+  }
+});
+
+ipcMain.handle("tally:tdl_select_path", async () => {
+  try {
+    const { dialog } = require("electron");
+    const { BrowserWindow } = require("electron");
+    const win = BrowserWindow.getFocusedWindow();
+    const result = await dialog.showOpenDialog(win, {
+      title: "Select Tally Prime folder",
+      properties: ["openDirectory"],
+    });
+    if (result.canceled || !result.filePaths?.[0]) {
+      return { status: false, cancelled: true };
+    }
+    const { setupTdl } = require("./ensureBillOutstandingTdl");
+    const health = await setupTdl(result.filePaths[0]);
+    return { status: true, health };
+  } catch (e) {
+    error(e?.message || String(e), "tally:tdl_select_path");
+    return { status: false, message: e?.message || String(e) };
+  }
+});
+
 ipcMain.handle("tally:connected", async () => {
   const status = await isTallyConnected();
 

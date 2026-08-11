@@ -32,7 +32,7 @@ Renderer (renderer/)
 
 ## Backend Connection
 - URL: `BACKEND_URL` env var or from electron-store
-- Default: `http://192.168.29.243:3001`
+- Default: `http://192.168.29.180:3001`
 - Socket.io: `util/socket.js` — connects to backend, handles sync events
 - ⚠️ IP changes on WiFi reconnect — read from store/env, never hardcode
 

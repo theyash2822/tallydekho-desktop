@@ -4,6 +4,14 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-08-11 — Backend LAN IP → 192.168.29.180
+**Files:** `.env`, `util/helper.js`, `API_USAGE.md`, `BLUEPRINT.md`, `KNOWN_ISSUES.md`
+**Behavior:** Dev backend URL updated from `192.168.29.240` / docs `243` to current Mac LAN `192.168.29.180:3001`
+**Test:** Backend ping on `.180`; old `.240` unreachable
+**Risks:** If Mac DHCP IP changes again, update `.env` / helper fallback
+
+---
+
 ## 2026-07-28 — Bill Outstanding activate: fix /TDL argv + /LOAD company
 **Files:** `util/ensureBillOutstandingTdl.js`, `util/xml.js`
 **Behavior:** Activate now uses `/TDL:TDKBillOutstanding.tdl` (no embedded quotes) via `cmd start`, plus `/LOAD:companyNumber` so probe can see BILLROW after restart. Retries live probe after activate.

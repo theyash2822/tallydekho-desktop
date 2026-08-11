@@ -4,6 +4,14 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-08-11 — Backend LAN IP → 192.168.29.240 (WiFi reassign)
+**Files:** `.env`, `util/helper.js`, docs
+**Behavior:** LAN IP moved back to `192.168.29.240:3001` after DHCP change
+**Test:** Mac en0 = 192.168.29.240; backend ping OK
+**Risks:** DHCP may change again
+
+---
+
 ## 2026-08-11 — Backend LAN IP → 192.168.29.180
 **Files:** `.env`, `util/helper.js`, `API_USAGE.md`, `BLUEPRINT.md`, `KNOWN_ISSUES.md`
 **Behavior:** Dev backend URL updated from `192.168.29.240` / docs `243` to current Mac LAN `192.168.29.180:3001`

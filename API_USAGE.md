@@ -3,7 +3,7 @@
 ## Backend Communication
 File: `util/helper.js` → `axiosInstance`
 Base URL: `BACKEND_URL` env var or electron-store `backendUrl`
-Default: `http://192.168.29.180:3001`
+Default: `http://192.168.29.240:3001`
 
 ## Tally HTTP Interface
 URL: `http://localhost:9000` (Tally Prime on same machine)

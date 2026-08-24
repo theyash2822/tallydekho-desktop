@@ -23,8 +23,9 @@
 
 ### IP Changes on WiFi Reconnect (Open)
 - Backend IP changes when Mac reconnects to WiFi
-- Current confirmed IP: 192.168.29.240 (as of Aug 11, 2026)
-- Desktop reads URL from store/env — needs manual update when IP changes
+- **Single update point:** `util/backendConfig.js` → `DEFAULT_DEV_BACKEND_URL`
+- Current confirmed IP: 192.168.29.241 (as of Aug 24, 2026)
+- Optional `.env` `BACKEND_URL` overrides backendConfig if set
 - Fix: set static DHCP on router — NOT YET DONE
 - Check current Mac IP: `ifconfig | grep "inet "`
 

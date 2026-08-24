@@ -11,16 +11,15 @@ const path = require("path");
 const { error, info } = require("./logger");
 const getDeviceProfile = require("./deviceProfile");
 const store = require("./store");
+const { DEFAULT_DEV_BACKEND_URL, PROD_BACKEND_URL } = require("./backendConfig");
 
 const execFileAsync = promisify(execFile);
 const MS_PER_DAY = 86_400_000;
 
 const isDev = !!process.env.ELECTRON_DEV;
 const baseURL = process.env.BACKEND_URL || process.env.BASE_URL ||
-  (isDev ? "http://192.168.29.240:3001" : "https://api.tallydekho.com");
-// In dev mode: reads BACKEND_URL or BASE_URL from .env (set to Mac's LAN IP)
-// In production build: uses https://api.tallydekho.com
-// Override anytime: set BACKEND_URL=http://<mac-ip>:3001 in .env
+  (isDev ? DEFAULT_DEV_BACKEND_URL : PROD_BACKEND_URL);
+// Dev default: util/backendConfig.js — override via BACKEND_URL in .env if needed
 
 const axiosInstance = axios.create({
   baseURL,

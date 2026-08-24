@@ -4,6 +4,12 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-08-24 — Backend LAN IP → 192.168.29.241 + single config file
+
+**Behavior:** LAN IP moved to `192.168.29.241:3001`; dev URL centralized in `util/backendConfig.js`
+**Test:** Mac en0 = 192.168.29.241; backend health 200
+**One-go IP updates:** edit `DEFAULT_DEV_BACKEND_URL` in `util/backendConfig.js` only
+
 ## 2026-08-11 — Backend LAN IP → 192.168.29.240 (WiFi reassign)
 **Files:** `.env`, `util/helper.js`, docs
 **Behavior:** LAN IP moved back to `192.168.29.240:3001` after DHCP change

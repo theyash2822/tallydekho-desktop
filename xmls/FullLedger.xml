@@ -23,7 +23,7 @@
                         <SCROLLED>Vertical</SCROLLED>
                     </PART>
                     <LINE NAME='MyLine01'>
-                        <FIELDS>Fld01,Fld02,Fld03,Fld04,Fld05,Fld06,Fld07,Fld08,Fld09,Fld10,Fld11,Fld12,Fld13,Fld14,Fld15,Fld16,Fld17,Fld18,Fld19,Fld20,Fld21,Fld22,Fld23,Fld24,Fld25</FIELDS>
+                        <FIELDS>Fld01,Fld02,Fld03,Fld04,Fld05,Fld06,Fld07,Fld08,Fld09,Fld10,Fld11,Fld12,Fld13,Fld14,Fld15,Fld16,Fld17,Fld18,Fld19,Fld20,Fld21,Fld22,Fld23,Fld24,Fld25,Fld26,Fld27</FIELDS>
                     </LINE>
                     <FIELD NAME='Fld01'><SET>$Guid</SET><XMLTAG>Guid</XMLTAG></FIELD>
                     <FIELD NAME='Fld02'><SET>if $$IsEmpty:$AlterId then '0' else $$String:$AlterId</SET><XMLTAG>AlterId</XMLTAG></FIELD>
@@ -46,10 +46,12 @@
                     <FIELD NAME='Fld19'><SET>$ContactPerson</SET><XMLTAG>ContactPerson</XMLTAG></FIELD>
                     <FIELD NAME='Fld20'><SET>$BankAccountDetails[1].BankName</SET><XMLTAG>BankName</XMLTAG></FIELD>
                     <FIELD NAME='Fld21'><SET>$BankAccountDetails[1].AccountNumber</SET><XMLTAG>BankAccountNo</XMLTAG></FIELD>
-                    <FIELD NAME='Fld22'><SET>$BankAccountDetails[1].IFSCCode</SET><XMLTAG>IFSC</XMLTAG></FIELD>
+                    <FIELD NAME='Fld22'><SET>if Not $$IsEmpty:$BankAccountDetails[1].IFSCCode then $BankAccountDetails[1].IFSCCode else $IFSCode</SET><XMLTAG>IFSC</XMLTAG></FIELD>
                     <FIELD NAME='Fld23'><SET>if ($$IsEqual:$GstApplicable:($$SysName:Applicable) AND NOT $$IsEmpty:$GSTDetails[Last].Hsncode) then $GSTDetails[Last].Hsncode else ''</SET><XMLTAG>HSN</XMLTAG></FIELD>
                     <FIELD NAME='Fld24'><SET>$TDSNatureOfPayment</SET><XMLTAG>TDSNature</XMLTAG></FIELD>
                     <FIELD NAME='Fld25'><SET>$CurrencyName</SET><XMLTAG>Currency</XMLTAG></FIELD>
+                    <FIELD NAME='Fld26'><SET>if Not $$IsEmpty:$BankBranchName then $BankBranchName else ''</SET><XMLTAG>BankBranch</XMLTAG></FIELD>
+                    <FIELD NAME='Fld27'><SET>if Not $$IsEmpty:$BankAccHolderName then $BankAccHolderName else ''</SET><XMLTAG>BankHolder</XMLTAG></FIELD>
                     <FIELD NAME='FldBlank'><SET>''</SET></FIELD>
                     <COLLECTION NAME='MyCollection'>
                         <TYPE>Ledger</TYPE>

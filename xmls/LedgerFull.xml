@@ -35,12 +35,13 @@
                         <Compute>ALIAS:$OnlyAlias</Compute>
                         <Compute>ISREVENUE:$ISREVENUE</Compute>
                         <Compute>ISDEEMEDPOSITIVE:if $IsDeemedPositive then 1 else 0</Compute>
-                        <Compute>BANKACCOUNTHOLDER:if Not $$IsEmpty:$BankAccHolderName then $BankAccHolderName else "" </Compute>
-                        <Compute>BANKACCOUNTNUMBER:if Not $$IsEmpty:$BankDetails then $BankDetails else ""</Compute>
-                        <Compute>BANKIFSC:$IFSCode</Compute>
+                        <Compute>BANKACCOUNTHOLDER:if Not $$IsEmpty:$BankAccHolderName then $BankAccHolderName else ""</Compute>
+                        <!-- Prefer BankAccountDetails (matches TallyPrime ledger Bank A/c No / IFSC); fall back to legacy fields -->
+                        <Compute>BANKACCOUNTNUMBER:if Not $$IsEmpty:$BankAccountDetails[1].AccountNumber then $BankAccountDetails[1].AccountNumber else (if Not $$IsEmpty:$BankDetails then $BankDetails else "")</Compute>
+                        <Compute>BANKIFSC:if Not $$IsEmpty:$BankAccountDetails[1].IFSCCode then $BankAccountDetails[1].IFSCCode else $IFSCode</Compute>
                         <Compute>BANKSWIFT:$BANKSWIFT</Compute>
                         <Compute>BANKBRANCH:if Not $$IsEmpty:$BankBranchName then $BankBranchName else ''</Compute>
-                        <Compute>BANKNAME:if Not $$IsEmpty:$MAILINGNAME then $MAILINGNAME else ''</Compute>
+                        <Compute>BANKNAME:if Not $$IsEmpty:$BankAccountDetails[1].BankName then $BankAccountDetails[1].BankName else (if Not $$IsEmpty:$BankName then $BankName else "")</Compute>
                         <Compute>DESCRIPTION:$Description</Compute>
                     </COLLECTION>
                 </TDLMESSAGE>

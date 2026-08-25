@@ -4,6 +4,15 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-08-25 — Export bank A/c + IFSC from Tally ledger master
+
+**Files:** `xmls/LedgerFull.xml`, `xmls/FullLedger.xml`
+**Behavior:** Prefer `$BankAccountDetails[1].AccountNumber` / `IFSCCode` / `BankName` (matches TallyPrime Bank Account Details); FullLedger also exports BankBranch + BankHolder
+**Test:** After deploy, run ledger sync; bank ledgers should carry A/c + IFSC into backend
+**Risks:** Older Tally builds without BankAccountDetails fall back to `$BankDetails` / `$IFSCode`
+
+---
+
 ## 2026-08-24 — Backend LAN IP → 192.168.29.241 + single config file
 
 **Behavior:** LAN IP moved to `192.168.29.241:3001`; dev URL centralized in `util/backendConfig.js`

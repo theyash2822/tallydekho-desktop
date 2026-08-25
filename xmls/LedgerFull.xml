@@ -42,6 +42,7 @@
                         <Compute>BANKSWIFT:$BANKSWIFT</Compute>
                         <Compute>BANKBRANCH:if Not $$IsEmpty:$BankBranchName then $BankBranchName else ''</Compute>
                         <Compute>BANKNAME:if Not $$IsEmpty:$BankAccountDetails[1].BankName then $BankAccountDetails[1].BankName else (if Not $$IsEmpty:$BankName then $BankName else "")</Compute>
+                        <Compute>CREDITLIMIT:if $$IsEmpty:$CreditLimit then 0 else $$NumValue:$CreditLimit</Compute>
                         <Compute>DESCRIPTION:$Description</Compute>
                     </COLLECTION>
                 </TDLMESSAGE>

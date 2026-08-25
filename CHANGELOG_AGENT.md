@@ -4,6 +4,15 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-08-25 — Export CREDITLIMIT for OD / loan facilities
+
+**Files:** `xmls/LedgerFull.xml`
+**Behavior:** Adds `CREDITLIMIT` compute from `$CreditLimit` for backend `ledgers.credit_limit` ingest
+**Test:** Sync after pull; OD ledgers with Tally credit limit should populate DB
+**Risks:** Zero when Tally credit limit empty
+
+---
+
 ## 2026-08-25 — Export bank A/c + IFSC from Tally ledger master
 
 **Files:** `xmls/LedgerFull.xml`, `xmls/FullLedger.xml`

@@ -4,6 +4,17 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-09-12 — Reset Workspace for New Tally + mismatch Owner options
+
+**Branch:** `workspace-introduce-on-12-9-2026`
+**Files:** Devices.jsx, Dashboard.jsx, ResetWorkspaceModal.jsx, LineageMismatchCard.jsx, App.jsx, socket.js, ipcRegistry.js, preload.js
+**Behavior:** Workspace screen always shows Connected Workspace. Paired: Restore Existing Workspace, Reset Workspace for New Tally (type RESET WORKSPACE), Unpair. Unpaired: Restore. TALLY_DATA_MISMATCH shows Restore vs Reset (or GUID Hard Sync). Reset/Close from backend unpairs this Desktop; local Tally files stay.
+**Test:** Workspace tab; mismatch banner; type RESET WORKSPACE.
+**Risks:** Reset still needs Owner Web confirm + 24h grace. Only Owner-paired Desktop can start it.
+
+---
+
+
 ## 2026-09-12 — Writeback pulls by workspace, not companyGuid
 
 **Branch:** `workspace-introduce-on-12-9-2026` (not `cursor`; local `cursor` is behind this branch)

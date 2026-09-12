@@ -606,6 +606,28 @@ ipcMain.handle("tally:hard_sync_status", async (_e, requestId) => {
   return response.data;
 });
 
+ipcMain.handle("tally:reset_request", async () => {
+  try {
+    const response = await axiosInstance.post("/desktop/workspace/reset/request", {});
+    return response.data;
+  } catch (err) {
+    return {
+      status: false,
+      code: err?.response?.data?.code,
+      message: err?.response?.data?.message || err.message,
+    };
+  }
+});
+
+ipcMain.handle("tally:reset_status", async () => {
+  try {
+    const response = await axiosInstance.get("/desktop/workspace/reset/status");
+    return response.data;
+  } catch (err) {
+    return { status: false, message: err?.response?.data?.message || err.message };
+  }
+});
+
 ipcMain.handle("tally:backup_list", async () => {
   const response = await axiosInstance.get("/desktop/backup/list");
   return response.data;

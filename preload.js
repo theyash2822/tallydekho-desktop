@@ -58,6 +58,8 @@ contextBridge.exposeInMainWorld("tally", {
   restoreRequest: () => ipcRenderer.invoke("tally:restore_request"),
   restoreStatus: () => ipcRenderer.invoke("tally:restore_status"),
   restoreCloud: () => ipcRenderer.invoke("tally:restore_cloud"),
+  resetRequest: () => ipcRenderer.invoke("tally:reset_request"),
+  resetStatus: () => ipcRenderer.invoke("tally:reset_status"),
 });
 
 contextBridge.exposeInMainWorld("backup", {

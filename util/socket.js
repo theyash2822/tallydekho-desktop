@@ -141,6 +141,12 @@ module.exports = (window, socket) => {
   socket.on("restore_approved", (payload) => {
     window?.webContents?.send("window:listener", { key: "restoreApproved", value: payload });
   });
+  socket.on("workspace_reset", (payload) => {
+    window?.webContents?.send("window:listener", { key: "workspaceReset", value: payload || true });
+  });
+  socket.on("workspace_closed", (payload) => {
+    window?.webContents?.send("window:listener", { key: "bindingRevoked", value: payload || { reason: "WORKSPACE_CLOSED" } });
+  });
   socket.on("binding_revoked", (payload) => {
     window?.webContents?.send("window:listener", { key: "bindingRevoked", value: payload || true });
   });

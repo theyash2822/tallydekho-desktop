@@ -50,6 +50,7 @@ export default function App() {
     restoreProgress: 0,
     lineageMismatch: null,
     tallyCompanies: [],
+    resetWaitMessage: "",
     appVersion: "1.0.0",
     pairingState: "hidden",
     pairingCode: null,
@@ -273,7 +274,7 @@ export default function App() {
               value.reason === "guid_replacement_candidate"
                 ? "Company GUID changed. Owner/Admin must approve a GUID Replacement Hard Sync."
                 : value.message ||
-                  "This Tally data does not match the workspace. Restore the workspace backup or reset from Web.",
+                  "This Tally data does not match the workspace. Use Restore Existing Workspace, or Reset Workspace for New Tally.",
             sendLogs: false,
           });
         } else if (value.code != "manually_stopped" && value.message) {
@@ -321,6 +322,12 @@ export default function App() {
         return;
       } else if (key == "restoreApproved") {
         updateState("restoreApproved", value);
+        return;
+      } else if (key == "workspaceReset") {
+        updateState("resetWaitMessage", "Workspace was reset. Pair again after new Tally setup, or restore a backup.");
+        updateState("pairedDevice", null);
+        updateState("workspace", null);
+        openAlertModal("Workspace was reset. This Desktop is unpaired. Local Tally files were not deleted.");
         return;
       }
       updateState(key, value);

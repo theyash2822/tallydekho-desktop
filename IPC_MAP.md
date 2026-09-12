@@ -48,6 +48,8 @@ Defined in `preload.js`.
 | tally.restoreRequest() | tally:restore_request | New-PC restore code |
 | tally.restoreStatus() | tally:restore_status | Poll restore approval |
 | tally.restoreCloud() | tally:restore_cloud | Download + verify + restore |
+| tally.resetRequest() | tally:reset_request | Start Owner Reset for New Tally |
+| tally.resetStatus() | tally:reset_status | Poll pending reset |
 
 ## window.backup.* (Backup)
 | Renderer Call | IPC Channel | Notes |

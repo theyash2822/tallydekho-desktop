@@ -6,11 +6,14 @@ import HeaderBar from "./HeaderBar";
 import Companies from "./Companies";
 import { TallyContext } from "../../utils/TallyContext.js";
 import { HardSyncModal } from "../components/HardSyncModal.jsx";
+import LineageMismatchCard from "../components/LineageMismatchCard.jsx";
+import { ResetWorkspaceModal } from "../components/ResetWorkspaceModal.jsx";
 
 export default function Dashboard({ hardSync }) {
   const {
     updateTallyStatus,
     updateState,
+    openAlertModal,
     state: {
       isTallyOnline,
       isSyncing,
@@ -20,10 +23,12 @@ export default function Dashboard({ hardSync }) {
       syncMode,
       syncMessage,
       hardSyncWaitMessage,
+      lineageMismatch,
     },
   } = useContext(TallyContext);
 
   const [isHardSyncModalOpen, setIsHardSyncModalOpen] = useState(false);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
 
   const onManualSync = async (companies) => {
     const syncStatus = isSyncing;
@@ -73,6 +78,34 @@ export default function Dashboard({ hardSync }) {
     setIsHardSyncModalOpen(false);
   };
 
+  const startRestore = async () => {
+    const res = await window.tally.restoreRequest();
+    if (res?.status && res.data?.code) {
+      updateState("restoreCode", res.data.code);
+      openAlertModal(
+        `Restore code: ${res.data.code}. Owner/Admin must approve a backup on Web or Mobile.`
+      );
+    } else {
+      openAlertModal(res?.message || "Could not start restore request");
+    }
+  };
+
+  const requestReset = async () => {
+    setIsResetModalOpen(false);
+    const res = await window.tally.resetRequest();
+    if (res?.status) {
+      updateState(
+        "resetWaitMessage",
+        "Reset requested. Confirm on Web → Settings, then wait 24 hours. This Desktop will unpair when reset completes."
+      );
+      openAlertModal(
+        "Reset requested. Owner must confirm on Web (phrase RESET WORKSPACE). Local Tally files are not deleted."
+      );
+    } else {
+      openAlertModal(res?.message || "Could not request reset. Only the Workspace Owner can start Reset from this Desktop.");
+    }
+  };
+
   const disableSyncButton = useMemo(() => {
     return ["Uploading Data", "Processing Data"].includes(syncMessage);
   }, [syncMessage]);
@@ -80,6 +113,12 @@ export default function Dashboard({ hardSync }) {
   return (
     <div className="space-y-3">
       <HeaderBar />
+      <LineageMismatchCard
+        mismatch={lineageMismatch}
+        onRestore={startRestore}
+        onReset={() => setIsResetModalOpen(true)}
+        onHardSync={onHardSync}
+      />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <PairingPanel />
         <Card title="Sync Progress">
@@ -116,6 +155,12 @@ export default function Dashboard({ hardSync }) {
         <HardSyncModal
           onClose={closeHardSyncModal}
           onConfirm={confirmHardSyncModal}
+        />
+      )}
+      {isResetModalOpen && (
+        <ResetWorkspaceModal
+          onClose={() => setIsResetModalOpen(false)}
+          onConfirm={requestReset}
         />
       )}
     </div>

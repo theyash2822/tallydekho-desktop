@@ -260,6 +260,7 @@ async function startBackup(windowContent) {
       companyManifest: companies.map((c) => ({
         guid: c.guid || c.id,
         name: c.name,
+        folder: c.path ? path.basename(c.path) : null,
         companyNumber: c.companyNumber || null,
       })),
       methods: native.ok ? ["tally-native", "folder-zip"] : ["folder-zip"],

@@ -4,7 +4,17 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
-## 2026-09-12 — Reset Workspace for New Tally + mismatch Owner options
+## 2026-09-12 — Restore reports on-disk folders, not GUID echo
+
+**Branch:** `workspace-introduce-on-12-9-2026`
+**Files:** restoreBackup.js, saveBackup.js
+**Behavior:** After unzip, Desktop lists copied company folders and sends `restoredFolders` on complete. New backups include `folder` basename in the manifest. Backend rejects restore if folders do not overlap the approved backup.
+**Test:** Rebuild Desktop; restore a new Backup Now; wrong folder names must 409.
+**Risks:** Old backups without `folder` match on company name vs folder basename.
+
+---
+
+
 
 **Branch:** `workspace-introduce-on-12-9-2026`
 **Files:** Devices.jsx, Dashboard.jsx, ResetWorkspaceModal.jsx, LineageMismatchCard.jsx, App.jsx, socket.js, ipcRegistry.js, preload.js

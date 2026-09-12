@@ -135,6 +135,18 @@ async function rimrafSafe(p) {
   } catch {}
 }
 
+async function listCopiedCompanyFolders(copyFrom) {
+  try {
+    const entries = await fsp.readdir(copyFrom, { withFileTypes: true });
+    const skip = new Set(["tally-native", "TallyDekho-TBK", "__MACOSX", "company-folders"]);
+    return entries
+      .filter((ent) => ent.isDirectory() && !skip.has(ent.name))
+      .map((ent) => ent.name);
+  } catch {
+    return [];
+  }
+}
+
 async function restoreBackup(windowContent, zipPath) {
   const newActivity = store.get("backupAndRestoreActivity") || [];
   const isRestoring = store.get("isRestoring");
@@ -209,6 +221,7 @@ async function restoreBackup(windowContent, zipPath) {
     const stagedCompanies = path.join(unzipDir, "company-folders");
     const copyFrom = fs.existsSync(stagedCompanies) ? stagedCompanies : unzipDir;
     await copyWithProgress(copyFrom, dest, sendProgress);
+    const restoredFolders = await listCopiedCompanyFolders(copyFrom);
 
     const nativeDir = path.join(unzipDir, "tally-native");
     if (fs.existsSync(nativeDir)) {
@@ -217,7 +230,7 @@ async function restoreBackup(windowContent, zipPath) {
 
     status = true;
 
-    return { status: true, message: null };
+    return { status: true, message: null, restoredFolders };
   } catch (err) {
     status = false;
     info(`[restore error message:  ${err.message}]`);
@@ -305,10 +318,21 @@ async function startCloudRestore(windowContent) {
   }
 
   sendProgress(96, "Validating Tally");
-  const lineageGuids = (data.backup.manifest || []).map((c) => c.guid || c.tally_company_guid).filter(Boolean);
+  const restoredFolders = restored.restoredFolders || [];
+  const folderSet = new Set(restoredFolders.map((f) => String(f).trim().toLowerCase()));
+  const lineageGuids = (data.backup.manifest || [])
+    .filter((c) => {
+      const name = String(c.name || c.company_name || "").trim().toLowerCase();
+      const folder = String(c.folder || c.folder_name || "").trim().toLowerCase();
+      if (!name && !folder) return true;
+      return (name && folderSet.has(name)) || (folder && folderSet.has(folder));
+    })
+    .map((c) => c.guid || c.tally_company_guid)
+    .filter(Boolean);
   const done = await axiosInstance.post("/desktop/restore/complete", {
     ok: true,
     lineageGuids,
+    restoredFolders,
   });
   if (done.data?.data?.deviceSecret) {
     saveDeviceSecret(done.data.data.deviceSecret);

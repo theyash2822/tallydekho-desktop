@@ -224,6 +224,34 @@ const registerTallySync = (windowContent) => {
         } catch (_) { /* non-critical — never block sync due to this check */ }
       }
 
+      if (isHardSync) {
+        try {
+          const reqRes = await axiosInstance.post("/desktop/hard-sync/request", {
+            operation: "REBUILD",
+            companies: (companies || []).map((c) => ({ guid: c.guid || c.id, name: c.name })),
+          });
+          const hs = reqRes.data?.data;
+          if (!reqRes.data?.status) {
+            return { status: false, code: reqRes.data?.code, message: reqRes.data?.message };
+          }
+          if (hs.requestStatus === "PENDING") {
+            return {
+              status: false,
+              code: "HARD_SYNC_APPROVAL_REQUIRED",
+              message: "Waiting for Owner/Admin approval",
+              data: { requestId: hs.requestId },
+            };
+          }
+        } catch (err) {
+          const body = err?.response?.data;
+          return {
+            status: false,
+            code: body?.code || "HARD_SYNC_APPROVAL_REQUIRED",
+            message: body?.message || err.message,
+          };
+        }
+      }
+
       store.set("isSyncing", true);
       store.set("syncMode", isHardSync ? "hard" : "normal");
 
@@ -560,6 +588,16 @@ ipcMain.handle("api:user_profile", async () => {
     error(err?.message, "api:user_profile");
     return { status: false };
   }
+});
+
+ipcMain.handle("tally:hard_sync_status", async (_e, requestId) => {
+  const response = await axiosInstance.get("/desktop/hard-sync/status", { params: { requestId } });
+  return response.data;
+});
+
+ipcMain.handle("tally:backup_list", async () => {
+  const response = await axiosInstance.get("/desktop/backup/list");
+  return response.data;
 });
 
 ipcMain.handle("api:send_logs", async () => {

@@ -4,6 +4,15 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-09-12 — Workspace binding + cloud backup/restore
+
+**Files:** deviceCredential.js, workspaceCloud.js, saveBackup.js, restoreBackup.js, helper.js, socket.js, ipcRegistry.js, preload.js, Devices.jsx, BackupRestore.jsx, PairingPanel.jsx, Dashboard.jsx, App.jsx, Sidebar.jsx, IPC_MAP.md
+**Behavior:** Device secret in OS secure storage; Connected Workspace UI; Hard Sync waits for Owner/Admin when multi-member; cloud backup upload (no machine-ID zip password); restore request/code on unpaired desktop; progress stages fixed (0–100). Tally XML/TDL unchanged.
+**Test:** Pair from Web; Run Backup Now; restore code on a second desktop; Hard Sync still auto-runs for single-user workspaces.
+**Risks:** Cloud list empty until backend is updated and a backup completes. S3 optional (`AWS_S3_BACKUP_BUCKET`); local object store used otherwise.
+
+---
+
 ## 2026-08-25 — Export CREDITLIMIT for OD / loan facilities
 
 **Files:** `xmls/LedgerFull.xml`

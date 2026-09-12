@@ -9,7 +9,8 @@ const fsp = require("fs/promises");
 const store = require("./store");
 const getDeviceProfile = require("./deviceProfile");
 const { info } = require("./logger");
-const { prettyBytes } = require("./helper");
+const { prettyBytes, axiosInstance } = require("./helper");
+const { sha256File, uploadFile } = require("./workspaceCloud");
 
 const sevenZipPath = path7za.replace("app.asar", "app.asar.unpacked");
 const final7z = sevenZipPath.includes("app.asar.unpacked")
@@ -17,10 +18,11 @@ const final7z = sevenZipPath.includes("app.asar.unpacked")
   : path7za;
 
 function createTallyBackupProgressSender(webContents) {
-  return (percent) => {
+  return (percent, stage) => {
     if (!webContents?.isDestroyed?.()) {
       webContents.send("tally:backup_progress", {
-        percent: Math.max(100, Math.max(0, Math.round(percent))),
+        percent: Math.min(100, Math.max(0, Math.round(percent))),
+        stage: stage || null,
       });
     }
   };
@@ -145,7 +147,7 @@ async function uploadZipWithProgress({ zipPath, uploadUrl, fields }, send) {
 async function startBackup(windowContent) {
   const companies = store.get("selectedCompanies");
   const backupFolder = store.get("backup.dir");
-  const newActivity = store.get("backupAndRestoreActivity");
+  const newActivity = store.get("backupAndRestoreActivity") || [];
 
   const deviceProfile = getDeviceProfile();
 
@@ -189,44 +191,77 @@ async function startBackup(windowContent) {
   const sendProgress = createTallyBackupProgressSender(windowContent);
   const zipPath = path.join(backupFolder, `tallydekho-backup-${date}.zip`);
 
+  if (store.get("isSyncing")) {
+    store.set("isBackingUp", false);
+    windowContent.send("window:listener", { key: "isBackingUp", value: false });
+    return { status: false, data: null, message: "Cannot backup while sync is running" };
+  }
+
   let status;
 
   try {
-    sendProgress(0);
+    sendProgress(5, "Preparing");
 
     await ensureDir(backupFolder);
 
+    sendProgress(10, "Backing up");
     await createZip({
       folderPaths: companies.map((company) => company.path),
       outZipPath: zipPath,
-      password: deviceProfile.uniqueid,
-      encryption: "zipcrypto",
+      password: null,
+      encryption: null,
       preserveFolderNames: true,
-      onProgress: (p) => sendProgress(Math.min(70, Math.round(p * 0.7))),
+      onProgress: (p) => sendProgress(10 + Math.min(50, Math.round(p * 0.5)), "Backing up"),
     });
 
     const stat = await fsp.stat(zipPath);
     const size = prettyBytes(stat.size);
+    const sha256 = await sha256File(zipPath);
 
-    sendProgress(100);
-
-    const newBackups = store.get("backups");
-    newBackups.unshift({
-      date: new Date(),
-      size,
-      path: zipPath,
+    sendProgress(65, "Uploading");
+    const sessionRes = await axiosInstance.post("/desktop/backup/sessions", {
+      sizeBytes: stat.size,
+      sha256,
+      desktopVersion: deviceProfile.app?.version,
+      tallyVersion: store.get("tallyVersion") || null,
+      companyManifest: companies.map((c) => ({ guid: c.guid || c.id, name: c.name })),
     });
+    const session = sessionRes.data?.data;
+    if (!sessionRes.data?.status || !session?.upload?.url) {
+      throw new Error(sessionRes.data?.message || "Backup upload was not authorized");
+    }
 
-    store.set("backups", newBackups);
+    await uploadFile(
+      session.upload.url,
+      zipPath,
+      session.upload.headers || {},
+      (pct) => sendProgress(65 + Math.round((pct || 0) * 25), "Uploading")
+    );
 
+    sendProgress(92, "Verifying");
+    const completeRes = await axiosInstance.post(
+      `/desktop/backup/sessions/${session.backupId}/complete`,
+      { sizeBytes: stat.size, sha256 }
+    );
+    if (!completeRes.data?.status) {
+      throw new Error(completeRes.data?.message || "Backup verify failed");
+    }
+
+    await fsp.unlink(zipPath).catch(() => {});
+
+    sendProgress(100, "Available");
+
+    const listRes = await axiosInstance.get("/desktop/backup/list").catch(() => null);
+    const cloudBackups = listRes?.data?.data || [];
+    store.set("cloudBackups", cloudBackups);
     windowContent.send("window:listener", {
-      key: "backups",
-      value: newBackups,
+      key: "cloudBackups",
+      value: cloudBackups,
     });
 
     status = true;
 
-    return { status: true, data: zipPath, message: null };
+    return { status: true, data: session.backupId, message: null, size };
   } catch (err) {
     status = false;
     info(`[backup error message:  ${err.message}]`);

@@ -11,6 +11,7 @@ const path = require("path");
 const { error, info } = require("./logger");
 const getDeviceProfile = require("./deviceProfile");
 const store = require("./store");
+const { saveDeviceSecret, getDeviceSecret } = require("./deviceCredential");
 const { DEFAULT_DEV_BACKEND_URL, PROD_BACKEND_URL } = require("./backendConfig");
 
 const execFileAsync = promisify(execFile);
@@ -32,6 +33,15 @@ const axiosInstance = axios.create({
   httpAgent: new http.Agent({ keepAlive: true, maxSockets: 50 }),
   httpsAgent: new https.Agent({ keepAlive: true, maxSockets: 50 }),
   transitional: { clarifyTimeoutError: true },
+});
+
+axiosInstance.interceptors.request.use((cfg) => {
+  const secret = getDeviceSecret();
+  if (secret) {
+    cfg.headers = cfg.headers || {};
+    cfg.headers["x-device-secret"] = secret;
+  }
+  return cfg;
 });
 
 // axiosInstance.interceptors.request.use((cfg) => {
@@ -203,6 +213,12 @@ async function registerDevice() {
     if (response.data?.pairingCode) {
       store.set('pairingCode', response.data.pairingCode);
     }
+    if (response.data?.deviceSecret) {
+      saveDeviceSecret(response.data.deviceSecret);
+    }
+    if (response.data?.workspace) {
+      store.set("workspace", response.data.workspace);
+    }
 
     // Handle version compatibility levels returned by backend
     const { versionLevel, versionMessage, latestVersion } = response.data || {};
@@ -347,4 +363,6 @@ module.exports = {
   pollJobStatus,
   checkForUpdates,
   assetPath,
+  getDeviceSecret,
+  saveDeviceSecret,
 };

@@ -53,6 +53,11 @@ contextBridge.exposeInMainWorld("tally", {
     return () => ipcRenderer.removeListener("tally:restore_progress", handler);
   },
   saveAutoBackup: (args) => ipcRenderer.invoke("tally:save_auto_backup", args),
+  hardSyncStatus: (requestId) => ipcRenderer.invoke("tally:hard_sync_status", requestId),
+  backupList: () => ipcRenderer.invoke("tally:backup_list"),
+  restoreRequest: () => ipcRenderer.invoke("tally:restore_request"),
+  restoreStatus: () => ipcRenderer.invoke("tally:restore_status"),
+  restoreCloud: () => ipcRenderer.invoke("tally:restore_cloud"),
 });
 
 contextBridge.exposeInMainWorld("backup", {

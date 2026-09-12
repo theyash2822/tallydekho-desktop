@@ -100,6 +100,9 @@ module.exports = (window, socket) => {
       window.webContents.send("window:listener", { key: "unpairedAlert", value: true });
     }
     store.set("isSyncing", false);
+    const { clearDeviceSecret } = require("./deviceCredential");
+    clearDeviceSecret();
+    store.delete("workspace");
   });
 
   // tally:write - receive XML from backend and forward to Tally HTTP port
@@ -107,8 +110,12 @@ module.exports = (window, socket) => {
   // Desktop POSTs to Tally and acks back with result
   // pairing_confirmed - mobile paired with this desktop, refresh pairedDevice state
   socket.on("pairing_confirmed", async (payload) => {
-    info("[socket] pairing_confirmed", payload);
+    info("[socket] pairing_confirmed");
     try {
+      const { axiosInstance } = require("./helper");
+      const { saveDeviceSecret } = require("./deviceCredential");
+      if (payload?.deviceSecret) saveDeviceSecret(payload.deviceSecret);
+      await axiosInstance.post("/desktop/claim-credential").catch(() => {});
       const pairedDevice = await axiosInstance.get("/desktop/pairing-device");
       const device = pairedDevice.data?.data?.pairing;
       if (device) {
@@ -119,7 +126,20 @@ module.exports = (window, socket) => {
           mobile: device.MOBILE || '',
         }});
       }
+      if (payload?.workspace) {
+        window.webContents.send("window:listener", { key: "workspace", value: payload.workspace });
+      }
     } catch (e) { error(e?.message, "pairing_confirmed"); }
+  });
+
+  socket.on("hard_sync_approved", (payload) => {
+    window?.webContents?.send("window:listener", { key: "hardSyncApproved", value: payload });
+  });
+  socket.on("restore_approved", (payload) => {
+    window?.webContents?.send("window:listener", { key: "restoreApproved", value: payload });
+  });
+  socket.on("binding_revoked", (payload) => {
+    window?.webContents?.send("window:listener", { key: "bindingRevoked", value: payload || true });
   });
 
   // sync:request - backend asks desktop to pull latest data (e.g. after a voucher write)
@@ -275,6 +295,6 @@ module.exports = (window, socket) => {
 
   const registerDevice = (socket) => {
     const deviceId = getDeviceProfile().deviceId;
-    socket.emit("register", { type: "desktop", deviceId });
+    socket.emit("register", { type: "desktop", deviceId, deviceSecret: require("./deviceCredential").getDeviceSecret() });
   };
 };

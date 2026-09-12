@@ -15,6 +15,9 @@ const { URL } = require("url");
 const getDeviceProfile = require("./deviceProfile");
 const store = require("./store");
 const { info } = require("./logger");
+const { axiosInstance } = require("./helper");
+const { sha256File, downloadFile } = require("./workspaceCloud");
+const { saveDeviceSecret } = require("./deviceCredential");
 
 const sevenZipPath = path7za.replace("app.asar", "app.asar.unpacked");
 const final7z = sevenZipPath.includes("app.asar.unpacked")
@@ -22,10 +25,11 @@ const final7z = sevenZipPath.includes("app.asar.unpacked")
   : path7za;
 
 function createTallyRestoreProgressSender(webContents) {
-  return (percent) => {
+  return (percent, stage) => {
     if (!webContents?.isDestroyed()) {
       webContents.send("tally:restore_progress", {
-        percent: Math.max(100, Math.max(0, Math.round(percent))),
+        percent: Math.min(100, Math.max(0, Math.round(percent))),
+        stage: stage || null,
       });
     }
   };
@@ -131,11 +135,11 @@ async function rimrafSafe(p) {
 }
 
 async function restoreBackup(windowContent, zipPath) {
-  const newActivity = store.get("backupAndRestoreActivity");
+  const newActivity = store.get("backupAndRestoreActivity") || [];
   const isRestoring = store.get("isRestoring");
 
   if (isRestoring) {
-    return;
+    return { status: false, message: "Restore already running" };
   }
 
   newActivity.unshift({
@@ -165,23 +169,43 @@ async function restoreBackup(windowContent, zipPath) {
   const unzipDir = path.join(temporaryRoot, "unzipped");
 
   const deviceProfile = getDeviceProfile();
+  const dest = store.get("destination");
 
   let status;
 
   try {
-    sendProgress(0);
+    sendProgress(5, "Verifying");
     await ensureDir(temporaryRoot);
 
-    // await downloadWithProgress(url, zipPath, sendProgress);
+    if (!zipPath || !fs.existsSync(zipPath)) {
+      throw new Error("Backup archive not found");
+    }
 
-    await unzipWithPassword(
-      zipPath,
-      unzipDir,
-      deviceProfile.uniqueid,
-      sendProgress
-    );
+    try {
+      const st = await fsp.stat(zipPath);
+      const destStat = dest && fs.existsSync(dest) ? await fsp.statfs(dest).catch(() => null) : null;
+      if (destStat && destStat.bavail * destStat.bsize < st.size + 80 * 1024 * 1024) {
+        throw new Error("Not enough free disk space to restore");
+      }
+    } catch (e) {
+      if (String(e.message).includes("Not enough")) throw e;
+    }
 
-    await copyWithProgress(unzipDir, store.get("destination"), sendProgress);
+    sendProgress(15, "Restoring");
+    try {
+      await unzipWithPassword(zipPath, unzipDir, null, sendProgress);
+    } catch (_) {
+      await unzipWithPassword(zipPath, unzipDir, deviceProfile.uniqueid, sendProgress);
+    }
+
+    if (dest && fs.existsSync(dest)) {
+      const safety = path.join(os.tmpdir(), `tallydekho-safety-${Date.now()}`);
+      await copyWithProgress(dest, safety, (p) => sendProgress(Math.min(70, p * 0.5), "Restoring"));
+    }
+
+    if (!dest) throw new Error("Tally destination is not set. Connect Tally once so the data path is known.");
+
+    await copyWithProgress(unzipDir, dest, sendProgress);
 
     status = true;
 
@@ -192,7 +216,7 @@ async function restoreBackup(windowContent, zipPath) {
     return { status: false, message: err.message };
   } finally {
     await rimrafSafe(temporaryRoot);
-    sendProgress(100);
+    sendProgress(100, status ? "Complete" : null);
 
     store.set("isRestoring", false);
     windowContent.send("window:listener", {
@@ -214,9 +238,67 @@ async function restoreBackup(windowContent, zipPath) {
   }
 }
 
+async function startCloudRestore(windowContent) {
+  const sendProgress = createTallyRestoreProgressSender(windowContent);
+  sendProgress(2, "Waiting for approval");
+  const statusRes = await axiosInstance.get("/desktop/restore/status");
+  const data = statusRes.data?.data;
+  if (!statusRes.data?.status || data?.status !== "APPROVED") {
+    return {
+      status: false,
+      code: data?.status || "RESTORE_APPROVAL_REQUIRED",
+      message: "Waiting for Owner/Admin approval",
+      data,
+    };
+  }
+  if (!data.download?.url || !data.backup?.sha256) {
+    return { status: false, code: "RESTORE_SESSION_EXPIRED", message: "Restore download is not ready" };
+  }
+
+  sendProgress(10, "Downloading");
+  const zipPath = path.join(os.tmpdir(), `tallydekho-restore-${Date.now()}.zip`);
+  await downloadFile(data.download.url, zipPath, (p) =>
+    sendProgress(10 + Math.round((p || 0) * 30), "Downloading")
+  );
+
+  sendProgress(42, "Verifying");
+  const hash = await sha256File(zipPath);
+  if (hash !== data.backup.sha256) {
+    await fsp.unlink(zipPath).catch(() => {});
+    await axiosInstance.post("/desktop/restore/complete", { ok: false }).catch(() => {});
+    return { status: false, code: "BACKUP_CHECKSUM_MISMATCH", message: "Backup checksum did not match" };
+  }
+
+  const restored = await restoreBackup(windowContent, zipPath);
+  await fsp.unlink(zipPath).catch(() => {});
+  if (!restored?.status) {
+    await axiosInstance.post("/desktop/restore/complete", { ok: false }).catch(() => {});
+    return restored;
+  }
+
+  sendProgress(96, "Validating Tally");
+  const done = await axiosInstance.post("/desktop/restore/complete", { ok: true });
+  if (done.data?.data?.deviceSecret) {
+    saveDeviceSecret(done.data.data.deviceSecret);
+  }
+  sendProgress(100, "Complete");
+  return { status: true, message: null, data: done.data?.data };
+}
+
 function registerRestoreBackup(windowContent) {
   ipcMain.handle("tally:restore_backup", async (event, args) => {
     return restoreBackup(windowContent, args);
+  });
+  ipcMain.handle("tally:restore_request", async () => {
+    const res = await axiosInstance.post("/desktop/restore/request");
+    return res.data;
+  });
+  ipcMain.handle("tally:restore_status", async () => {
+    const res = await axiosInstance.get("/desktop/restore/status");
+    return res.data;
+  });
+  ipcMain.handle("tally:restore_cloud", async () => {
+    return startCloudRestore(windowContent);
   });
 }
 

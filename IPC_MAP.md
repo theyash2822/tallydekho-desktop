@@ -43,6 +43,11 @@ Defined in `preload.js`.
 | tally.startRestore(args) | tally:restore_backup | Triggers restore |
 | tally.restoreProgress(cb) | tally:restore_progress | Restore progress events |
 | tally.saveAutoBackup(args) | tally:save_auto_backup | Auto-backup schedule |
+| tally.hardSyncStatus(id) | tally:hard_sync_status | Poll Hard Sync approval |
+| tally.backupList() | tally:backup_list | Latest 3 cloud backups |
+| tally.restoreRequest() | tally:restore_request | New-PC restore code |
+| tally.restoreStatus() | tally:restore_status | Poll restore approval |
+| tally.restoreCloud() | tally:restore_cloud | Download + verify + restore |
 
 ## window.backup.* (Backup)
 | Renderer Call | IPC Channel | Notes |

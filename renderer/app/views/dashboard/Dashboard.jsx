@@ -19,6 +19,7 @@ export default function Dashboard({ hardSync }) {
       isOnline,
       syncMode,
       syncMessage,
+      hardSyncWaitMessage,
     },
   } = useContext(TallyContext);
 
@@ -78,6 +79,9 @@ export default function Dashboard({ hardSync }) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <PairingPanel />
         <Card title="Sync Progress">
+          {hardSyncWaitMessage ? (
+            <div className="text-sm text-[#787774] mb-2">{hardSyncWaitMessage}</div>
+          ) : null}
           {isSyncing ? (
             <div className="space-y-2">
               <div className="text-xs text-[#787774]">

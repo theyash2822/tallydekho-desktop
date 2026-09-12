@@ -38,6 +38,13 @@ export default function App() {
     backupProgress: 0,
     backupAndRestoreActivity: [],
     backups: [],
+    cloudBackups: [],
+    workspace: null,
+    hardSyncRequestId: null,
+    hardSyncWaitMessage: "",
+    restoreCode: null,
+    backupStage: "",
+    restoreStage: "",
     isRestoring: false,
     restoreProgress: 0,
     appVersion: "1.0.0",
@@ -261,10 +268,15 @@ export default function App() {
         resetSyncStates(true);
         openAlertModal("Data synced successfully");
       } else if (key == "unpairedAlert" && value === true) {
-        // Remote unpair from mobile/web — stop sync, show alert
         resetSyncStates(false);
-        openAlertModal("Device unpaired from mobile or web portal. Please generate a new pairing code to reconnect.");
-        return; // don't call updateState("unpairedAlert")
+        openAlertModal("Workspace connection is no longer active.");
+        updateState("workspace", null);
+        return;
+      } else if (key == "bindingRevoked") {
+        updateState("pairedDevice", null);
+        updateState("workspace", null);
+        openAlertModal("Workspace connection is no longer active.");
+        return;
       }
       updateState(key, value);
     });
@@ -281,19 +293,44 @@ export default function App() {
 
   useEffect(() => {
     if (!window.tally) return;
-    const listener = window.tally.backupProgress(({ percent }) => {
+    const listener = window.tally.backupProgress(({ percent, stage }) => {
       updateState("backupProgress", percent);
+      if (stage) updateState("backupStage", stage);
     });
     return () => listener && listener();
   }, []);
 
   useEffect(() => {
     if (!window.tally) return;
-    const listener = window.tally.restoreProgress(({ percent }) => {
+    const listener = window.tally.restoreProgress(({ percent, stage }) => {
       updateState("restoreProgress", percent);
+      if (stage) updateState("restoreStage", stage);
     });
     return () => listener && listener();
   }, []);
+
+  useEffect(() => {
+    if (!state.hardSyncRequestId || !window.tally?.hardSyncStatus) return;
+    const t = setInterval(async () => {
+      try {
+        const r = await window.tally.hardSyncStatus(state.hardSyncRequestId);
+        const st = r?.data?.requestStatus;
+        if (st === "APPROVED") {
+          updateState("hardSyncWaitMessage", "Approved by Workspace administrator. Starting full sync...");
+          updateState("hardSyncRequestId", null);
+          await window.tally.startSync({
+            companies: selectedCompaniesRef.current,
+            isHardSync: true,
+          });
+        } else if (st === "REJECTED") {
+          updateState("hardSyncWaitMessage", "");
+          updateState("hardSyncRequestId", null);
+          openAlertModal("Hard Sync was rejected.");
+        }
+      } catch (_) {}
+    }, 4000);
+    return () => clearInterval(t);
+  }, [state.hardSyncRequestId]);
 
   const resetSyncStates = (isSuccess) => {
     if (isSuccess) {
@@ -470,12 +507,23 @@ export default function App() {
     updateState("isSyncing", true);
     updateState("syncMessage", "");
     updateState("syncMode", "hard");
-    const { status, data } = await window.tally.startSync({
+    const { status, data, code, message } = await window.tally.startSync({
       companies: selectedCompanies,
       isHardSync: true,
     });
-    if (data?.code == "tally_not_connected") {
+    if (code === "HARD_SYNC_APPROVAL_REQUIRED" || data?.code === "HARD_SYNC_APPROVAL_REQUIRED") {
+      updateState("isSyncing", false);
+      updateState("hardSyncRequestId", data?.requestId || data?.data?.requestId);
+      updateState("hardSyncWaitMessage", "Waiting for Owner/Admin approval");
+      openAlertModal("Waiting for Owner/Admin approval. Approve Hard Sync in Web → Settings → Tally Sync.");
+      return;
+    }
+    if (data?.code == "tally_not_connected" || code === "tally_not_connected") {
       updateTallyStatus();
+    }
+    if (code === "TALLY_DATA_MISMATCH") {
+      updateState("isSyncing", false);
+      openAlertModal(message || "This Tally data does not match the workspace.");
     }
     // if (status) {
     //   const date = new Date();

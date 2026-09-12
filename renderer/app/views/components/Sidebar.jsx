@@ -3,7 +3,7 @@ import React from "react";
 const NAV = [
   { id: "dashboard", label: "Dashboard" },
   { id: "backup", label: "Backup & Restore" },
-  { id: "devices", label: "Devices" },
+  { id: "devices", label: "Workspace" },
   { id: "settings", label: "Settings" },
   { id: "help", label: "Help Center" },
 ];

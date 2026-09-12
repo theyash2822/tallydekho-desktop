@@ -5,12 +5,14 @@ const { spawn } = require("child_process");
 const { path7za } = require("7zip-bin");
 const fs = require("fs");
 const fsp = require("fs/promises");
+const os = require("os");
 
 const store = require("./store");
 const getDeviceProfile = require("./deviceProfile");
 const { info } = require("./logger");
 const { prettyBytes, axiosInstance } = require("./helper");
 const { sha256File, uploadFile } = require("./workspaceCloud");
+const { runTallyNativeBackup } = require("./tallyNativeBackup");
 
 const sevenZipPath = path7za.replace("app.asar", "app.asar.unpacked");
 const final7z = sevenZipPath.includes("app.asar.unpacked")
@@ -100,6 +102,17 @@ function createZip({
     child.on("close", (code) => {
       if (code === 0 || code === 1) return resolve({ code, stdout, stderr });
       reject(new Error(`7z exit ${code}\n${stdout}\n${stderr}`));
+    });
+  });
+}
+
+function testZip(zipPath) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(final7z, ["t", zipPath, "-y"], { windowsHide: true });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) return resolve(true);
+      reject(new Error("Backup archive failed verification"));
     });
   });
 }
@@ -198,6 +211,7 @@ async function startBackup(windowContent) {
   }
 
   let status;
+  let backupId = null;
 
   try {
     sendProgress(5, "Preparing");
@@ -205,14 +219,33 @@ async function startBackup(windowContent) {
     await ensureDir(backupFolder);
 
     sendProgress(10, "Backing up");
+    const staging = path.join(os.tmpdir(), `tallydekho-backup-stage-${Date.now()}`);
+    const foldersDir = path.join(staging, "company-folders");
+    const nativeDir = path.join(staging, "tally-native");
+    await ensureDir(foldersDir);
+    for (const company of companies) {
+      if (!company.path || !fs.existsSync(company.path)) continue;
+      await fse.copy(company.path, path.join(foldersDir, path.basename(company.path)));
+    }
+    sendProgress(28, "Backing up");
+    const native = await runTallyNativeBackup(companies, nativeDir).catch((err) => {
+      info("[backup] tally-native skipped", err.message);
+      return { ok: false, results: [{ message: err.message }] };
+    });
+    sendProgress(50, "Backing up");
+    const zipSources = [foldersDir];
+    if (native.ok) zipSources.push(nativeDir);
     await createZip({
-      folderPaths: companies.map((company) => company.path),
+      folderPaths: zipSources,
       outZipPath: zipPath,
       password: null,
       encryption: null,
       preserveFolderNames: true,
-      onProgress: (p) => sendProgress(10 + Math.min(50, Math.round(p * 0.5)), "Backing up"),
+      onProgress: (p) => sendProgress(50 + Math.min(15, Math.round(p * 0.15)), "Backing up"),
     });
+    await fse.remove(staging).catch(() => {});
+
+    await testZip(zipPath);
 
     const stat = await fsp.stat(zipPath);
     const size = prettyBytes(stat.size);
@@ -224,12 +257,18 @@ async function startBackup(windowContent) {
       sha256,
       desktopVersion: deviceProfile.app?.version,
       tallyVersion: store.get("tallyVersion") || null,
-      companyManifest: companies.map((c) => ({ guid: c.guid || c.id, name: c.name })),
+      companyManifest: companies.map((c) => ({
+        guid: c.guid || c.id,
+        name: c.name,
+        companyNumber: c.companyNumber || null,
+      })),
+      methods: native.ok ? ["tally-native", "folder-zip"] : ["folder-zip"],
     });
     const session = sessionRes.data?.data;
     if (!sessionRes.data?.status || !session?.upload?.url) {
       throw new Error(sessionRes.data?.message || "Backup upload was not authorized");
     }
+    backupId = session.backupId;
 
     await uploadFile(
       session.upload.url,
@@ -265,6 +304,9 @@ async function startBackup(windowContent) {
   } catch (err) {
     status = false;
     info(`[backup error message:  ${err.message}]`);
+    if (backupId) {
+      await axiosInstance.post(`/desktop/backup/sessions/${backupId}/fail`).catch(() => {});
+    }
     return { status: false, data: null, message: err.message };
   } finally {
     store.set("isBackingUp", false);

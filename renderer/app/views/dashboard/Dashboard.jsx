@@ -41,9 +41,13 @@ export default function Dashboard({ hardSync }) {
 
       updateState("isSyncing", true);
       updateState("syncMessage", "");
-      const { status, data } = await window.tally.startSync({ companies });
-      if (data?.code == "tally_not_connected") {
+      const { status, data, code, message } = await window.tally.startSync({ companies });
+      if (data?.code == "tally_not_connected" || code === "tally_not_connected") {
         updateTallyStatus();
+      }
+      if (code === "TALLY_DATA_MISMATCH" || data?.code === "TALLY_DATA_MISMATCH") {
+        updateState("isSyncing", false);
+        updateState("lineageMismatch", data || {});
       }
       // if (status) {
       //   const date = new Date();

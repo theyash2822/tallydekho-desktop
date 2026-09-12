@@ -135,6 +135,9 @@ module.exports = (window, socket) => {
   socket.on("hard_sync_approved", (payload) => {
     window?.webContents?.send("window:listener", { key: "hardSyncApproved", value: payload });
   });
+  socket.on("hard_sync_rejected", (payload) => {
+    window?.webContents?.send("window:listener", { key: "hardSyncRejected", value: payload });
+  });
   socket.on("restore_approved", (payload) => {
     window?.webContents?.send("window:listener", { key: "restoreApproved", value: payload });
   });

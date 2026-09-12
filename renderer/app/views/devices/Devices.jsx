@@ -105,6 +105,12 @@ export default function Devices() {
                     Last cloud backup: {new Date(Number(userProfile.lastCloudBackupAt) * 1000).toLocaleString()}
                   </div>
                 )}
+                {(userProfile?.tallyCompanies || []).length > 0 && (
+                  <div className="text-xs text-[#9A9A97]">
+                    Tally Companies:{" "}
+                    {userProfile.tallyCompanies.map((c) => c.name || c.guid).join(", ")}
+                  </div>
+                )}
               </div>
               <div>
                 <div className="flex justify-end">

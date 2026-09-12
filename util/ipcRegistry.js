@@ -175,7 +175,7 @@ ipcMain.handle("tally:delete_auto_sync", async (event) => {
 const registerTallySync = (windowContent) => {
   ipcMain.handle(
     "tally:start_sync",
-    async (event, { companies, isHardSync }) => {
+    async (event, { companies, isHardSync, guidReplacement }) => {
       info("Foreground [sync]");
 
       const status = await isTallyConnected();
@@ -226,8 +226,11 @@ const registerTallySync = (windowContent) => {
 
       if (isHardSync) {
         try {
+          const replacement = guidReplacement?.operation === "GUID_REPLACEMENT";
           const reqRes = await axiosInstance.post("/desktop/hard-sync/request", {
-            operation: "REBUILD",
+            operation: replacement ? "GUID_REPLACEMENT" : "REBUILD",
+            oldGuid: guidReplacement?.oldGuid || null,
+            newGuid: guidReplacement?.newGuid || null,
             companies: (companies || []).map((c) => ({ guid: c.guid || c.id, name: c.name })),
           });
           const hs = reqRes.data?.data;
@@ -279,11 +282,19 @@ const registerTallySync = (windowContent) => {
       if (!syncStatus.status) {
         windowContent.send("window:listener", {
           key: "syncingCurrentStatus",
-          value: syncStatus.data,
+          value: {
+            ...(syncStatus.data || {}),
+            code: syncStatus.code || syncStatus.data?.code,
+            message: syncStatus.message || syncStatus.data?.message,
+          },
         });
       }
 
-      return syncStatus;
+      return {
+        ...syncStatus,
+        code: syncStatus.code || syncStatus.data?.code,
+        message: syncStatus.message || syncStatus.data?.message,
+      };
     }
   );
 };

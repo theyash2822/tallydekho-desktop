@@ -1,4 +1,4 @@
-const { ipcMain } = require("electron");
+const { ipcMain, dialog, BrowserWindow } = require("electron");
 
 const path = require("path");
 const os = require("os");
@@ -18,6 +18,7 @@ const { info } = require("./logger");
 const { axiosInstance } = require("./helper");
 const { sha256File, downloadFile } = require("./workspaceCloud");
 const { saveDeviceSecret } = require("./deviceCredential");
+const { closeTallyIfRunning } = require("./closeSoftware");
 
 const sevenZipPath = path7za.replace("app.asar", "app.asar.unpacked");
 const final7z = sevenZipPath.includes("app.asar.unpacked")
@@ -205,7 +206,14 @@ async function restoreBackup(windowContent, zipPath) {
 
     if (!dest) throw new Error("Tally destination is not set. Connect Tally once so the data path is known.");
 
-    await copyWithProgress(unzipDir, dest, sendProgress);
+    const stagedCompanies = path.join(unzipDir, "company-folders");
+    const copyFrom = fs.existsSync(stagedCompanies) ? stagedCompanies : unzipDir;
+    await copyWithProgress(copyFrom, dest, sendProgress);
+
+    const nativeDir = path.join(unzipDir, "tally-native");
+    if (fs.existsSync(nativeDir)) {
+      await copyWithProgress(nativeDir, path.join(dest, "TallyDekho-TBK"), () => {});
+    }
 
     status = true;
 
@@ -247,12 +255,32 @@ async function startCloudRestore(windowContent) {
     return {
       status: false,
       code: data?.status || "RESTORE_APPROVAL_REQUIRED",
-      message: "Waiting for Owner/Admin approval",
+      message: data?.status === "RESTORE_REJECTED"
+        ? "Restore was rejected"
+        : "Waiting for Owner/Admin approval",
       data,
     };
   }
   if (!data.download?.url || !data.backup?.sha256) {
     return { status: false, code: "RESTORE_SESSION_EXPIRED", message: "Restore download is not ready" };
+  }
+
+  sendProgress(6, "Preparing");
+  const win = BrowserWindow.fromWebContents(windowContent);
+  const picked = await dialog.showOpenDialog(win, {
+    title: "Select TallyPrime data folder",
+    message:
+      "Install and activate TallyPrime first, then choose the data folder where companies should be restored.",
+    properties: ["openDirectory", "createDirectory"],
+  });
+  if (picked.canceled || !picked.filePaths?.[0]) {
+    return { status: false, message: "Select the TallyPrime data folder to restore." };
+  }
+  store.set("destination", picked.filePaths[0]);
+
+  const closed = await closeTallyIfRunning({ forceIfNoExit: true });
+  if (closed && closed.ok === false && closed.stillRunningPids?.length) {
+    return { status: false, message: "Close Tally Prime before restoring." };
   }
 
   sendProgress(10, "Downloading");
@@ -277,7 +305,11 @@ async function startCloudRestore(windowContent) {
   }
 
   sendProgress(96, "Validating Tally");
-  const done = await axiosInstance.post("/desktop/restore/complete", { ok: true });
+  const lineageGuids = (data.backup.manifest || []).map((c) => c.guid || c.tally_company_guid).filter(Boolean);
+  const done = await axiosInstance.post("/desktop/restore/complete", {
+    ok: true,
+    lineageGuids,
+  });
   if (done.data?.data?.deviceSecret) {
     saveDeviceSecret(done.data.data.deviceSecret);
   }

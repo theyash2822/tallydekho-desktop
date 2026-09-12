@@ -298,7 +298,13 @@ const initSync = async (companies, isHardSync = false) => {
     response = response.data;
   } catch (err) {
     info("[sync] data error", err);
-    return { status: false, message: err?.response?.data?.message };
+    const body = err?.response?.data;
+    return {
+      status: false,
+      message: body?.message,
+      code: body?.code,
+      data: body?.data || body,
+    };
   }
 
   return response;
@@ -860,8 +866,11 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
   if (!syncedData.status) {
     return {
       status: false,
+      code: syncedData.code,
       data: {
         message: syncedData.message,
+        code: syncedData.code,
+        ...(syncedData.data || {}),
       },
     };
   }

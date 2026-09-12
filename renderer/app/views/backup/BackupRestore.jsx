@@ -138,7 +138,9 @@ export default function BackupRestore() {
             style={{ borderColor: "#E9E8E3" }}
           >
             <div className="font-medium mb-1">Cloud backups</div>
-            <div className="text-xs text-[#787774] mb-2">Latest 3 successful backups. Cloud is the source of truth.</div>
+            <div className="text-xs text-[#787774] mb-2">
+              Latest 3 successful backups. Each run stores a folder snapshot and, when Tally is open, a Tally-native backup. Cloud is the source of truth.
+            </div>
             {/* <div className="text-xs text-[#787774]">
               Organization: ACME Pvt. Ltd.
             </div> */}

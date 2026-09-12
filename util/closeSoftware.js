@@ -29,15 +29,13 @@ async function findPidsByImage(imageNameExe) {
     .filter((n) => Number.isInteger(n));
 }
 
-ipcMain.handle("window:closeByName", async (_e, procName, opts = {}) => {
-  const {
-    // timeoutMs = 2500,
-    forceIfNoExit = true,
-    gracefulName = procName,
-  } = opts;
-
-  const imageNameExe = normExeName(procName);
-  const gracefulNameNoExt = normExeName(gracefulName).replace(/\.exe$/i, "");
+async function closeTallyIfRunning(opts = {}) {
+  const { forceIfNoExit = true, gracefulName = "Tally.exe" } = opts;
+  if (process.platform !== "win32") {
+    return { ok: true, skipped: true };
+  }
+  const imageNameExe = normExeName(gracefulName);
+  const gracefulNameNoExt = imageNameExe.replace(/\.exe$/i, "");
 
   try {
     await run(
@@ -45,28 +43,23 @@ ipcMain.handle("window:closeByName", async (_e, procName, opts = {}) => {
         `"Get-Process -Name '${gracefulNameNoExt}' -ErrorAction SilentlyContinue ` +
         `| ForEach-Object { if ($_.MainWindowHandle -ne 0) { $_.CloseMainWindow() | Out-Null } }"`
     );
-
-    // await new Promise((r) => setTimeout(r, timeoutMs));
-
     let pids = await findPidsByImage(imageNameExe);
-
-    let killed = 0;
     if (pids.length && forceIfNoExit) {
       await run(`taskkill /IM "${imageNameExe}" /T /F`);
-      pids = await findPidsByImage(imageNameExe);
-      killed = pids.length ? 0 : 1;
     }
-
     const stillRunning = await findPidsByImage(imageNameExe);
-
     return {
-      ok: true,
+      ok: stillRunning.length === 0,
       imageName: imageNameExe,
-      forced: forceIfNoExit,
       stillRunningPids: stillRunning,
-      killedAtLeastOne: killed === 1 && stillRunning.length === 0,
     };
   } catch (error) {
     return { ok: false, error: error.message };
   }
+}
+
+ipcMain.handle("window:closeByName", async (_e, procName, opts = {}) => {
+  return closeTallyIfRunning({ ...opts, gracefulName: procName || "Tally.exe" });
 });
+
+module.exports = { closeTallyIfRunning };

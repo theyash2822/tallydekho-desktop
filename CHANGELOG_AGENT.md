@@ -4,6 +4,25 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-09-12 — Tally-native + folder backup, restore data-path picker
+
+**Files:** tallyNativeBackup.js, saveBackup.js, restoreBackup.js, BackupRestore.jsx, PairingPanel.jsx
+**Behavior:** Backup Now takes a company-folder snapshot and, when Tally is open, a Tally-native Backup Company (both in one cloud zip). Cloud restore asks for the TallyPrime data folder after the user installs/activates Tally. Native TBK files land in `TallyDekho-TBK` beside companies. S3 still later.
+**Test:** Run Backup Now with Tally open; unpaired restore pick data path.
+**Risks:** Tally-native TDL Execute may no-op on some Tally builds; folder zip still succeeds.
+
+---
+
+
+## 2026-09-12 — Forensic close of Desktop backup/restore spec gaps
+
+**Files:** xml.js, ipcRegistry.js, App.jsx, Dashboard.jsx, Devices.jsx, PairingPanel.jsx, restoreBackup.js, saveBackup.js, closeSoftware.js, socket.js
+**Behavior:** GUID Replacement Hard Sync now sends old/new GUIDs; TALLY_DATA_MISMATCH reaches the UI; Connected Workspace shows Tally companies; cloud restore closes Tally, verifies checksum, then reports backup manifest GUIDs; backup archive is tested and failed uploads mark the session failed; restore auto-starts when Web approves.
+**Test:** Restart Desktop against updated backend; pair; Backup Now; unpaired Request restore; GUID-change Hard Sync.
+**Risks:** New-PC Tally destination still must be known locally. S3 not required for local object store.
+
+---
+
 ## 2026-09-12 — Workspace binding + cloud backup/restore
 
 **Files:** deviceCredential.js, workspaceCloud.js, saveBackup.js, restoreBackup.js, helper.js, socket.js, ipcRegistry.js, preload.js, Devices.jsx, BackupRestore.jsx, PairingPanel.jsx, Dashboard.jsx, App.jsx, Sidebar.jsx, IPC_MAP.md

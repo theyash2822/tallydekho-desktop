@@ -1,10 +1,10 @@
-import React, { useContext, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import Card from "../components/Card";
 import { TallyContext } from "../../utils/TallyContext.js";
 
 export default function PairingPanel() {
   const {
-    state: { pairingCode, pairedDevice, restoreCode },
+    state: { pairingCode, pairedDevice, restoreCode, restoreApproved },
     openAlertModal,
     updateState,
   } = useContext(TallyContext);
@@ -22,16 +22,28 @@ export default function PairingPanel() {
     }
   };
 
-  const pollAndRestore = async () => {
+  const pollAndRestore = async ({ silent = false } = {}) => {
     const st = await window.tally.restoreStatus();
     if (st?.data?.status === "APPROVED") {
       const done = await window.tally.restoreCloud();
       if (done?.status) openAlertModal("Restore complete. Run a sync after Tally opens.");
       else openAlertModal(done?.message || "Restore failed");
-      return;
+      return true;
     }
-    openAlertModal("Still waiting for Owner/Admin approval on Web or Mobile.");
+    if (st?.data?.status === "RESTORE_REJECTED") {
+      openAlertModal("Restore was rejected.");
+      return true;
+    }
+    if (!silent) {
+      openAlertModal("Still waiting for Owner/Admin approval on Web or Mobile.");
+    }
+    return false;
   };
+
+  useEffect(() => {
+    if (!restoreApproved || !restoreCode) return;
+    pollAndRestore({ silent: true });
+  }, [restoreApproved]);
 
   return (
     <Card title="Pairing Code">
@@ -58,7 +70,7 @@ export default function PairingPanel() {
           <div className="pt-2 border-t space-y-2" style={{ borderColor: "#E9E8E3" }}>
             <div className="font-medium text-sm">Restore Existing Workspace</div>
             <p className="text-xs text-[#787774]">
-              On a new PC, request restore. Owner/Admin approves the backup on Web or Mobile.
+              On a new PC, install and activate TallyPrime first. Request restore, then pick the Tally data folder when asked. Owner/Admin approves the backup on Web or Mobile.
             </p>
             {restoreCode ? (
               <div className="space-y-2">

@@ -4,6 +4,17 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-09-12 — Writeback pulls by workspace, not companyGuid
+
+**Branch:** `workspace-introduce-on-12-9-2026` (not `cursor`; local `cursor` is behind this branch)
+**Files:** socket.js
+**Behavior:** On `pending_tally_writeback_available`, Desktop asks `/tally/desktop/writeback/pending` with only `{ limit }`. Backend resolves the workspace from device auth. companyGuid is no longer required to start the pull.
+**Test:** Queue an offline voucher, reconnect Desktop, confirm writeback posts without a companyGuid in the pending body.
+**Risks:** Needs matching backend on `cursor`.
+
+---
+
+
 ## 2026-09-12 — Tally-native + folder backup, restore data-path picker
 
 **Files:** tallyNativeBackup.js, saveBackup.js, restoreBackup.js, BackupRestore.jsx, PairingPanel.jsx

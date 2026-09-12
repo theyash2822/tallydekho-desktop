@@ -208,14 +208,13 @@ module.exports = (window, socket) => {
   // Backend sends this when desktop reconnects and there are offline entries.
   // Desktop pulls, claims, posts, and reports result via API (no full sync).
   socket.on("pending_tally_writeback_available", async (payload) => {
-    const { companyGuid, count } = payload || {};
-    if (!companyGuid || !count) return;
-    info(`[writeback] ${count} pending entries for company ${companyGuid}`);
+    const count = Number(payload?.count || 0);
+    if (!count) return;
+    info(`[writeback] ${count} pending entries for this workspace`);
     const { axiosInstance } = require('./helper');
-    const deviceId = getDeviceProfile().deviceId;
     try {
-      // Pull pending (max 10 per wake-up)
-      const pendingRes = await axiosInstance.post('/tally/desktop/writeback/pending', { companyGuid, limit: 10 });
+      // Backend resolves workspace from this device. Do not key the pull on companyGuid.
+      const pendingRes = await axiosInstance.post('/tally/desktop/writeback/pending', { limit: 10 });
       const items = pendingRes.data?.data?.items || [];
       if (!items.length) return;
       info(`[writeback] processing ${items.length} entries`);

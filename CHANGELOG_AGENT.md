@@ -4,6 +4,74 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+<<<<<<< HEAD
+=======
+## 2026-09-14 — Wave 3 Desktop credential hygiene
+
+**Branch:** `workspace-introduce-on-12-9-2026`
+**Files:** `util/deviceCredential.js`, `util/helper.js`, `util/restoreBackup.js`, `util/ipcRegistry.js`, `util/socket.js`, `util/xml.js`, `renderer/app/App.jsx`, `renderer/app/utils/helper.js`, `renderer/app/views/devices/Devices.jsx`, `CHANGELOG_AGENT.md`
+**Behavior:**
+- Device secret: OS safeStorage first; AES-256-GCM encrypted-file fallback; plaintext electron-store removed (legacy migrated then purged). Clear secret on local unpair + `binding_revoked`. Claim-credential after register/restore secret save.
+- Sync errors: show real `message` / known codes; xml.js no longer replaces API errors with SWW.
+- Devices badge: backend pairing status only (CONNECTED / RECONNECTING / UNPAIRED).
+- Hard Sync: single-flight gate; approval continue-once (socket + poll share gate, match requestId); GUID replacement preserved from prior WI work.
+**Test:** Pair → secret not plaintext; unpair clears secret; Hard Sync approval starts once; badge follows backend.
+**Risks:** Encrypted-file fallback key under userData; live Electron QA still needed for GREEN.
+
+---
+
+## 2026-09-12 — Restore reports on-disk folders, not GUID echo
+
+**Branch:** `workspace-introduce-on-12-9-2026`
+**Files:** restoreBackup.js, saveBackup.js
+**Behavior:** After unzip, Desktop lists copied company folders and sends `restoredFolders` on complete. New backups include `folder` basename in the manifest. Backend rejects restore if folders do not overlap the approved backup.
+**Test:** Rebuild Desktop; restore a new Backup Now; wrong folder names must 409.
+**Risks:** Old backups without `folder` match on company name vs folder basename.
+
+---
+
+
+
+**Branch:** `workspace-introduce-on-12-9-2026`
+**Files:** Devices.jsx, Dashboard.jsx, ResetWorkspaceModal.jsx, LineageMismatchCard.jsx, App.jsx, socket.js, ipcRegistry.js, preload.js
+**Behavior:** Workspace screen always shows Connected Workspace. Paired: Restore Existing Workspace, Reset Workspace for New Tally (type RESET WORKSPACE), Unpair. Unpaired: Restore. TALLY_DATA_MISMATCH shows Restore vs Reset (or GUID Hard Sync). Reset/Close from backend unpairs this Desktop; local Tally files stay.
+**Test:** Workspace tab; mismatch banner; type RESET WORKSPACE.
+**Risks:** Reset still needs Owner Web confirm + 24h grace. Only Owner-paired Desktop can start it.
+
+---
+
+
+## 2026-09-12 — Writeback pulls by workspace, not companyGuid
+
+**Branch:** `workspace-introduce-on-12-9-2026` (not `cursor`; local `cursor` is behind this branch)
+**Files:** socket.js
+**Behavior:** On `pending_tally_writeback_available`, Desktop asks `/tally/desktop/writeback/pending` with only `{ limit }`. Backend resolves the workspace from device auth. companyGuid is no longer required to start the pull.
+**Test:** Queue an offline voucher, reconnect Desktop, confirm writeback posts without a companyGuid in the pending body.
+**Risks:** Needs matching backend on `cursor`.
+
+---
+
+
+## 2026-09-12 — Tally-native + folder backup, restore data-path picker
+
+**Files:** tallyNativeBackup.js, saveBackup.js, restoreBackup.js, BackupRestore.jsx, PairingPanel.jsx
+**Behavior:** Backup Now takes a company-folder snapshot and, when Tally is open, a Tally-native Backup Company (both in one cloud zip). Cloud restore asks for the TallyPrime data folder after the user installs/activates Tally. Native TBK files land in `TallyDekho-TBK` beside companies. S3 still later.
+**Test:** Run Backup Now with Tally open; unpaired restore pick data path.
+**Risks:** Tally-native TDL Execute may no-op on some Tally builds; folder zip still succeeds.
+
+---
+
+
+## 2026-09-12 — Forensic close of Desktop backup/restore spec gaps
+
+**Files:** xml.js, ipcRegistry.js, App.jsx, Dashboard.jsx, Devices.jsx, PairingPanel.jsx, restoreBackup.js, saveBackup.js, closeSoftware.js, socket.js
+**Behavior:** GUID Replacement Hard Sync now sends old/new GUIDs; TALLY_DATA_MISMATCH reaches the UI; Connected Workspace shows Tally companies; cloud restore closes Tally, verifies checksum, then reports backup manifest GUIDs; backup archive is tested and failed uploads mark the session failed; restore auto-starts when Web approves.
+**Test:** Restart Desktop against updated backend; pair; Backup Now; unpaired Request restore; GUID-change Hard Sync.
+**Risks:** New-PC Tally destination still must be known locally. S3 not required for local object store.
+
+---
+
+>>>>>>> beb77f6 (Wave 3: credential hygiene, sync error unmask, Hard Sync single-flight.)
 ## 2026-09-12 — Workspace binding + cloud backup/restore
 
 **Files:** deviceCredential.js, workspaceCloud.js, saveBackup.js, restoreBackup.js, helper.js, socket.js, ipcRegistry.js, preload.js, Devices.jsx, BackupRestore.jsx, PairingPanel.jsx, Dashboard.jsx, App.jsx, Sidebar.jsx, IPC_MAP.md

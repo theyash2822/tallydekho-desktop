@@ -1293,12 +1293,14 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
       sendMessage,
     });
   } catch (err) {
-    info(`[sync] API Error main`, {
-      err: err?.response?.data?.message || err?.message,
-    });
+    const apiMessage = err?.response?.data?.message || err?.message;
+    const apiCode = err?.response?.data?.code;
+    info(`[sync] API Error main`, { err: apiMessage, code: apiCode });
     response = {
       status: false,
-      message: "Something went wrong",
+      message: apiMessage || "Something went wrong",
+      code: apiCode,
+      data: err?.response?.data,
     };
   }
 
@@ -1315,7 +1317,12 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
     }
     return {
       status: false,
-      data: { message: response.message, code: response.data?.code },
+      data: {
+        message: response.message,
+        code: response.code || response.data?.code,
+      },
+      code: response.code || response.data?.code,
+      message: response.message,
     };
   }
 

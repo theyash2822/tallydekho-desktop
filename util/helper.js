@@ -215,6 +215,7 @@ async function registerDevice() {
     }
     if (response.data?.deviceSecret) {
       saveDeviceSecret(response.data.deviceSecret);
+      await axiosInstance.post("/desktop/claim-credential").catch(() => {});
     }
     if (response.data?.workspace) {
       store.set("workspace", response.data.workspace);

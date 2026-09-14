@@ -173,11 +173,24 @@ ipcMain.handle("tally:delete_auto_sync", async (event) => {
 });
 
 const registerTallySync = (windowContent) => {
+  let syncStartInFlight = false;
+
   ipcMain.handle(
     "tally:start_sync",
     async (event, { companies, isHardSync }) => {
       info("Foreground [sync]");
 
+      // Single-flight: reject a second start while one sync (or start sequence) is active.
+      if (store.get("isSyncing") || syncStartInFlight) {
+        return {
+          status: false,
+          code: "HARD_SYNC_IN_FLIGHT",
+          message: "A sync is already in progress on this Desktop.",
+        };
+      }
+      syncStartInFlight = true;
+
+      try {
       const status = await isTallyConnected();
 
       info(`Foreground [tally status]: ${status}`);
@@ -242,6 +255,24 @@ const registerTallySync = (windowContent) => {
               data: { requestId: hs.requestId },
             };
           }
+          if (hs.requestStatus === "REJECTED") {
+            return {
+              status: false,
+              code: "HARD_SYNC_REJECTED",
+              message: "Hard Sync was rejected by Owner/Admin.",
+              data: { requestId: hs.requestId },
+            };
+          }
+          if (hs.requestStatus === "EXPIRED") {
+            return {
+              status: false,
+              code: "HARD_SYNC_EXPIRED",
+              message: "Hard Sync request expired. Request approval again.",
+              data: { requestId: hs.requestId },
+            };
+          }
+          // APPROVED / alreadyApproved: continue once under the in-flight gate.
+          // alreadyApproved is not free re-entry — gate rejects concurrent starts.
         } catch (err) {
           const body = err?.response?.data;
           return {
@@ -252,21 +283,26 @@ const registerTallySync = (windowContent) => {
         }
       }
 
+      // Claim the in-flight slot before awaiting sync work.
       store.set("isSyncing", true);
       store.set("syncMode", isHardSync ? "hard" : "normal");
 
       info(`Foreground [companies]`, companies);
 
-      const syncStatus = await syncTallyData(
-        windowContent,
-        companies,
-        isHardSync
-      );
+      let syncStatus;
+      try {
+        syncStatus = await syncTallyData(
+          windowContent,
+          companies,
+          isHardSync
+        );
+      } finally {
+        store.set("isSyncing", false);
+      }
 
       info(`Foreground [sync status]: ${syncStatus.status}`);
       info(`Foreground [sync status data]:`, syncStatus.data);
 
-      store.set("isSyncing", false);
       windowContent.send("window:listener", { key: "isSyncing", value: false });
       windowContent.send("window:listener", { key: "syncProgress", value: 0 });
       if (syncStatus.status) {
@@ -283,7 +319,18 @@ const registerTallySync = (windowContent) => {
         });
       }
 
+<<<<<<< HEAD
       return syncStatus;
+=======
+      return {
+        ...syncStatus,
+        code: syncStatus.code || syncStatus.data?.code,
+        message: syncStatus.message || syncStatus.data?.message,
+      };
+      } finally {
+        syncStartInFlight = false;
+      }
+>>>>>>> beb77f6 (Wave 3: credential hygiene, sync error unmask, Hard Sync single-flight.)
     }
   );
 };
@@ -547,6 +594,10 @@ ipcMain.handle("api:remove_paired_device", async () => {
     error(err?.message, "remove_paired_device");
     return { status: false };
   }
+
+  const { clearDeviceSecret } = require("./deviceCredential");
+  clearDeviceSecret();
+  store.delete("workspace");
 
   return {
     status: true,

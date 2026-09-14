@@ -139,7 +139,15 @@ module.exports = (window, socket) => {
     window?.webContents?.send("window:listener", { key: "restoreApproved", value: payload });
   });
   socket.on("binding_revoked", (payload) => {
+    const { clearDeviceSecret } = require("./deviceCredential");
+    clearDeviceSecret();
+    store.delete("workspace");
+    store.set("isSyncing", false);
     window?.webContents?.send("window:listener", { key: "bindingRevoked", value: payload || true });
+  });
+
+  socket.on("hard_sync_rejected", (payload) => {
+    window?.webContents?.send("window:listener", { key: "hardSyncRejected", value: payload });
   });
 
   // sync:request - backend asks desktop to pull latest data (e.g. after a voucher write)

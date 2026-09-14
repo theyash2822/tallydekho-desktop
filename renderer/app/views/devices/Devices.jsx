@@ -14,6 +14,22 @@ export default function Devices() {
     openAlertModal,
   } = useContext(TallyContext);
 
+  // Backend pairing status only — never hardcode CONNECTED from local Tally.
+  const rawPairing =
+    userProfile?.pairing?.status ||
+    userProfile?.workspace?.tallyConnection ||
+    workspace?.tallyConnection ||
+    null;
+  const pairingStatus = String(
+    rawPairing || (pairedDevice ? "RECONNECTING" : "UNPAIRED")
+  ).toUpperCase();
+  const badgeLabel =
+    pairingStatus === "CONNECTED"
+      ? "CONNECTED"
+      : pairingStatus === "RECONNECTING"
+        ? "RECONNECTING"
+        : "UNPAIRED";
+
   useEffect(() => {
     window.api?.userProfile?.().then(res => {
       if (res?.status && res?.data) {
@@ -95,7 +111,7 @@ export default function Devices() {
                   {userProfile?.workspace?.name || workspace?.name || pairedDevice.name}
                 </div>
                 <div className="text-xs text-[#9A9A97]">
-                  Status: {userProfile?.workspace?.tallyConnection || workspace?.tallyConnection || "Connected"}
+                  Status: {badgeLabel}
                 </div>
                 <div className="text-xs text-[#9A9A97]">
                   Last sync: {lastSync ? new Date(lastSync).toLocaleString() : (pairedDevice.last || "never")}
@@ -112,7 +128,7 @@ export default function Devices() {
                     className="text-xs font-semibold rounded-full border px-2 py-0.5"
                     style={{ borderColor: "#E9E8E3", width: "fit-content" }}
                   >
-                    CONNECTED
+                    {badgeLabel}
                   </div>
                 </div>
                 <div className="mt-3 flex gap-2">

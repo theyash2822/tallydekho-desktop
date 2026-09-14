@@ -8,8 +8,29 @@ const { error, info } = require("./logger");
 const store = require("./store");
 const createFinancialYears = require("./createFinancialYears");
 const { normalizeEnvelope } = require("./tallyHelper");
-const { axiosInstance } = require("./helper");
+const { axiosInstance, registerDevice } = require("./helper");
 const { ensureBillOutstandingTdl } = require("./ensureBillOutstandingTdl");
+
+function isCredentialAuthFailure(payload) {
+  const code = payload?.code || payload?.data?.code;
+  const msg = String(payload?.message || payload?.data?.message || "");
+  return (
+    code === "DEVICE_CREDENTIAL_INVALID" ||
+    code === "DEVICE_CREDENTIAL_REQUIRED" ||
+    /device credential/i.test(msg)
+  );
+}
+
+/** Pull re-issued secret from /desktop/register (backend re-issues if never claimed). */
+async function refreshDeviceCredential(webContents) {
+  info("[credential] refreshing via registerDevice");
+  const reg = await registerDevice();
+  const code = store.get("pairingCode");
+  if (code && webContents && !webContents.isDestroyed?.()) {
+    webContents.send("window:listener", { key: "pairingCode", value: code });
+  }
+  return reg;
+}
 
 /** Decode Tally HTTP body — custom reports may return UTF-16 LE with BOM. */
 function decodeTallyResponse(data) {
@@ -839,6 +860,12 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
 
   const startTime = new Date().getTime();
 
+  // Heal missing/stale device secret before any credential-gated sync call.
+  // Backend re-issues when paired but credential_claimed_at is still null.
+  await refreshDeviceCredential(windowContent).catch((e) =>
+    info("[credential] pre-sync refresh failed (non-fatal):", e?.message)
+  );
+
   // V2: Start a sync_run record for monitoring/atomicity
   let syncRunId = null;
   try {
@@ -852,7 +879,25 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
       info('[sync_run] started', { syncRunId, companyGuid: firstCompanyGuid, isHardSync });
     }
   } catch (err) {
-    info('[sync_run] start failed (non-fatal):', err?.message);
+    const body = err?.response?.data;
+    if (isCredentialAuthFailure(body)) {
+      info('[sync_run] credential failure — refreshing and retrying once');
+      await refreshDeviceCredential(windowContent).catch(() => {});
+      try {
+        const firstCompanyGuid = companies[0]?.guid || companies[0]?.id;
+        if (firstCompanyGuid) {
+          const runRes = await axiosInstance.post('/ingest/sync-run/start', {
+            companyGuid: firstCompanyGuid,
+            syncType: isHardSync ? 'hard' : 'normal',
+          });
+          syncRunId = runRes?.data?.data?.syncRunId || null;
+        }
+      } catch (err2) {
+        info('[sync_run] retry failed (non-fatal):', err2?.message);
+      }
+    } else {
+      info('[sync_run] start failed (non-fatal):', err?.message);
+    }
   }
 
   let promises = [];
@@ -860,6 +905,13 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
   sendMessage("Initializing");
 
   let syncedData = await initSync(companies, isHardSync);
+
+  if (!syncedData.status && isCredentialAuthFailure(syncedData)) {
+    info("[sync] credential failure on init-sync — refreshing and retrying once");
+    sendMessage("Refreshing device credentials…");
+    await refreshDeviceCredential(windowContent).catch(() => {});
+    syncedData = await initSync(companies, isHardSync);
+  }
 
   info("[sync] data", syncedData);
 

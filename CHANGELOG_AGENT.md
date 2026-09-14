@@ -4,6 +4,20 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-09-14 — Auto-refresh device secret before sync (credential 401 heal)
+
+**Branch:** `workspace-introduce-on-12-9-2026`
+**Files:** `util/xml.js`, `util/deviceCredential.js`, `renderer/app/App.jsx`, `renderer/app/utils/helper.js`, `CHANGELOG_AGENT.md`
+**Behavior:**
+- Before Sync / Hard Sync, Desktop calls `/desktop/register` so backend can re-issue an unclaimed device secret (Mobile workspace-pair previously never delivered `pairing_confirmed`).
+- On `DEVICE_CREDENTIAL_*` from `init-sync` or `sync-run/start`, refresh once and retry.
+- Keep plaintext secret until encrypted save succeeds (never delete the only copy).
+- Pairing-code panel stays in sync after register; clearer credential error copy.
+**Test:** After Mobile pair stuck in RECONNECTING: pull this branch → Sync Now → claim-credential → first sync completes.
+**Risks:** Needs matching backend register re-issue (already deployed on LAN).
+
+---
+
 ## 2026-09-14 — Wave 3 Desktop credential hygiene
 
 **Branch:** `workspace-introduce-on-12-9-2026`

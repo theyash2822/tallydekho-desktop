@@ -96,7 +96,7 @@ function getDeviceSecret() {
       store.delete("deviceSecretEnc");
       return String(legacy);
     } catch (_) {
-      store.delete("deviceSecretEnc");
+      // Keep plaintext until encrypted save succeeds — never delete the only copy.
     }
   }
   return null;

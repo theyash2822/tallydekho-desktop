@@ -303,9 +303,14 @@ export default function App() {
             sendLogs: false,
           });
         } else if (CODE_ERROR_MESSAGE[value.code]) {
+          const mapped = CODE_ERROR_MESSAGE[value.code];
+          const credentialGate =
+            value.code === "DEVICE_CREDENTIAL_INVALID" ||
+            value.code === "DEVICE_CREDENTIAL_REQUIRED" ||
+            /device credential required/i.test(String(value.message || ""));
           setAlertModalData({
             isOpen: true,
-            message: value.message || CODE_ERROR_MESSAGE[value.code],
+            message: credentialGate ? mapped : (value.message || mapped),
             sendLogs: false,
           });
         } else if (value.code != "manually_stopped" && (value.message || value.code)) {

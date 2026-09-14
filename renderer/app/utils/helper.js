@@ -5,9 +5,9 @@ export const CODE_ERROR_MESSAGE = {
   tally_timeout:
     "Unable to sync because Tally did not respond in time (timeout).",
   DEVICE_CREDENTIAL_INVALID:
-    "Device credential is invalid. Unpair and pair this Desktop again.",
+    "Desktop pairing key is out of sync. Click Sync Now again (auto-refresh). If it still fails: Unpair on Mobile/Web, then pair again — do not type a password.",
   DEVICE_CREDENTIAL_REQUIRED:
-    "Device credential is required. Unpair and pair this Desktop again.",
+    "Desktop pairing key is missing. Click Sync Now again (auto-refresh). If it still fails: Unpair on Mobile/Web, then pair again.",
   DEVICE_NOT_PAIRED: "This Desktop is not paired to a workspace.",
   HARD_SYNC_APPROVAL_REQUIRED:
     "Waiting for Owner/Admin approval before Hard Sync can start.",

@@ -80,29 +80,26 @@ module.exports = (window, socket) => {
   // Mobile or web portal unpaired this desktop
   // payload.newCode = the fresh replacement pairing code (already stored in DB)
   socket.on("unpaired", (payload) => {
-    info("[socket] unpaired — clearing pairing state, new code received");
-    const newCode = payload?.newCode || null;
-
-    // Persist the new code so it survives app restarts
-    if (newCode) store.set('pairingCode', newCode);
+    info("[socket] unpaired — clearing pairing state");
+    try {
+      require("./pairingSessionState").clearPairingSession();
+      store.delete("pairingCode");
+      store.delete("workspace");
+      store.delete("pairingSessionId");
+      store.delete("pairingClaimToken");
+    } catch (_) {}
 
     if (window && window.webContents) {
-      // Stop any active sync
       window.webContents.send("window:listener", { key: "isSyncing", value: false });
       window.webContents.send("window:listener", { key: "syncProgress", value: 0 });
-      // Clear paired device state
       window.webContents.send("window:listener", { key: "pairedDevice", value: null });
-      // Update pairing panel with the new permanent code
-      if (newCode) {
-        window.webContents.send("window:listener", { key: "pairingCode", value: newCode });
-      }
-      // Show user-facing unpair message
+      // Do not display unpair newCode as a usable session code — renderer must refresh
+      window.webContents.send("window:listener", { key: "pairingCode", value: null });
       window.webContents.send("window:listener", { key: "unpairedAlert", value: true });
     }
     store.set("isSyncing", false);
     const { clearDeviceSecret } = require("./deviceCredential");
     clearDeviceSecret();
-    store.delete("workspace");
   });
 
   // tally:write - receive XML from backend and forward to Tally HTTP port
@@ -117,9 +114,12 @@ module.exports = (window, socket) => {
       if (payload?.deviceSecret) {
         saveDeviceSecret(payload.deviceSecret);
         await axiosInstance.post("/desktop/claim-credential").catch(() => {});
-      } else if (store.get("pairingSessionId") && store.get("pairingClaimToken")) {
-        const { claimAndAck } = require("./claimPairing");
-        await claimAndAck(axiosInstance).catch((e) => error(e?.message, "pairing_confirmed_claim"));
+      } else {
+        const { hasValidPairingSession } = require("./pairingSessionState");
+        if (hasValidPairingSession()) {
+          const { claimAndAck } = require("./claimPairing");
+          await claimAndAck(axiosInstance).catch((e) => error(e?.message, "pairing_confirmed_claim"));
+        }
       }
       const pairedDevice = await axiosInstance.get("/desktop/pairing-device");
       const device = pairedDevice.data?.data?.pairing;
@@ -132,7 +132,7 @@ module.exports = (window, socket) => {
         }});
       }
       if (payload?.workspace) {
-        store.set("workspace", payload.workspace);
+        // UI only — do not persist workspace in config.json (schema strips it)
         window.webContents.send("window:listener", { key: "workspace", value: payload.workspace });
       }
     } catch (e) { error(e?.message, "pairing_confirmed"); }
@@ -144,7 +144,10 @@ module.exports = (window, socket) => {
     try {
       const { axiosInstance } = require("./helper");
       const { claimAndAck } = require("./claimPairing");
-      if (payload?.sessionId) store.set("pairingSessionId", payload.sessionId);
+      const { setPairingSession } = require("./pairingSessionState");
+      if (payload?.sessionId) {
+        setPairingSession({ sessionId: payload.sessionId });
+      }
       const data = await claimAndAck(axiosInstance, {
         sessionId: payload?.sessionId,
       });
@@ -176,7 +179,6 @@ module.exports = (window, socket) => {
         const { pollClaimUntilReady } = require("./claimPairing");
         const data = await pollClaimUntilReady(axiosInstance, { attempts: 15, intervalMs: 1500 });
         if (data?.workspace) {
-          store.set("workspace", data.workspace);
           window.webContents.send("window:listener", { key: "workspace", value: data.workspace });
         }
         const pairedDevice = await axiosInstance.get("/desktop/pairing-device");

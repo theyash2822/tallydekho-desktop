@@ -4,6 +4,20 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-09-14 — Pairing session hygiene + env-driven backend URL
+
+**Branch:** `cursor`
+**Files:** `util/backendConfig.js`, `util/pairingSessionState.js`, `util/claimPairing.js`, `util/ipcRegistry.js`, `util/helper.js`, `util/socket.js`, `main.js`, `preload.js`, `renderer/app/App.jsx`, `PairingPanel.jsx`, `.gitignore`, `.env.example`
+**Behavior:**
+- Backend URL: loopback default only; LAN via local `.env` (`BACKEND_URL`) — `.env` untracked
+- pairingCode/sessionId/claimToken are temporary in-memory; restart always fetches a fresh session
+- Claim distinguishes PENDING vs EXPIRED/NOT_FOUND; no claimToken in logs (hasClaimToken only)
+- claimToken never sent to renderer IPC
+**Test:** HTTP Desktop E2E: session → PENDING claim → Owner approve → HTTP claim+ACK → RECONNECTING → CONNECTED
+**Risks:** Requires Backend `PAIRING_SESSION_PENDING` code for quiet poll
+
+---
+
 ## 2026-09-14 — Phase C pairing claim/ACK on cursor
 
 **Branch:** `cursor`

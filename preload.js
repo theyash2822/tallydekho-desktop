@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.invoke("window:closeByName", name, opts),
   pairingCode: () => ipcRenderer.invoke("api:pairing_code"),
   claimPairing: () => ipcRenderer.invoke("api:claim_pairing"),
+  hasPairingSession: () => ipcRenderer.invoke("api:has_pairing_session"),
   pairedDevice: () => ipcRenderer.invoke("api:paired_device"),
   removePairedDevice: () => ipcRenderer.invoke("api:remove_paired_device"),
   pingBackend: () => ipcRenderer.invoke("backend:ping"),

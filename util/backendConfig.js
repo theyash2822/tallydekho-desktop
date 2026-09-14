@@ -1,9 +1,11 @@
 /**
- * Single source of truth for the Mac LAN backend URL.
- * When DHCP reassigns the Mac IP, update DEFAULT_DEV_BACKEND_URL here only.
- * Optional override: set BACKEND_URL or BASE_URL in .env (takes precedence).
+ * Dev/prod backend URL resolution.
+ * LAN IPs must NOT be hardcoded here — set BACKEND_URL or BASE_URL in local .env.
+ *
+ * Dev fallback: local loopback only (same machine). For LAN Desktop ↔ Backend,
+ * set BACKEND_URL in .env (never commit that file).
  */
-const DEFAULT_DEV_BACKEND_URL = "http://192.168.29.241:3001";
+const DEFAULT_DEV_BACKEND_URL = "http://127.0.0.1:3001";
 const PROD_BACKEND_URL = "https://api.tallydekho.com";
 
 module.exports = { DEFAULT_DEV_BACKEND_URL, PROD_BACKEND_URL };

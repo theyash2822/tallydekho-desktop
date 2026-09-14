@@ -51,6 +51,7 @@ export default function App() {
     pairingState: "hidden",
     pairingCode: null,
     pairingCodeGeneratedAt: null,
+    pairingBackendError: "",
     pairedDevice: null,
     isVersionUpdateModalOpen: false,
     syncMessage: "",
@@ -145,31 +146,67 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Short-lived pairing sessions: if approval wake-up socket is missed, poll HTTP claim.
+    // HTTP claim poll recovers when socket pairing_approved is missed.
+    // Do NOT start unless a valid in-memory pairing session exists.
     if (pairedDevice || !pairingCode || !window.api?.claimPairing) return undefined;
     let cancelled = false;
     let tries = 0;
+    let timer;
+
     const tick = async () => {
       if (cancelled || tries >= 40) return;
-      tries += 1;
       try {
+        const sess = await window.api.hasPairingSession?.();
+        if (!sess?.status) {
+          // Session lost/expired — clear displayed code; user must Refresh
+          if (!cancelled) {
+            updateState("pairingCode", null);
+            updateState("pairingCodeGeneratedAt", 0);
+            updateState(
+              "pairingBackendError",
+              "Pairing session expired. Tap Refresh code to generate a new one."
+            );
+          }
+          return;
+        }
+        tries += 1;
         const res = await window.api.claimPairing();
         if (res?.status) {
           if (res.data?.workspace) updateState("workspace", res.data.workspace);
           updateState("pairingClaimed", {
             connectionStatus: res.data?.connectionStatus || "RECONNECTING",
           });
+          updateState("pairingCode", null);
+          updateState("pairingBackendError", "");
           const paired = await window.api.pairedDevice?.();
           if (paired?.status && paired.data) updateState("pairedDevice", paired.data);
           return;
         }
+        if (res?.code === "PAIRING_SESSION_PENDING" || res?.code === "PAIRING_SESSION_NOT_READY") {
+          if (!cancelled) timer = setTimeout(tick, 3000);
+          return;
+        }
+        if (
+          res?.code === "PAIRING_SESSION_EXPIRED" ||
+          res?.code === "PAIRING_SESSION_NOT_FOUND" ||
+          res?.code === "PAIRING_CODE_INVALID"
+        ) {
+          updateState("pairingCode", null);
+          updateState("pairingCodeGeneratedAt", 0);
+          updateState(
+            "pairingBackendError",
+            "Pairing session expired. Tap Refresh code to generate a new one."
+          );
+          return;
+        }
       } catch (_) {}
-      if (!cancelled) setTimeout(tick, 3000);
+      if (!cancelled) timer = setTimeout(tick, 3000);
     };
-    const t = setTimeout(tick, 4000);
+
+    timer = setTimeout(tick, 4000);
     return () => {
       cancelled = true;
-      clearTimeout(t);
+      clearTimeout(timer);
     };
   }, [pairingCode, pairingCodeGeneratedAt, pairedDevice]);
 
@@ -288,21 +325,41 @@ export default function App() {
 
       isInitCompleted.current = true;
 
-      // Load pairing code from store; refresh starts a short-lived session when user taps Refresh
-      const pairingCode = await window.api.getPref('pairingCode');
-      if (pairingCode) {
-        updateState('pairingCode', pairingCode);
-        updateState('pairingCodeGeneratedAt', Date.now());
-      }
-      // Prefer a fresh session/code from backend when unpaired
+      // Prefer a fresh pairing session on every unpaired startup — never reuse a
+      // stored pairingCode after sessionId/claimToken were lost on restart.
+      try {
+        store.delete?.("pairingCode");
+      } catch (_) {}
+      updateState("pairingCode", null);
+      updateState("pairingCodeGeneratedAt", 0);
+      updateState("pairingBackendError", "");
+
+      let sessionReady = false;
       try {
         const fresh = await window.api.pairingCode?.();
         const code = fresh?.data?.code || fresh?.data?.pairingCode;
-        if (fresh?.status && code) {
-          updateState('pairingCode', code);
-          updateState('pairingCodeGeneratedAt', Date.now());
+        if (fresh?.status && code && fresh?.data?.sessionId) {
+          // claimToken stays in main process memory; UI only needs the code
+          updateState("pairingCode", code);
+          updateState("pairingCodeGeneratedAt", Date.now());
+          updateState("pairingBackendError", "");
+          sessionReady = true;
+        } else {
+          updateState(
+            "pairingBackendError",
+            fresh?.message || "Backend unavailable — unable to generate pairing code."
+          );
         }
-      } catch (_) {}
+      } catch (_) {
+        updateState(
+          "pairingBackendError",
+          "Backend unavailable — unable to generate pairing code."
+        );
+      }
+      if (!sessionReady) {
+        updateState("pairingCode", null);
+        updateState("pairingCodeGeneratedAt", 0);
+      }
 
       const pairedDevice = await window.api.pairedDevice();
       updateState("pairedDevice", pairedDevice.data);

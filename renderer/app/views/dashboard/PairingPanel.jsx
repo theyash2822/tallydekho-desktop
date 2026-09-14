@@ -1,16 +1,17 @@
-import React, { useContext, useState } from "react";
+import React, { useContext, useRef, useState } from "react";
 import Card from "../components/Card";
 import { TallyContext } from "../../utils/TallyContext.js";
 
 export default function PairingPanel() {
   const {
-    state: { pairingCode, pairedDevice, restoreCode },
+    state: { pairingCode, pairedDevice, restoreCode, pairingBackendError },
     openAlertModal,
     updateState,
   } = useContext(TallyContext);
 
   const [masked, setMasked] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const backoffRef = useRef(2000);
 
   const displayCode = pairingCode || "------";
 
@@ -21,14 +22,27 @@ export default function PairingPanel() {
       const res = await window.api.pairingCode();
       const data = res?.data || {};
       const code = data.code || data.pairingCode;
-      if (res?.status && code) {
+      if (res?.status && code && data.sessionId) {
         updateState("pairingCode", code);
         updateState("pairingCodeGeneratedAt", Date.now());
+        updateState("pairingBackendError", "");
+        backoffRef.current = 2000;
       } else {
-        openAlertModal(res?.message || "Could not refresh pairing code");
+        const msg =
+          res?.message ||
+          "Backend unavailable — unable to generate pairing code.";
+        updateState("pairingBackendError", msg);
+        updateState("pairingCodeGeneratedAt", 0);
+        openAlertModal(msg);
+        // Controlled backoff for automatic retries (caller may re-invoke)
+        await new Promise((r) => setTimeout(r, backoffRef.current));
+        backoffRef.current = Math.min(backoffRef.current * 2, 30_000);
       }
     } catch (e) {
-      openAlertModal(e?.message || "Could not refresh pairing code");
+      const msg = e?.message || "Backend unavailable — unable to generate pairing code.";
+      updateState("pairingBackendError", msg);
+      updateState("pairingCodeGeneratedAt", 0);
+      openAlertModal(msg);
     } finally {
       setRefreshing(false);
     }
@@ -57,6 +71,11 @@ export default function PairingPanel() {
   return (
     <Card title="Pairing Code">
       <div className="space-y-3">
+        {!!pairingBackendError && (
+          <div className="text-xs text-[#C0392B] bg-[#FDECEA] rounded-md px-3 py-2">
+            {pairingBackendError}
+          </div>
+        )}
         {/* Code display — always shown, revealed on button click */}
         <div className="flex items-center gap-3">
           <div className="font-mono text-2xl tracking-widest select-all">

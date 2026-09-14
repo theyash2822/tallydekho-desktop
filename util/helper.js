@@ -209,16 +209,20 @@ async function registerDevice() {
   if (response.status) {
     store.set("lastSync", response.data.lastSync);
 
-    // Store the permanent pairing code returned on every register
+    // Do not persist register pairingCode — codes are session-bound and temporary.
+    // Fresh code comes from GET /desktop/pairing-code after startup.
     if (response.data?.pairingCode) {
-      store.set('pairingCode', response.data.pairingCode);
+      try {
+        store.delete("pairingCode");
+      } catch (_) {}
     }
     if (response.data?.deviceSecret) {
       saveDeviceSecret(response.data.deviceSecret);
       await axiosInstance.post("/desktop/claim-credential").catch(() => {});
     }
     if (response.data?.workspace) {
-      store.set("workspace", response.data.workspace);
+      // Server-authoritative workspace metadata — UI via register response consumers only.
+      // Do not persist in electron-store (config schema strips unknown key 'workspace').
     }
 
     // Handle version compatibility levels returned by backend

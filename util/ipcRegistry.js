@@ -543,37 +543,121 @@ ipcMain.handle("api:pairing_code", async () => {
     response = response.data;
   } catch (err) {
     error(err?.message, "pairing_code");
-    return { status: false };
+    const { clearPairingSession } = require("./pairingSessionState");
+    clearPairingSession();
+    try {
+      store.delete("pairingCode");
+    } catch (_) {}
+    return {
+      status: false,
+      code: "BACKEND_UNAVAILABLE",
+      message:
+        err?.code === "ECONNABORTED" || /ETIMEDOUT|ECONNREFUSED|ENOTFOUND/i.test(String(err?.message || ""))
+          ? "Backend unavailable — unable to generate pairing code. Check network and backend URL."
+          : err?.message || "Unable to generate pairing code",
+    };
   }
 
   const data = response.data || {};
-  if (data.code || data.pairingCode) {
-    store.set("pairingCode", data.code || data.pairingCode);
+  const code = data.code || data.pairingCode;
+  if (!data.sessionId || !data.claimToken || !code) {
+    error("pairing-code response missing session fields", "pairing_code");
+    return {
+      status: false,
+      code: "PAIRING_SESSION_INCOMPLETE",
+      message: "Backend did not return a complete pairing session. Try again.",
+    };
   }
-  if (data.sessionId) store.set("pairingSessionId", data.sessionId);
-  if (data.claimToken) store.set("pairingClaimToken", data.claimToken);
-  if (data.expiresAt) store.set("pairingExpiresAt", data.expiresAt);
 
+  const { setPairingSession, clearPairingSession } = require("./pairingSessionState");
+  // All session material is process-local / temporary — never persist to config.json
+  clearPairingSession();
+  setPairingSession({
+    pairingCode: code,
+    sessionId: data.sessionId,
+    claimToken: data.claimToken,
+    expiresAt: data.expiresAt,
+  });
+
+  try {
+    store.delete("pairingCode");
+    store.delete("pairingSessionId");
+    store.delete("pairingClaimToken");
+    store.delete("pairingExpiresAt");
+    store.delete("workspace");
+  } catch (_) {}
+
+  // Safe log: never claimToken / secrets
+  info(
+    `[pairing] session ready sessionId=${data.sessionId} hasClaimToken=true expiresAt=${data.expiresAt || "n/a"}`
+  );
+
+  // claimToken stays in main-process memory only — never send to renderer
   return {
     status: true,
-    data,
+    data: {
+      code,
+      pairingCode: code,
+      sessionId: data.sessionId,
+      expiresAt: data.expiresAt,
+      hasClaimToken: true,
+    },
   };
 });
 
 /** Manual / recovery: claim credential if session already approved */
 ipcMain.handle("api:claim_pairing", async () => {
   try {
+    const { hasValidPairingSession } = require("./pairingSessionState");
+    if (!hasValidPairingSession()) {
+      return {
+        status: false,
+        code: "PAIRING_SESSION_NOT_READY",
+        message: "Pairing session not ready",
+      };
+    }
     const { claimAndAck } = require("./claimPairing");
     const data = await claimAndAck(axiosInstance);
     return { status: true, data };
   } catch (err) {
+    const code = err?.response?.data?.code || err?.code;
+    // Quiet pending — poll continues without spam
+    if (
+      code === "PAIRING_SESSION_NOT_READY" ||
+      code === "PAIRING_SESSION_PENDING" ||
+      code === "PAIRING_NOT_APPROVED"
+    ) {
+      return {
+        status: false,
+        code: code === "PAIRING_SESSION_NOT_READY" ? code : "PAIRING_SESSION_PENDING",
+        message: err?.response?.data?.message || err?.message || "Waiting for approval",
+      };
+    }
+    if (code === "PAIRING_SESSION_EXPIRED" || code === "PAIRING_SESSION_NOT_FOUND" || code === "PAIRING_CODE_INVALID") {
+      try {
+        require("./pairingSessionState").clearPairingSession();
+      } catch (_) {}
+    }
+    // Only log non-pending failures; never log claimToken
     error(err?.message, "claim_pairing");
     return {
       status: false,
       message: err?.response?.data?.message || err?.message || "Claim failed",
-      code: err?.response?.data?.code,
+      code,
     };
   }
+});
+
+ipcMain.handle("api:has_pairing_session", async () => {
+  const { hasValidPairingSession, getPairingSession } = require("./pairingSessionState");
+  const ok = hasValidPairingSession();
+  const s = getPairingSession();
+  return {
+    status: ok,
+    data: ok
+      ? { sessionId: s.sessionId, expiresAt: s.expiresAt, hasClaimToken: !!s.claimToken }
+      : null,
+  };
 });
 
 ipcMain.handle("api:paired_device", async () => {
@@ -617,7 +701,12 @@ ipcMain.handle("api:remove_paired_device", async () => {
 
   const { clearDeviceSecret } = require("./deviceCredential");
   clearDeviceSecret();
-  store.delete("workspace");
+  try {
+    require("./pairingSessionState").clearPairingSession();
+    store.delete("workspace");
+    store.delete("pairingSessionId");
+    store.delete("pairingClaimToken");
+  } catch (_) {}
 
   return {
     status: true,

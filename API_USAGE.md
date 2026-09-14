@@ -3,7 +3,7 @@
 ## Backend Communication
 File: `util/helper.js` → `axiosInstance`
 Base URL: `BACKEND_URL` env var (optional) or `util/backendConfig.js` → `DEFAULT_DEV_BACKEND_URL`
-Default: `http://192.168.29.241:3001` — **update only `util/backendConfig.js` on IP change**
+Default: `http://192.168.29.243:3001` — **update only `util/backendConfig.js` on IP change**
 
 ## Tally HTTP Interface
 URL: `http://localhost:9000` (Tally Prime on same machine)

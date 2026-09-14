@@ -4,6 +4,19 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-09-14 — Load .env by app path; drop stale .241 docs
+
+**Branch:** `cursor`
+**Files:** `main.js`, `util/helper.js`, `KNOWN_ISSUES.md`, `BLUEPRINT.md`, `API_USAGE.md`
+**Behavior:**
+- `dotenv` loads from Desktop app root (`__dirname`), not process cwd — so `BACKEND_URL` in `.env` always applies
+- Startup logs `Backend baseURL=…` (no secrets) for connectivity diagnosis
+- Docs no longer advertise dead LAN IP `192.168.29.241`; loopback default + local `.env` for LAN
+**Test:** After restart, Desktop log shows `baseURL=http://127.0.0.1:3001`; `/desktop/pairing-code` returns sessionId+claimToken
+**Risks:** Packaged prod still uses `api.tallydekho.com` unless env override
+
+---
+
 ## 2026-09-14 — Pairing session hygiene + env-driven backend URL
 
 **Branch:** `cursor`

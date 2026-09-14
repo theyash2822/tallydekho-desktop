@@ -1,4 +1,6 @@
-require('dotenv').config();
+const path = require("path");
+// Load .env from Desktop app root (util/ → ..) so BACKEND_URL applies even when cwd ≠ project
+require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 const { execFile, exec } = require("child_process");
 const { promisify } = require("util");
 const axios = require("axios");
@@ -6,7 +8,6 @@ const http = require("http");
 const https = require("https");
 const { autoUpdater } = require("electron-updater");
 const { app } = require("electron");
-const path = require("path");
 
 const { error, info } = require("./logger");
 const getDeviceProfile = require("./deviceProfile");
@@ -21,6 +22,7 @@ const isDev = !!process.env.ELECTRON_DEV;
 const baseURL = process.env.BACKEND_URL || process.env.BASE_URL ||
   (isDev ? DEFAULT_DEV_BACKEND_URL : PROD_BACKEND_URL);
 // Dev default: util/backendConfig.js — override via BACKEND_URL in .env if needed
+info(`Backend baseURL=${baseURL} (ELECTRON_DEV=${isDev ? "1" : "0"})`);
 
 const axiosInstance = axios.create({
   baseURL,

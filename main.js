@@ -1,5 +1,5 @@
-// Load .env variables before anything else
-require('dotenv').config();
+// Load .env from app root (not process cwd — electronmon/IDE launches vary)
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
 const {
   app,

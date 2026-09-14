@@ -23,11 +23,11 @@
 
 ### IP Changes on WiFi Reconnect (Open)
 - Backend IP changes when Mac reconnects to WiFi
-- **Single update point:** `util/backendConfig.js` → `DEFAULT_DEV_BACKEND_URL`
-- Current confirmed IP: 192.168.29.241 (as of Aug 24, 2026)
-- Optional `.env` `BACKEND_URL` overrides backendConfig if set
-- Fix: set static DHCP on router — NOT YET DONE
-- Check current Mac IP: `ifconfig | grep "inet "`
+- **Dev default:** `util/backendConfig.js` → `DEFAULT_DEV_BACKEND_URL` = `http://127.0.0.1:3001` (same-machine only)
+- **LAN Desktop:** set local `.env` `BACKEND_URL=http://<Mac-LAN-IP>:3001` (`.env` is gitignored — never commit)
+- Do **not** hardcode LAN IPs like `192.168.29.241` in source — they go stale
+- Optional: static DHCP on router for a stable LAN IP
+- Check current Mac IP: `ipconfig getifaddr en0` (or `ifconfig`)
 
 ### ipcRegistry.js Status (Partially Open)
 - File exists but NOT imported in main.js

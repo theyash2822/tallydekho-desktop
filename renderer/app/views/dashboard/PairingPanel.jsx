@@ -10,8 +10,29 @@ export default function PairingPanel() {
   } = useContext(TallyContext);
 
   const [masked, setMasked] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const displayCode = pairingCode || "------";
+
+  const refreshPairingCode = async () => {
+    if (!window.api?.pairingCode) return;
+    setRefreshing(true);
+    try {
+      const res = await window.api.pairingCode();
+      const data = res?.data || {};
+      const code = data.code || data.pairingCode;
+      if (res?.status && code) {
+        updateState("pairingCode", code);
+        updateState("pairingCodeGeneratedAt", Date.now());
+      } else {
+        openAlertModal(res?.message || "Could not refresh pairing code");
+      }
+    } catch (e) {
+      openAlertModal(e?.message || "Could not refresh pairing code");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const startRestore = async () => {
     const res = await window.tally.restoreRequest();
@@ -49,10 +70,18 @@ export default function PairingPanel() {
           >
             {masked ? "Reveal code" : "Hide code"}
           </button>
+          <button
+            onClick={refreshPairingCode}
+            className="px-3 py-1.5 rounded-full border bg-[#F5F4EF] hover:bg-[#F0EFE9] text-[#787774]"
+            style={{ borderColor: "#E9E8E3" }}
+            disabled={refreshing || !!pairedDevice}
+          >
+            {refreshing ? "Refreshing…" : "Refresh code"}
+          </button>
         </div>
 
         <div className="text-xs text-[#9A9A97]">
-          Enter this code in the mobile app or Web → Settings → Tally Sync.
+          Enter this code in Web or Mobile → Settings → Tally Sync. Codes expire in about 10 minutes — use Refresh code if needed.
         </div>
         {!pairedDevice && (
           <div className="pt-2 border-t space-y-2" style={{ borderColor: "#E9E8E3" }}>

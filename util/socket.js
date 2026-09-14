@@ -108,14 +108,19 @@ module.exports = (window, socket) => {
   // tally:write - receive XML from backend and forward to Tally HTTP port
   // Backend sends: { jobId, xml, companyName }
   // Desktop POSTs to Tally and acks back with result
-  // pairing_confirmed - mobile paired with this desktop, refresh pairedDevice state
+  // pairing_confirmed — legacy immediate secret path (bridge). Prefer pairing_approved + HTTP claim.
   socket.on("pairing_confirmed", async (payload) => {
     info("[socket] pairing_confirmed");
     try {
       const { axiosInstance } = require("./helper");
       const { saveDeviceSecret } = require("./deviceCredential");
-      if (payload?.deviceSecret) saveDeviceSecret(payload.deviceSecret);
-      await axiosInstance.post("/desktop/claim-credential").catch(() => {});
+      if (payload?.deviceSecret) {
+        saveDeviceSecret(payload.deviceSecret);
+        await axiosInstance.post("/desktop/claim-credential").catch(() => {});
+      } else if (store.get("pairingSessionId") && store.get("pairingClaimToken")) {
+        const { claimAndAck } = require("./claimPairing");
+        await claimAndAck(axiosInstance).catch((e) => error(e?.message, "pairing_confirmed_claim"));
+      }
       const pairedDevice = await axiosInstance.get("/desktop/pairing-device");
       const device = pairedDevice.data?.data?.pairing;
       if (device) {
@@ -127,9 +132,74 @@ module.exports = (window, socket) => {
         }});
       }
       if (payload?.workspace) {
+        store.set("workspace", payload.workspace);
         window.webContents.send("window:listener", { key: "workspace", value: payload.workspace });
       }
     } catch (e) { error(e?.message, "pairing_confirmed"); }
+  });
+
+  // pairing_approved — wake-up; secret via HTTP claim (correctness path)
+  socket.on("pairing_approved", async (payload) => {
+    info("[socket] pairing_approved", payload?.sessionId || "");
+    try {
+      const { axiosInstance } = require("./helper");
+      const { claimAndAck } = require("./claimPairing");
+      if (payload?.sessionId) store.set("pairingSessionId", payload.sessionId);
+      const data = await claimAndAck(axiosInstance, {
+        sessionId: payload?.sessionId,
+      });
+      if (data?.workspace) {
+        window.webContents.send("window:listener", { key: "workspace", value: data.workspace });
+      }
+      const pairedDevice = await axiosInstance.get("/desktop/pairing-device");
+      const device = pairedDevice.data?.data?.pairing;
+      if (device) {
+        window.webContents.send("window:listener", {
+          key: "pairedDevice",
+          value: {
+            name: device.USER_NAME || device.NAME || device.MOBILE || "Mobile App",
+            os: "Mobile",
+            last: device.LAST_SYNC_AT,
+            mobile: device.MOBILE || "",
+          },
+        });
+      }
+      window.webContents.send("window:listener", {
+        key: "pairingClaimed",
+        value: { connectionStatus: data?.connectionStatus || "RECONNECTING" },
+      });
+    } catch (e) {
+      error(e?.message, "pairing_approved");
+      // Recover if wake-up arrived before local claim token was ready / race
+      try {
+        const { axiosInstance } = require("./helper");
+        const { pollClaimUntilReady } = require("./claimPairing");
+        const data = await pollClaimUntilReady(axiosInstance, { attempts: 15, intervalMs: 1500 });
+        if (data?.workspace) {
+          store.set("workspace", data.workspace);
+          window.webContents.send("window:listener", { key: "workspace", value: data.workspace });
+        }
+        const pairedDevice = await axiosInstance.get("/desktop/pairing-device");
+        const device = pairedDevice.data?.data?.pairing;
+        if (device) {
+          window.webContents.send("window:listener", {
+            key: "pairedDevice",
+            value: {
+              name: device.USER_NAME || device.NAME || device.MOBILE || "Mobile App",
+              os: "Mobile",
+              last: device.LAST_SYNC_AT,
+              mobile: device.MOBILE || "",
+            },
+          });
+        }
+        window.webContents.send("window:listener", {
+          key: "pairingClaimed",
+          value: { connectionStatus: data?.connectionStatus || "RECONNECTING" },
+        });
+      } catch (e2) {
+        error(e2?.message, "pairing_approved_poll");
+      }
+    }
   });
 
   socket.on("hard_sync_approved", (payload) => {

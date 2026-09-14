@@ -319,9 +319,6 @@ const registerTallySync = (windowContent) => {
         });
       }
 
-<<<<<<< HEAD
-      return syncStatus;
-=======
       return {
         ...syncStatus,
         code: syncStatus.code || syncStatus.data?.code,
@@ -330,7 +327,6 @@ const registerTallySync = (windowContent) => {
       } finally {
         syncStartInFlight = false;
       }
->>>>>>> beb77f6 (Wave 3: credential hygiene, sync error unmask, Hard Sync single-flight.)
     }
   );
 };
@@ -550,10 +546,34 @@ ipcMain.handle("api:pairing_code", async () => {
     return { status: false };
   }
 
+  const data = response.data || {};
+  if (data.code || data.pairingCode) {
+    store.set("pairingCode", data.code || data.pairingCode);
+  }
+  if (data.sessionId) store.set("pairingSessionId", data.sessionId);
+  if (data.claimToken) store.set("pairingClaimToken", data.claimToken);
+  if (data.expiresAt) store.set("pairingExpiresAt", data.expiresAt);
+
   return {
     status: true,
-    data: response.data,
+    data,
   };
+});
+
+/** Manual / recovery: claim credential if session already approved */
+ipcMain.handle("api:claim_pairing", async () => {
+  try {
+    const { claimAndAck } = require("./claimPairing");
+    const data = await claimAndAck(axiosInstance);
+    return { status: true, data };
+  } catch (err) {
+    error(err?.message, "claim_pairing");
+    return {
+      status: false,
+      message: err?.response?.data?.message || err?.message || "Claim failed",
+      code: err?.response?.data?.code,
+    };
+  }
 });
 
 ipcMain.handle("api:paired_device", async () => {

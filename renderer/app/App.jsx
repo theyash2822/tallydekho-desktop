@@ -74,11 +74,13 @@ export default function App() {
   const isInitCompleted = useRef(false);
   const hardSyncContinueOnceRef = useRef(null);
   const hardSyncRequestIdRef = useRef(null);
+  const lineageMismatchRef = useRef(null);
 
   const {
     active,
     isSyncing,
     selectedCompanies,
+    pairingCode,
     pairingCodeGeneratedAt,
     pairedDevice,
   } = state;
@@ -143,9 +145,33 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Pairing code is now permanent — no expiry timer needed
-    return () => {};
-  }, [pairingCodeGeneratedAt, pairedDevice]);
+    // Short-lived pairing sessions: if approval wake-up socket is missed, poll HTTP claim.
+    if (pairedDevice || !pairingCode || !window.api?.claimPairing) return undefined;
+    let cancelled = false;
+    let tries = 0;
+    const tick = async () => {
+      if (cancelled || tries >= 40) return;
+      tries += 1;
+      try {
+        const res = await window.api.claimPairing();
+        if (res?.status) {
+          if (res.data?.workspace) updateState("workspace", res.data.workspace);
+          updateState("pairingClaimed", {
+            connectionStatus: res.data?.connectionStatus || "RECONNECTING",
+          });
+          const paired = await window.api.pairedDevice?.();
+          if (paired?.status && paired.data) updateState("pairedDevice", paired.data);
+          return;
+        }
+      } catch (_) {}
+      if (!cancelled) setTimeout(tick, 3000);
+    };
+    const t = setTimeout(tick, 4000);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [pairingCode, pairingCodeGeneratedAt, pairedDevice]);
 
   useEffect(() => {
     if (isInitCompleted.current && window.api) {
@@ -262,9 +288,21 @@ export default function App() {
 
       isInitCompleted.current = true;
 
-      // Load permanent pairing code from store
+      // Load pairing code from store; refresh starts a short-lived session when user taps Refresh
       const pairingCode = await window.api.getPref('pairingCode');
-      if (pairingCode) updateState('pairingCode', pairingCode);
+      if (pairingCode) {
+        updateState('pairingCode', pairingCode);
+        updateState('pairingCodeGeneratedAt', Date.now());
+      }
+      // Prefer a fresh session/code from backend when unpaired
+      try {
+        const fresh = await window.api.pairingCode?.();
+        const code = fresh?.data?.code || fresh?.data?.pairingCode;
+        if (fresh?.status && code) {
+          updateState('pairingCode', code);
+          updateState('pairingCodeGeneratedAt', Date.now());
+        }
+      } catch (_) {}
 
       const pairedDevice = await window.api.pairedDevice();
       updateState("pairedDevice", pairedDevice.data);
@@ -280,15 +318,6 @@ export default function App() {
         resetSyncStates(false);
         if (value.message == "Data Mismatch") {
           setIsHardSyncConfirmationModalOpen(true);
-<<<<<<< HEAD
-        } else if (CODE_ERROR_MESSAGE[value.code]) {
-          setAlertModalData({
-            isOpen: true,
-            message: CODE_ERROR_MESSAGE[value.code],
-            sendLogs: false,
-          });
-        } else if (value.code != "manually_stopped" && value.message) {
-=======
         } else if (value.code === "TALLY_DATA_MISMATCH") {
           lineageMismatchRef.current = value;
           updateState("lineageMismatch", value);
@@ -309,7 +338,6 @@ export default function App() {
             sendLogs: false,
           });
         } else if (value.code != "manually_stopped" && (value.message || value.code)) {
->>>>>>> beb77f6 (Wave 3: credential hygiene, sync error unmask, Hard Sync single-flight.)
           setAlertModalData({
             isOpen: true,
             message:
@@ -332,8 +360,6 @@ export default function App() {
         updateState("workspace", null);
         openAlertModal("Workspace connection is no longer active.");
         return;
-<<<<<<< HEAD
-=======
       } else if (key == "hardSyncApproved" && value) {
         const approvedId = value.requestId || value.data?.requestId || value.id;
         // Prefer socket approval path; poll uses the same continue-once gate.
@@ -354,7 +380,6 @@ export default function App() {
         updateState("workspace", null);
         openAlertModal("Workspace was reset. This Desktop is unpaired. Local Tally files were not deleted.");
         return;
->>>>>>> beb77f6 (Wave 3: credential hygiene, sync error unmask, Hard Sync single-flight.)
       }
       updateState(key, value);
     });
@@ -395,18 +420,6 @@ export default function App() {
         const r = await window.tally.hardSyncStatus(state.hardSyncRequestId);
         const st = r?.data?.requestStatus;
         if (st === "APPROVED") {
-<<<<<<< HEAD
-          updateState("hardSyncWaitMessage", "Approved by Workspace administrator. Starting full sync...");
-          updateState("hardSyncRequestId", null);
-          await window.tally.startSync({
-            companies: selectedCompaniesRef.current,
-            isHardSync: true,
-          });
-        } else if (st === "REJECTED") {
-          updateState("hardSyncWaitMessage", "");
-          updateState("hardSyncRequestId", null);
-          openAlertModal("Hard Sync was rejected.");
-=======
           await continueHardSyncOnce(state.hardSyncRequestId);
         } else if (st === "REJECTED" || st === "EXPIRED") {
           updateState("hardSyncWaitMessage", "");
@@ -417,7 +430,6 @@ export default function App() {
               ? "Hard Sync request expired. Request approval again."
               : "Hard Sync was rejected."
           );
->>>>>>> beb77f6 (Wave 3: credential hygiene, sync error unmask, Hard Sync single-flight.)
         }
       } catch (_) {}
     }, 4000);

@@ -4,6 +4,20 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-09-14 — Wave 3 Desktop credential hygiene
+
+**Branch:** `workspace-introduce-on-12-9-2026`
+**Files:** `util/deviceCredential.js`, `util/helper.js`, `util/restoreBackup.js`, `util/ipcRegistry.js`, `util/socket.js`, `util/xml.js`, `renderer/app/App.jsx`, `renderer/app/utils/helper.js`, `renderer/app/views/devices/Devices.jsx`, `CHANGELOG_AGENT.md`
+**Behavior:**
+- Device secret: OS safeStorage first; AES-256-GCM encrypted-file fallback; plaintext electron-store removed (legacy migrated then purged). Clear secret on local unpair + `binding_revoked`. Claim-credential after register/restore secret save.
+- Sync errors: show real `message` / known codes; xml.js no longer replaces API errors with SWW.
+- Devices badge: backend pairing status only (CONNECTED / RECONNECTING / UNPAIRED).
+- Hard Sync: single-flight gate; approval continue-once (socket + poll share gate, match requestId); GUID replacement preserved from prior WI work.
+**Test:** Pair → secret not plaintext; unpair clears secret; Hard Sync approval starts once; badge follows backend.
+**Risks:** Encrypted-file fallback key under userData; live Electron QA still needed for GREEN.
+
+---
+
 ## 2026-09-12 — Restore reports on-disk folders, not GUID echo
 
 **Branch:** `workspace-introduce-on-12-9-2026`

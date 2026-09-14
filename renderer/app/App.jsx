@@ -77,6 +77,8 @@ export default function App() {
   const lineageMismatchRef = useRef(null);
   const isSyncingRef = useRef(false);
   const isInitCompleted = useRef(false);
+  const hardSyncContinueOnceRef = useRef(null);
+  const hardSyncRequestIdRef = useRef(null);
 
   const {
     active,
@@ -177,6 +179,34 @@ export default function App() {
   }, [isSyncing]);
 
   useEffect(() => {
+    hardSyncRequestIdRef.current = state.hardSyncRequestId;
+  }, [state.hardSyncRequestId]);
+
+  const continueHardSyncOnce = async (requestId) => {
+    if (!requestId) return;
+    const waitingId = hardSyncRequestIdRef.current;
+    if (waitingId && String(waitingId) !== String(requestId)) return;
+    if (hardSyncContinueOnceRef.current === requestId) return;
+    if (isSyncingRef.current) return;
+    hardSyncContinueOnceRef.current = requestId;
+    updateState("hardSyncWaitMessage", "Approved by Workspace administrator. Starting full sync...");
+    updateState("hardSyncRequestId", null);
+    const mismatch = lineageMismatchRef.current;
+    await window.tally.startSync({
+      companies: selectedCompaniesRef.current,
+      isHardSync: true,
+      guidReplacement:
+        mismatch?.reason === "guid_replacement_candidate"
+          ? {
+              operation: "GUID_REPLACEMENT",
+              oldGuid: mismatch.missing?.[0] || null,
+              newGuid: mismatch.extra?.[0] || null,
+            }
+          : undefined,
+    });
+  };
+
+  useEffect(() => {
     // Guard: window.api/tally only exist inside Electron (preload.js).
     // In browser dev mode they are undefined — skip init gracefully.
     if (!window.api || !window.tally) {
@@ -259,12 +289,6 @@ export default function App() {
         resetSyncStates(false);
         if (value.message == "Data Mismatch") {
           setIsHardSyncConfirmationModalOpen(true);
-        } else if (CODE_ERROR_MESSAGE[value.code]) {
-          setAlertModalData({
-            isOpen: true,
-            message: CODE_ERROR_MESSAGE[value.code],
-            sendLogs: false,
-          });
         } else if (value.code === "TALLY_DATA_MISMATCH") {
           lineageMismatchRef.current = value;
           updateState("lineageMismatch", value);
@@ -274,13 +298,22 @@ export default function App() {
               value.reason === "guid_replacement_candidate"
                 ? "Company GUID changed. Owner/Admin must approve a GUID Replacement Hard Sync."
                 : value.message ||
+                  CODE_ERROR_MESSAGE.TALLY_DATA_MISMATCH ||
                   "This Tally data does not match the workspace. Use Restore Existing Workspace, or Reset Workspace for New Tally.",
             sendLogs: false,
           });
-        } else if (value.code != "manually_stopped" && value.message) {
+        } else if (CODE_ERROR_MESSAGE[value.code]) {
+          setAlertModalData({
+            isOpen: true,
+            message: value.message || CODE_ERROR_MESSAGE[value.code],
+            sendLogs: false,
+          });
+        } else if (value.code != "manually_stopped" && (value.message || value.code)) {
           setAlertModalData({
             isOpen: true,
             message:
+              value.message ||
+              (value.code ? `Sync failed (${value.code})` : null) ||
               "Something went wrong while syncing. If this message persists, please contact the support team.",
             sendLogs: true,
           });
@@ -299,25 +332,14 @@ export default function App() {
         openAlertModal("Workspace connection is no longer active.");
         return;
       } else if (key == "hardSyncApproved" && value) {
-        updateState("hardSyncWaitMessage", "Approved by Workspace administrator. Starting full sync...");
-        updateState("hardSyncRequestId", null);
-        const mismatch = lineageMismatchRef.current;
-        window.tally.startSync({
-          companies: selectedCompaniesRef.current,
-          isHardSync: true,
-          guidReplacement:
-            mismatch?.reason === "guid_replacement_candidate"
-              ? {
-                  operation: "GUID_REPLACEMENT",
-                  oldGuid: mismatch.missing?.[0] || null,
-                  newGuid: mismatch.extra?.[0] || null,
-                }
-              : undefined,
-        });
+        const approvedId = value.requestId || value.data?.requestId || value.id;
+        // Prefer socket approval path; poll uses the same continue-once gate.
+        continueHardSyncOnce(approvedId);
         return;
       } else if (key == "hardSyncRejected") {
         updateState("hardSyncWaitMessage", "");
         updateState("hardSyncRequestId", null);
+        hardSyncContinueOnceRef.current = null;
         setAlertModalData({ isOpen: true, message: "Hard Sync was rejected.", sendLogs: false });
         return;
       } else if (key == "restoreApproved") {
@@ -363,29 +385,22 @@ export default function App() {
 
   useEffect(() => {
     if (!state.hardSyncRequestId || !window.tally?.hardSyncStatus) return;
+    // Poll fallback when socket approval is missed. Shares continue-once gate with socket.
     const t = setInterval(async () => {
       try {
         const r = await window.tally.hardSyncStatus(state.hardSyncRequestId);
         const st = r?.data?.requestStatus;
         if (st === "APPROVED") {
-          updateState("hardSyncWaitMessage", "Approved by Workspace administrator. Starting full sync...");
-          updateState("hardSyncRequestId", null);
-          await window.tally.startSync({
-            companies: selectedCompaniesRef.current,
-            isHardSync: true,
-            guidReplacement:
-              lineageMismatchRef.current?.reason === "guid_replacement_candidate"
-                ? {
-                    operation: "GUID_REPLACEMENT",
-                    oldGuid: lineageMismatchRef.current.missing?.[0] || null,
-                    newGuid: lineageMismatchRef.current.extra?.[0] || null,
-                  }
-                : undefined,
-          });
+          await continueHardSyncOnce(state.hardSyncRequestId);
         } else if (st === "REJECTED" || st === "EXPIRED") {
           updateState("hardSyncWaitMessage", "");
           updateState("hardSyncRequestId", null);
-          openAlertModal(st === "EXPIRED" ? "Hard Sync request expired." : "Hard Sync was rejected.");
+          hardSyncContinueOnceRef.current = null;
+          openAlertModal(
+            st === "EXPIRED"
+              ? "Hard Sync request expired. Request approval again."
+              : "Hard Sync was rejected."
+          );
         }
       } catch (_) {}
     }, 4000);
@@ -581,9 +596,22 @@ export default function App() {
     });
     if (code === "HARD_SYNC_APPROVAL_REQUIRED" || data?.code === "HARD_SYNC_APPROVAL_REQUIRED") {
       updateState("isSyncing", false);
+      hardSyncContinueOnceRef.current = null;
       updateState("hardSyncRequestId", data?.requestId || data?.data?.requestId);
       updateState("hardSyncWaitMessage", "Waiting for Owner/Admin approval");
       openAlertModal("Waiting for Owner/Admin approval. Approve Hard Sync in Web → Settings → Tally Sync.");
+      return;
+    }
+    if (code === "HARD_SYNC_IN_FLIGHT" || data?.code === "HARD_SYNC_IN_FLIGHT") {
+      updateState("isSyncing", false);
+      openAlertModal(message || CODE_ERROR_MESSAGE.HARD_SYNC_IN_FLIGHT);
+      return;
+    }
+    if (code === "HARD_SYNC_REJECTED" || code === "HARD_SYNC_EXPIRED") {
+      updateState("isSyncing", false);
+      updateState("hardSyncRequestId", null);
+      hardSyncContinueOnceRef.current = null;
+      openAlertModal(message || CODE_ERROR_MESSAGE[code]);
       return;
     }
     if (data?.code == "tally_not_connected" || code === "tally_not_connected") {

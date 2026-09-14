@@ -336,6 +336,7 @@ async function startCloudRestore(windowContent) {
   });
   if (done.data?.data?.deviceSecret) {
     saveDeviceSecret(done.data.data.deviceSecret);
+    await axiosInstance.post("/desktop/claim-credential").catch(() => {});
   }
   sendProgress(100, "Complete");
   return { status: true, message: null, data: done.data?.data };

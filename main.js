@@ -527,7 +527,8 @@ app.whenReady().then(async () => {
   // }
 
   const socket = ioClient(baseURL, {
-    transports: ["websocket"],
+    // Polling first — Electron websocket-only often times out on LAN/VPN; upgrade when possible
+    transports: ["polling", "websocket"],
     reconnection: true,
     reconnectionAttempts: Infinity,
     reconnectionDelay: 1000,
@@ -537,6 +538,7 @@ app.whenReady().then(async () => {
     pingInterval: 25000, // default 25000 ms
     pingTimeout: 60000, // increase from default ~ 5000-20000 to 60s
   });
+  info(`[socket] connecting to ${baseURL}`);
 
   require("./util/socket")(mainWindow, socket);
 

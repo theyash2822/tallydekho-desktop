@@ -18,10 +18,30 @@ const { DEFAULT_DEV_BACKEND_URL, PROD_BACKEND_URL } = require("./backendConfig")
 const execFileAsync = promisify(execFile);
 const MS_PER_DAY = 86_400_000;
 
-const isDev = !!process.env.ELECTRON_DEV;
-const baseURL = process.env.BACKEND_URL || process.env.BASE_URL ||
-  (isDev ? DEFAULT_DEV_BACKEND_URL : PROD_BACKEND_URL);
-// Dev default: util/backendConfig.js — override via BACKEND_URL in .env if needed
+/** Known-dead LAN hosts that previously broke pairing/socket (DHCP drift). */
+const DEAD_BACKEND_HOSTS = new Set(["192.168.29.241", "192.168.29.240", "192.168.29.180"]);
+
+function resolveBackendUrl() {
+  const isDev = !!process.env.ELECTRON_DEV;
+  let url = process.env.BACKEND_URL || process.env.BASE_URL ||
+    (isDev ? DEFAULT_DEV_BACKEND_URL : PROD_BACKEND_URL);
+  try {
+    const u = new URL(url);
+    if (DEAD_BACKEND_HOSTS.has(u.hostname)) {
+      const fallback = DEFAULT_DEV_BACKEND_URL;
+      error(
+        `BACKEND_URL host ${u.hostname} is unreachable/stale — using ${fallback}. ` +
+          `Update local .env BACKEND_URL (do not hardcode LAN IPs in source).`
+      );
+      url = fallback;
+    }
+  } catch (_) {
+    /* keep as-is */
+  }
+  return { url, isDev: !!process.env.ELECTRON_DEV };
+}
+
+const { url: baseURL, isDev } = resolveBackendUrl();
 info(`Backend baseURL=${baseURL} (ELECTRON_DEV=${isDev ? "1" : "0"})`);
 
 const axiosInstance = axios.create({

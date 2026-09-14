@@ -4,7 +4,18 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
-## 2026-09-14 — Load .env by app path; drop stale .241 docs
+## 2026-09-14 — Block dead .241 backend host; socket polling fallback
+
+**Branch:** `cursor`
+**Files:** `util/helper.js`, `main.js`, `util/socket.js`
+**Behavior:**
+- If `BACKEND_URL` still points at known-dead hosts (e.g. `192.168.29.241`), force loopback `http://127.0.0.1:3001` and log an error
+- Socket.io client uses `polling` + `websocket` (was websocket-only)
+- `connect_error` logs include `baseURL` for diagnosis
+**Test:** node probe — `.241` timeout; `127.0.0.1` / `.243` connect ok
+**Risks:** LAN Desktop on another PC must set `.env` to this Mac’s current IP (not loopback)
+
+---
 
 **Branch:** `cursor`
 **Files:** `main.js`, `util/helper.js`, `KNOWN_ISSUES.md`, `BLUEPRINT.md`, `API_USAGE.md`

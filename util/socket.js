@@ -22,7 +22,11 @@ module.exports = (window, socket) => {
   });
 
   socket.on("connect_error", (err) => {
-    info("[socket] connect_error", err && err.message ? err.message : err);
+    const { baseURL: url } = require("./helper");
+    info(
+      "[socket] connect_error",
+      `${err && err.message ? err.message : err} baseURL=${url}`
+    );
   });
 
   socket.on("reconnect_attempt", (attempt) => {

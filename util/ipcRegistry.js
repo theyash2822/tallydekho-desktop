@@ -625,7 +625,8 @@ ipcMain.handle("api:claim_pairing", async () => {
     if (
       code === "PAIRING_SESSION_NOT_READY" ||
       code === "PAIRING_SESSION_PENDING" ||
-      code === "PAIRING_NOT_APPROVED"
+      code === "PAIRING_NOT_APPROVED" ||
+      (code === "PAIRING_SESSION_NOT_FOUND" && /not approved/i.test(String(err?.response?.data?.message || err?.message || "")))
     ) {
       return {
         status: false,

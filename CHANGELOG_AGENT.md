@@ -4,6 +4,16 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-09-14 — Dev backend URL → Mac LAN .243 (Windows Desktop)
+
+**Branch:** `cursor`
+**Files:** `util/backendConfig.js`, `.env.example`, `API_USAGE.md`, `BLUEPRINT.md`, `KNOWN_ISSUES.md`
+**Behavior:** Dev default is `http://192.168.29.243:3001` so Windows Desktop reaches Mac backend (loopback was ECONNREFUSED on Windows).
+**Test:** Mac `*:3001` health 200 on `.243`; Windows must pull + restart Desktop
+**Risks:** If Mac DHCP moves off `.243`, update `backendConfig.js` or Windows `.env`
+
+---
+
 ## 2026-09-14 — Block dead .241 backend host; socket polling fallback
 
 **Branch:** `cursor`

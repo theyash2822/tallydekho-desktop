@@ -3,7 +3,7 @@
 ## Backend Communication
 File: `util/helper.js` → `axiosInstance`
 Base URL: `BACKEND_URL` env var (optional) or `util/backendConfig.js` → `DEFAULT_DEV_BACKEND_URL`
-Default (dev): `http://127.0.0.1:3001` — LAN: set `BACKEND_URL` in local `.env` (gitignored)
+Default (dev): `http://192.168.29.243:3001` (Windows Desktop → Mac backend). Override via local `.env` if Mac IP changes.
 
 ## Tally HTTP Interface
 URL: `http://localhost:9000` (Tally Prime on same machine)

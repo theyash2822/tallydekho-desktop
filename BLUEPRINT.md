@@ -32,9 +32,9 @@ Renderer (renderer/)
 
 ## Backend Connection
 - URL: `BACKEND_URL` env var (optional override) or `util/backendConfig.js` default
-- Default (dev): `http://127.0.0.1:3001` — same-machine loopback; LAN overrides via local `.env` only
+- Default (dev): `http://192.168.29.243:3001` — Windows Desktop → Mac backend; override via local `.env` when Mac IP changes
 - Socket.io: `util/socket.js` — connects to backend, handles sync events
-- ⚠️ Never hardcode LAN IPs in source — they drift on WiFi reconnect
+- ⚠️ Prefer `.env` for IP overrides; never leave a dead LAN IP (e.g. `.241`) in config
 
 ## Tally Connection
 - Tally must be running on same Windows machine

@@ -28,10 +28,11 @@ function resolveBackendUrl() {
   try {
     const u = new URL(url);
     if (DEAD_BACKEND_HOSTS.has(u.hostname)) {
+      // Prefer current Mac LAN default (Windows Desktop → Mac backend), not loopback
       const fallback = DEFAULT_DEV_BACKEND_URL;
       error(
         `BACKEND_URL host ${u.hostname} is unreachable/stale — using ${fallback}. ` +
-          `Update local .env BACKEND_URL (do not hardcode LAN IPs in source).`
+          `Update local .env BACKEND_URL to this Mac's current LAN IP.`
       );
       url = fallback;
     }

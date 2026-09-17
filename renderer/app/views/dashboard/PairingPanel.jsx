@@ -1,4 +1,4 @@
-import React, { useContext, useRef, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import Card from "../components/Card";
 import { TallyContext } from "../../utils/TallyContext.js";
 
@@ -12,6 +12,7 @@ export default function PairingPanel() {
   const [masked, setMasked] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const backoffRef = useRef(2000);
+  const autoRefreshOnce = useRef(false);
 
   const displayCode = pairingCode || "------";
 
@@ -47,6 +48,15 @@ export default function PairingPanel() {
       setRefreshing(false);
     }
   };
+
+  // Unpaired panel: always mint a fresh PENDING session once. Prevents showing a
+  // leftover CLAIMED code (e.g. after unpair) that Web/Mobile correctly rejects.
+  useEffect(() => {
+    if (pairedDevice || autoRefreshOnce.current) return;
+    autoRefreshOnce.current = true;
+    refreshPairingCode();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pairedDevice]);
 
   const startRestore = async () => {
     const res = await window.tally.restoreRequest();

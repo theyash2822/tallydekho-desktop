@@ -4,6 +4,16 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-09-17 — Stale pairing code after unpair / CLAIMED session
+
+**Branch:** `cursor`
+**Files:** `renderer/app/App.jsx`, `renderer/app/views/dashboard/PairingPanel.jsx`
+**Behavior:** On `unpairedAlert`, clear displayed code and auto-fetch a fresh `/desktop/pairing-code` session. PairingPanel auto-refreshes once when unpaired so CLAIMED leftovers (e.g. 207185) are not shown.
+**Test:** QA YELLOW; after unpair UI must not keep old digits
+**Risks:** Needs Desktop restart/rebuild to pick up renderer changes
+
+---
+
 ## 2026-09-17 — Force Mac LAN .243; reject Windows loopback BACKEND_URL
 
 **Branch:** `cursor`

@@ -409,12 +409,40 @@ export default function App() {
         openAlertModal("Data synced successfully");
       } else if (key == "unpairedAlert" && value === true) {
         resetSyncStates(false);
-        openAlertModal("Workspace connection is no longer active.");
+        updateState("pairedDevice", null);
         updateState("workspace", null);
+        updateState("pairingCode", null);
+        updateState("pairingCodeGeneratedAt", 0);
+        updateState("pairingBackendError", "");
+        openAlertModal("Workspace connection is no longer active. Generating a new pairing code…");
+        // Stale digits (already CLAIMED) must never stay on screen — mint a fresh session.
+        (async () => {
+          try {
+            const fresh = await window.api?.pairingCode?.();
+            const code = fresh?.data?.code || fresh?.data?.pairingCode;
+            if (fresh?.status && code && fresh?.data?.sessionId) {
+              updateState("pairingCode", code);
+              updateState("pairingCodeGeneratedAt", Date.now());
+              updateState("pairingBackendError", "");
+            } else {
+              updateState(
+                "pairingBackendError",
+                fresh?.message || "Tap Refresh code on Desktop to generate a new pairing code."
+              );
+            }
+          } catch (_) {
+            updateState(
+              "pairingBackendError",
+              "Tap Refresh code on Desktop to generate a new pairing code."
+            );
+          }
+        })();
         return;
       } else if (key == "bindingRevoked") {
         updateState("pairedDevice", null);
         updateState("workspace", null);
+        updateState("pairingCode", null);
+        updateState("pairingCodeGeneratedAt", 0);
         openAlertModal("Workspace connection is no longer active.");
         return;
       } else if (key == "hardSyncApproved" && value) {

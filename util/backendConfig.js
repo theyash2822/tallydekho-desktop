@@ -2,11 +2,10 @@
  * Dev/prod backend URL resolution.
  *
  * Typical setup: Backend on Mac, Desktop on Windows (LAN).
- * Dev fallback uses the Mac LAN IP. Override anytime via local `.env`:
- *   BACKEND_URL=http://192.168.29.xxx:3001
- * (`.env` is gitignored — never commit it.)
+ * Dev default is hardcoded to the Mac LAN IP so Windows never hits its own localhost.
  *
- * Same-machine Mac Desktop only: set BACKEND_URL=http://127.0.0.1:3001 in `.env`.
+ * Optional override via local `.env` BACKEND_URL — but loopback (127.0.0.1 / localhost)
+ * is rejected in ELECTRON_DEV and remapped to this default.
  */
 const DEFAULT_DEV_BACKEND_URL = "http://192.168.29.243:3001";
 const PROD_BACKEND_URL = "https://api.tallydekho.com";

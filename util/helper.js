@@ -18,28 +18,35 @@ const { DEFAULT_DEV_BACKEND_URL, PROD_BACKEND_URL } = require("./backendConfig")
 const execFileAsync = promisify(execFile);
 const MS_PER_DAY = 86_400_000;
 
-/** Known-dead LAN hosts that previously broke pairing/socket (DHCP drift). */
-const DEAD_BACKEND_HOSTS = new Set(["192.168.29.241", "192.168.29.240", "192.168.29.180"]);
+/** Known-dead / invalid hosts for Windows Desktop → Mac backend. */
+const DEAD_BACKEND_HOSTS = new Set([
+  "192.168.29.241",
+  "192.168.29.240",
+  "192.168.29.180",
+  "127.0.0.1",
+  "localhost",
+]);
 
 function resolveBackendUrl() {
   const isDev = !!process.env.ELECTRON_DEV;
-  let url = process.env.BACKEND_URL || process.env.BASE_URL ||
-    (isDev ? DEFAULT_DEV_BACKEND_URL : PROD_BACKEND_URL);
+  if (!isDev) {
+    return { url: PROD_BACKEND_URL, isDev: false };
+  }
+  // Dev: prefer env override only when it is a real LAN/host URL; never loopback.
+  let url = process.env.BACKEND_URL || process.env.BASE_URL || DEFAULT_DEV_BACKEND_URL;
   try {
     const u = new URL(url);
     if (DEAD_BACKEND_HOSTS.has(u.hostname)) {
-      // Prefer current Mac LAN default (Windows Desktop → Mac backend), not loopback
-      const fallback = DEFAULT_DEV_BACKEND_URL;
       error(
-        `BACKEND_URL host ${u.hostname} is unreachable/stale — using ${fallback}. ` +
-          `Update local .env BACKEND_URL to this Mac's current LAN IP.`
+        `BACKEND_URL ${url} is loopback/stale — Windows Desktop cannot reach Mac backend there. ` +
+          `Using hardcoded ${DEFAULT_DEV_BACKEND_URL}`
       );
-      url = fallback;
+      url = DEFAULT_DEV_BACKEND_URL;
     }
   } catch (_) {
-    /* keep as-is */
+    url = DEFAULT_DEV_BACKEND_URL;
   }
-  return { url, isDev: !!process.env.ELECTRON_DEV };
+  return { url, isDev: true };
 }
 
 const { url: baseURL, isDev } = resolveBackendUrl();

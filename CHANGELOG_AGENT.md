@@ -4,7 +4,15 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
-## 2026-09-14 — Dev backend URL → Mac LAN .243 (Windows Desktop)
+## 2026-09-17 — Force Mac LAN .243; reject Windows loopback BACKEND_URL
+
+**Branch:** `cursor`
+**Files:** `util/backendConfig.js`, `util/helper.js`, `.env.example`
+**Behavior:** Dev hardcoded `http://192.168.29.243:3001`. If `.env` still has `127.0.0.1`/`localhost`, remap to `.243` (fixes Windows `xhr poll error`).
+**Test:** Backend health 200 on `.243`; Windows must pull + restart Desktop
+**Risks:** Mac DHCP off `.243` requires updating `DEFAULT_DEV_BACKEND_URL`
+
+---
 
 **Branch:** `cursor`
 **Files:** `util/backendConfig.js`, `.env.example`, `API_USAGE.md`, `BLUEPRINT.md`, `KNOWN_ISSUES.md`

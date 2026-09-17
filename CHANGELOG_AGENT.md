@@ -4,6 +4,16 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-09-17 — Auto first soft sync after pair claim (selected cos + FY only)
+
+**Branch:** `cursor`
+**Files:** `renderer/app/App.jsx`
+**Behavior:** On claim/ACK (`pairingClaimed`), Desktop confirms Tally online, refreshes company list, then auto soft-syncs **only** `selectedCompanies` with their selected FY years (never all Tally companies). If Tally is closed or selection empty, sets `pendingFirstSyncAfterPair` and retries when ready. Web/Mobile leave Demo when `init-sync` → CONNECTED (unchanged).
+**Test:** Pair → no Sync tap → status becomes CONNECTED; Demo clears on Web/Mobile
+**Risks:** Needs Desktop restart; empty selection still needs user to pick company/FY once
+
+---
+
 ## 2026-09-17 — Stale pairing code after unpair / CLAIMED session
 
 **Branch:** `cursor`

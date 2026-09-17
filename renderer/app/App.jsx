@@ -53,6 +53,8 @@ export default function App() {
     pairingCodeGeneratedAt: null,
     pairingBackendError: "",
     pairedDevice: null,
+    pairingClaimed: null,
+    pendingFirstSyncAfterPair: false,
     isVersionUpdateModalOpen: false,
     syncMessage: "",
     isCloseConfirmationModalOpen: false,
@@ -76,6 +78,10 @@ export default function App() {
   const hardSyncContinueOnceRef = useRef(null);
   const hardSyncRequestIdRef = useRef(null);
   const lineageMismatchRef = useRef(null);
+  const autoFirstSyncInFlightRef = useRef(false);
+  const autoFirstSyncClaimTokenRef = useRef(null);
+  /** Once first soft sync has been kicked for this bind, ignore late duplicate pairingClaimed. */
+  const autoFirstSyncStartedForBindRef = useRef(null);
 
   const {
     active,
@@ -175,6 +181,7 @@ export default function App() {
           if (res.data?.workspace) updateState("workspace", res.data.workspace);
           updateState("pairingClaimed", {
             connectionStatus: res.data?.connectionStatus || "RECONNECTING",
+            at: Date.now(),
           });
           updateState("pairingCode", null);
           updateState("pairingBackendError", "");
@@ -414,6 +421,11 @@ export default function App() {
         updateState("pairingCode", null);
         updateState("pairingCodeGeneratedAt", 0);
         updateState("pairingBackendError", "");
+        updateState("pairingClaimed", null);
+        updateState("pendingFirstSyncAfterPair", false);
+        autoFirstSyncClaimTokenRef.current = null;
+        autoFirstSyncInFlightRef.current = false;
+        autoFirstSyncStartedForBindRef.current = null;
         openAlertModal("Workspace connection is no longer active. Generating a new pairing code…");
         // Stale digits (already CLAIMED) must never stay on screen — mint a fresh session.
         (async () => {
@@ -443,7 +455,19 @@ export default function App() {
         updateState("workspace", null);
         updateState("pairingCode", null);
         updateState("pairingCodeGeneratedAt", 0);
+        updateState("pairingClaimed", null);
+        updateState("pendingFirstSyncAfterPair", false);
+        autoFirstSyncClaimTokenRef.current = null;
+        autoFirstSyncInFlightRef.current = false;
+        autoFirstSyncStartedForBindRef.current = null;
         openAlertModal("Workspace connection is no longer active.");
+        return;
+      } else if (key == "pairingClaimed" && value) {
+        updateState("pairingClaimed", {
+          ...(typeof value === "object" && value ? value : {}),
+          connectionStatus: value?.connectionStatus || "RECONNECTING",
+          at: value?.at || Date.now(),
+        });
         return;
       } else if (key == "hardSyncApproved" && value) {
         const approvedId = value.requestId || value.data?.requestId || value.id;
@@ -652,23 +676,136 @@ export default function App() {
         .map((item) => ({ ...item, years: item.years.slice(-2) }));
     }
 
+    const prevSynced = (selectedCompaniesRef.current || []).filter((c) => c.isSynced);
+    selectedCompaniesRef.current = newSelectedCompanies;
     updateState("selectedCompanies", newSelectedCompanies);
     updateState("companies", data);
 
     // ── GUID change detection ─────────────────────────────────────────
     // If a previously-synced company GUID is no longer in the live Tally list,
     // the company was migrated/reinstalled. Suggest hard sync.
-    const prevSynced = selectedCompaniesRef.current.filter(c => c.isSynced);
     const newIds = new Set(ids);
-    const missingGuids = prevSynced.filter(c => !newIds.has(c.guid));
+    const missingGuids = prevSynced.filter((c) => !newIds.has(c.guid));
     if (missingGuids.length > 0) {
-      const names = missingGuids.map(c => c.name).join(", ");
+      const names = missingGuids.map((c) => c.name).join(", ");
       openAlertModal(
         `Company GUID changed for: ${names}.\n\nThis usually means Tally was reinstalled or the company was recreated. ` +
         `Hard Sync is recommended to rebuild data safely.`
       );
     }
+
+    return newSelectedCompanies;
   };
+
+  /**
+   * After pair claim+ACK → RECONNECTING, Web/Mobile stay on Demo until first soft sync
+   * flips CONNECTED. Auto-run soft sync for Desktop-selected companies + their FYs only
+   * (never all Tally companies).
+   */
+  const startAutoFirstSyncAfterPair = async () => {
+    if (!window.tally) return false;
+    if (autoFirstSyncInFlightRef.current || isSyncingRef.current) return false;
+    const bindKey =
+      state.workspace?.id ||
+      pairedDevice?.deviceId ||
+      pairedDevice?.name ||
+      "bound";
+    if (autoFirstSyncStartedForBindRef.current === bindKey) return false;
+    autoFirstSyncInFlightRef.current = true;
+    try {
+      let tallyOk = false;
+      try {
+        tallyOk = !!(await window.tally.connected());
+      } catch (_) {
+        tallyOk = false;
+      }
+      updateState("isTallyOnline", tallyOk);
+      if (!tallyOk) {
+        updateState("pendingFirstSyncAfterPair", true);
+        openAlertModal(
+          "Open Tally to finish connecting. First sync will start automatically when Tally is online."
+        );
+        return false;
+      }
+
+      let selection = selectedCompaniesRef.current || [];
+      try {
+        selection = (await fetchCompanies()) || selection;
+      } catch (_) {
+        // keep prior selection
+      }
+
+      const toSync = (selection || []).filter(
+        (c) => c && (c.guid || c.id) && Array.isArray(c.years) && c.years.length > 0
+      );
+      if (!toSync.length) {
+        updateState("pendingFirstSyncAfterPair", true);
+        openAlertModal(
+          "Select at least one company and FY on Desktop. First sync will start once a selection is ready."
+        );
+        return false;
+      }
+
+      autoFirstSyncStartedForBindRef.current = bindKey;
+      updateState("pendingFirstSyncAfterPair", false);
+      updateState("pairingClaimed", null);
+      updateState("isSyncing", true);
+      updateState("syncMode", "normal");
+      updateState("syncMessage", "First sync after pairing…");
+      updateState("syncProgress", 0);
+
+      const { data, code } = await window.tally.startSync({
+        companies: toSync,
+        isHardSync: false,
+      });
+      if (data?.code === "tally_not_connected" || code === "tally_not_connected") {
+        autoFirstSyncStartedForBindRef.current = null;
+        updateState("isSyncing", false);
+        updateState("pendingFirstSyncAfterPair", true);
+        await updateTallyStatus();
+        return false;
+      }
+      return true;
+    } catch (e) {
+      autoFirstSyncStartedForBindRef.current = null;
+      updateState("isSyncing", false);
+      updateState("pendingFirstSyncAfterPair", true);
+      openAlertModal(
+        e?.message ||
+          "First sync after pairing could not start. Open Tally, confirm company/FY selection, then Sync."
+      );
+      return false;
+    } finally {
+      autoFirstSyncInFlightRef.current = false;
+    }
+  };
+
+  // Claim/ACK succeeded → auto soft first sync (selected companies + FYs only).
+  useEffect(() => {
+    const claimed = state.pairingClaimed;
+    if (!claimed) return undefined;
+    const token = claimed.at || claimed.connectionStatus || "claimed";
+    if (autoFirstSyncClaimTokenRef.current === token) return undefined;
+    autoFirstSyncClaimTokenRef.current = token;
+    startAutoFirstSyncAfterPair();
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.pairingClaimed]);
+
+  // Retry when Tally comes online or selection appears after a deferred first sync.
+  useEffect(() => {
+    if (!state.pendingFirstSyncAfterPair) return undefined;
+    if (!state.isTallyOnline) return undefined;
+    const ready = (selectedCompanies || []).some(
+      (c) => Array.isArray(c?.years) && c.years.length > 0
+    );
+    if (!ready) return undefined;
+    const t = setTimeout(() => {
+      startAutoFirstSyncAfterPair();
+    }, 800);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.pendingFirstSyncAfterPair, state.isTallyOnline, selectedCompanies]);
 
   const stopSync = async (code) => {
     await window.tally.stopSync(code);

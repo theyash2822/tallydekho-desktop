@@ -13,44 +13,15 @@ const { error, info } = require("./logger");
 const getDeviceProfile = require("./deviceProfile");
 const store = require("./store");
 const { saveDeviceSecret, getDeviceSecret } = require("./deviceCredential");
-const { DEFAULT_DEV_BACKEND_URL, PROD_BACKEND_URL } = require("./backendConfig");
+const { resolveBackendEnvironment } = require("./backendConfig");
 
 const execFileAsync = promisify(execFile);
 const MS_PER_DAY = 86_400_000;
 
-/** Known-dead / invalid hosts for Windows Desktop → Mac backend. */
-const DEAD_BACKEND_HOSTS = new Set([
-  "192.168.29.241",
-  "192.168.29.240",
-  "192.168.29.180",
-  "127.0.0.1",
-  "localhost",
-]);
-
-function resolveBackendUrl() {
-  const isDev = !!process.env.ELECTRON_DEV;
-  if (!isDev) {
-    return { url: PROD_BACKEND_URL, isDev: false };
-  }
-  // Dev: prefer env override only when it is a real LAN/host URL; never loopback.
-  let url = process.env.BACKEND_URL || process.env.BASE_URL || DEFAULT_DEV_BACKEND_URL;
-  try {
-    const u = new URL(url);
-    if (DEAD_BACKEND_HOSTS.has(u.hostname)) {
-      error(
-        `BACKEND_URL ${url} is loopback/stale — Windows Desktop cannot reach Mac backend there. ` +
-          `Using hardcoded ${DEFAULT_DEV_BACKEND_URL}`
-      );
-      url = DEFAULT_DEV_BACKEND_URL;
-    }
-  } catch (_) {
-    url = DEFAULT_DEV_BACKEND_URL;
-  }
-  return { url, isDev: true };
-}
-
-const { url: baseURL, isDev } = resolveBackendUrl();
-info(`Backend baseURL=${baseURL} (ELECTRON_DEV=${isDev ? "1" : "0"})`);
+const { appEnv: APP_ENV, url: baseURL, isDev, warnings: backendWarnings } =
+  resolveBackendEnvironment();
+for (const warning of backendWarnings) error(warning);
+info(`Backend baseURL=${baseURL} (TD_BACKEND_ENV=${APP_ENV})`);
 
 const axiosInstance = axios.create({
   baseURL,
@@ -112,7 +83,7 @@ const isTallyOpen = async () => {
 const isOnlineHandler = async (timeoutMs = 5000) => {
   // Ping local backend first — if it responds, we're connected (avoids Google DNS blocks)
   try {
-    const res = await axiosInstance.get("/app/ping", { timeout: timeoutMs });
+    const res = await axiosInstance.get("/health", { timeout: timeoutMs });
     if (res.status >= 200 && res.status < 400) return true;
   } catch (_) {}
 
@@ -275,6 +246,10 @@ async function registerDevice() {
 }
 
 async function checkForUpdates(mainWindow) {
+  // The update feed only carries production artifacts; letting a staging build
+  // update itself would swap it for the production client mid-test.
+  if (APP_ENV !== "production") return null;
+
   const update = await autoUpdater.checkForUpdates();
   if (update?.isUpdateAvailable) {
     const savedVersion = store.get("savedVersion");
@@ -395,6 +370,8 @@ module.exports = {
   registerDevice,
   axiosInstance,
   baseURL,
+  APP_ENV,
+  isDev,
   pollJobStatus,
   checkForUpdates,
   assetPath,

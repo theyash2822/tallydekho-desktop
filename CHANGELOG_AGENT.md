@@ -4,6 +4,47 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-09-18 — Staging build path + auto-update safety
+
+**Branch:** `cursor`
+**Files:** `util/backendConfig.js`, `util/helper.js`, `main.js`, `package.json`, `scripts/set-build-env.js`, `scripts/verify-backend-config.js`
+
+**Behavior:**
+- Backend selection centralised in `resolveBackendEnvironment()`: `production`
+  (default), `staging`, `development`, chosen via `TD_BACKEND_ENV` or a baked
+  `td-env.json`. No arbitrary URL textbox is exposed in production.
+- `npm run build:staging` bakes `{appEnv:"staging"}`; staging window title reads
+  `TallyDekho — STAGING` so a tester cannot confuse it with production.
+- A staging build refuses to resolve to `api.tallydekho.com`; invalid
+  `TD_BACKEND_ENV` fails closed.
+- **Auto-update disabled for non-production builds.** The electron-builder
+  publish feed (`test.tallydekho.com/tallydekho/`) carries production artifacts
+  only, and `autoUpdater.setFeedURL` is commented out so that baked config is the
+  live feed. Without this guard a packaged staging build would poll it, offer an
+  "update", and silently replace itself with the production client pointed at the
+  production API mid-test. Gated in `checkForUpdates` (`util/helper.js`, the
+  single choke point for all three call sites) and `configureUpdater` (`main.js`).
+
+**Note:** the `test.tallydekho.com` feed is **active infrastructure** serving
+shipped clients despite the misleading name. Do not delete it.
+
+**Test:** `npm run verify:config` — 12 checks PASS, including the two new
+update-feed guards.
+
+**Risks:** no packaged staging build has been produced or installed yet; the
+guards are verified by static assertion, not by running an installed staging app.
+
+---
+
+## 2026-09-17 — Pairing-code 409 while already paired
+
+**Branch:** `cursor`
+**Files:** `renderer/app/App.jsx`, `renderer/app/views/dashboard/PairingPanel.jsx`, `util/ipcRegistry.js`
+**Behavior:** Startup / Refresh no longer request a pairing session when Desktop is already paired (was showing raw HTTP 409).
+**Test:** Restart paired Desktop → no red 409; companies/pairing UI reflects paired state
+
+---
+
 ## 2026-09-17 — Auto first soft sync after pair claim (selected cos + FY only)
 
 **Branch:** `cursor`

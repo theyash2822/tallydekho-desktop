@@ -548,13 +548,22 @@ ipcMain.handle("api:pairing_code", async () => {
     try {
       store.delete("pairingCode");
     } catch (_) {}
+    const apiCode = err?.response?.data?.code;
+    const apiMsg = err?.response?.data?.message;
+    if (apiCode === "DEVICE_ALREADY_PAIRED") {
+      return {
+        status: false,
+        code: "DEVICE_ALREADY_PAIRED",
+        message: apiMsg || "This Desktop is already paired to a workspace.",
+      };
+    }
     return {
       status: false,
-      code: "BACKEND_UNAVAILABLE",
+      code: apiCode || "BACKEND_UNAVAILABLE",
       message:
         err?.code === "ECONNABORTED" || /ETIMEDOUT|ECONNREFUSED|ENOTFOUND/i.test(String(err?.message || ""))
           ? "Backend unavailable — unable to generate pairing code. Check network and backend URL."
-          : err?.message || "Unable to generate pairing code",
+          : apiMsg || err?.message || "Unable to generate pairing code",
     };
   }
 
@@ -714,30 +723,23 @@ ipcMain.handle("api:remove_paired_device", async () => {
   };
 });
 
-// Send attachment to project@tallydekho.com via backend
-ipcMain.handle("api:ai_attachment", async (event, { filePath, fileName }) => {
-  try {
-    const fileData = fsSync.readFileSync(filePath).toString('base64');
-    const ext = fileName.split('.').pop().toLowerCase();
-    const mimeMap = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', pdf: 'application/pdf' };
-    const fileType = mimeMap[ext] || 'application/octet-stream';
-    const response = await axiosInstance.post('/app/ai/attachment', { fileName, fileData: `data:${fileType};base64,${fileData}`, fileType });
-    return response.data?.status ? true : false;
-  } catch (err) {
-    error(err?.message, 'api:ai_attachment');
-    return false;
-  }
-});
-
-// AI Chat - proxies to backend /app/ai/chat
+// AI Chat — canonical POST /api/ai/help (legacy /app/ai/chat never existed on server)
 ipcMain.handle("api:ai_chat", async (event, { messages }) => {
   try {
-    const response = await axiosInstance.post("/app/ai/chat", { messages });
-    return response.data?.data?.reply || 'No response.';
+    const history = Array.isArray(messages) ? messages.slice(0, -1) : [];
+    const last = Array.isArray(messages) ? messages[messages.length - 1] : null;
+    const message = last?.content || last?.text || '';
+    const response = await axiosInstance.post("/api/ai/help", { message, history });
+    return response.data?.data?.reply || response.data?.reply || response.data?.data?.answer || 'No response.';
   } catch (err) {
     error(err?.message, "api:ai_chat");
     return 'Could not connect to AI assistant. Make sure the backend is running.';
   }
+});
+
+// Attachment upload via legacy /app/ai/attachment removed (no server route) — use support channel
+ipcMain.handle("api:ai_attachment", async () => {
+  return false;
 });
 
 // Fetch real user profile from backend via device-id (no token needed)

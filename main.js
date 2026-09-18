@@ -33,6 +33,7 @@ const {
   getDefaultMailClient,
   registerDevice,
   baseURL,
+  APP_ENV,
   checkForUpdates,
   assetPath,
 } = require("./util/helper");
@@ -89,6 +90,13 @@ function configureUpdater() {
     return;
   }
 
+  // The baked publish feed only ever carries production artifacts, so a staging
+  // build must not self-update — it would silently become the production client.
+  if (APP_ENV !== "production") {
+    info(`[updater] skip in ${APP_ENV} build`);
+    return;
+  }
+
   // Set your feed URL EARLY so updater never looks for app-update.yml
   // autoUpdater.setFeedURL({
   //   provider: "generic",
@@ -128,6 +136,12 @@ async function createWindow() {
       zoomFactor: 1.0,
     },
   });
+
+  // A staging installer looks identical to production; label it so a tester
+  // never mistakes which backend they are writing to.
+  if (APP_ENV !== "production") {
+    mainWindow.setTitle(`TallyDekho — ${APP_ENV.toUpperCase()}`);
+  }
 
   registerTallySync(mainWindow);
   registerBackup(mainWindow);
@@ -282,7 +296,7 @@ ipcMain.handle("openExternal", async (_event) => {
 ipcMain.handle("backend:ping", async () => {
   const { axiosInstance } = require("./util/helper");
   try {
-    await axiosInstance.get("/app/ping", { timeout: 10000 }); // 10s timeout — avoids false offline on slow connections
+    await axiosInstance.get("/health", { timeout: 10000 }); // 10s timeout — avoids false offline on slow connections
     return true;
   } catch {
     return false;

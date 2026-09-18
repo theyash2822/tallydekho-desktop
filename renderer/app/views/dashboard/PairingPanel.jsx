@@ -18,11 +18,21 @@ export default function PairingPanel() {
 
   const refreshPairingCode = async () => {
     if (!window.api?.pairingCode) return;
+    if (pairedDevice) return;
     setRefreshing(true);
     try {
       const res = await window.api.pairingCode();
       const data = res?.data || {};
       const code = data.code || data.pairingCode;
+      if (res?.code === "DEVICE_ALREADY_PAIRED") {
+        updateState("pairingBackendError", "");
+        updateState("pairingCode", null);
+        try {
+          const paired = await window.api.pairedDevice?.();
+          if (paired?.status && paired.data) updateState("pairedDevice", paired.data);
+        } catch (_) {}
+        return;
+      }
       if (res?.status && code && data.sessionId) {
         updateState("pairingCode", code);
         updateState("pairingCodeGeneratedAt", Date.now());
@@ -49,12 +59,20 @@ export default function PairingPanel() {
     }
   };
 
-  // Unpaired panel: always mint a fresh PENDING session once. Prevents showing a
-  // leftover CLAIMED code (e.g. after unpair) that Web/Mobile correctly rejects.
+  // After unpair (pairedDevice goes null), mint a fresh session once.
+  // Cold start is handled by App init (paired check first) — do not race it here.
   useEffect(() => {
-    if (pairedDevice || autoRefreshOnce.current) return;
+    if (pairedDevice) {
+      autoRefreshOnce.current = false;
+      return;
+    }
+    if (autoRefreshOnce.current) return;
     autoRefreshOnce.current = true;
-    refreshPairingCode();
+    const t = setTimeout(() => {
+      // Only if still unpaired after App init had a chance to hydrate
+      refreshPairingCode();
+    }, 1200);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pairedDevice]);
 

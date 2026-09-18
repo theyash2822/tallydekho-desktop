@@ -341,35 +341,45 @@ export default function App() {
       updateState("pairingCodeGeneratedAt", 0);
       updateState("pairingBackendError", "");
 
-      let sessionReady = false;
-      try {
-        const fresh = await window.api.pairingCode?.();
-        const code = fresh?.data?.code || fresh?.data?.pairingCode;
-        if (fresh?.status && code && fresh?.data?.sessionId) {
-          // claimToken stays in main process memory; UI only needs the code
-          updateState("pairingCode", code);
-          updateState("pairingCodeGeneratedAt", Date.now());
-          updateState("pairingBackendError", "");
-          sessionReady = true;
-        } else {
+      // Check paired FIRST — requesting /desktop/pairing-code while already paired → 409.
+      const pairedRes = await window.api.pairedDevice();
+      const paired = pairedRes?.status ? pairedRes.data : null;
+      updateState("pairedDevice", paired || null);
+
+      if (paired) {
+        updateState("pairingBackendError", "");
+        updateState("pairingCode", null);
+      } else {
+        let sessionReady = false;
+        try {
+          const fresh = await window.api.pairingCode?.();
+          const code = fresh?.data?.code || fresh?.data?.pairingCode;
+          if (fresh?.code === "DEVICE_ALREADY_PAIRED") {
+            const again = await window.api.pairedDevice();
+            updateState("pairedDevice", again?.data || null);
+            updateState("pairingBackendError", "");
+          } else if (fresh?.status && code && fresh?.data?.sessionId) {
+            updateState("pairingCode", code);
+            updateState("pairingCodeGeneratedAt", Date.now());
+            updateState("pairingBackendError", "");
+            sessionReady = true;
+          } else {
+            updateState(
+              "pairingBackendError",
+              fresh?.message || "Backend unavailable — unable to generate pairing code."
+            );
+          }
+        } catch (_) {
           updateState(
             "pairingBackendError",
-            fresh?.message || "Backend unavailable — unable to generate pairing code."
+            "Backend unavailable — unable to generate pairing code."
           );
         }
-      } catch (_) {
-        updateState(
-          "pairingBackendError",
-          "Backend unavailable — unable to generate pairing code."
-        );
+        if (!sessionReady) {
+          updateState("pairingCode", null);
+          updateState("pairingCodeGeneratedAt", 0);
+        }
       }
-      if (!sessionReady) {
-        updateState("pairingCode", null);
-        updateState("pairingCodeGeneratedAt", 0);
-      }
-
-      const pairedDevice = await window.api.pairedDevice();
-      updateState("pairedDevice", pairedDevice.data);
     };
 
     init();

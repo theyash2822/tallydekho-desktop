@@ -39,10 +39,11 @@ Do NOT read: renderer, IPC, backup, socket
 ## Pairing Bug (can't pair with mobile)
 Read:
 - AGENTS.md, BLUEPRINT.md, IPC_MAP.md
-- util/ipcRegistry.js (api:pairing_code, api:paired_device, api:remove_paired_device)
+- util/pairingLifecycle.js, util/pairingRuntime.js, util/pairingSessionState.js
+- util/ipcRegistry.js (api:pairing_state, api:paired_device, api:remove_paired_device)
 - util/helper.js
+- renderer/app/views/dashboard/PairingPanel.jsx
 - renderer/app/views/devices/ (if UI issue)
-- renderer/app/controllers/pairing.js
 
 Do NOT read: sync, backup, XML, tallyHelper
 

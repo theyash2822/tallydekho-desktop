@@ -9,38 +9,35 @@ export default function Devices() {
   const [userProfile, setUserProfile] = useState(null);
 
   const {
-    state: { pairedDevice, pairingCodeGeneratedAt },
+    state: { pairedDevice, lastSync, workspace },
     updateState,
     openAlertModal,
   } = useContext(TallyContext);
 
+  // Backend pairing status only — never hardcode CONNECTED from local Tally.
+  const rawPairing =
+    userProfile?.pairing?.status ||
+    userProfile?.workspace?.tallyConnection ||
+    workspace?.tallyConnection ||
+    null;
+  const pairingStatus = String(
+    rawPairing || (pairedDevice ? "RECONNECTING" : "UNPAIRED")
+  ).toUpperCase();
+  const badgeLabel =
+    pairingStatus === "CONNECTED"
+      ? "CONNECTED"
+      : pairingStatus === "RECONNECTING"
+        ? "RECONNECTING"
+        : "UNPAIRED";
+
   useEffect(() => {
     window.api?.userProfile?.().then(res => {
-      if (res?.status && res?.data) setUserProfile(res.data);
+      if (res?.status && res?.data) {
+        setUserProfile(res.data);
+        if (res.data.workspace) updateState("workspace", res.data.workspace);
+      }
     }).catch(() => {});
   }, []);
-
-  // useEffect(() => {
-  //   if (pairingCodeGeneratedAt && !pairedDevice) {
-  //     const generatedAt = new Date(pairingCodeGeneratedAt);
-  //     const currentDate = new Date();
-
-  //     const differenceInMillis = currentDate - generatedAt;
-
-  //     const differenceInMinutes = differenceInMillis / (1000 * 60);
-
-  //     if (differenceInMinutes < 10) {
-  //       window.api
-  //         .pairedDevice()
-  //         .then((response) => {
-  //           if (response.status) {
-  //             updateState("pairedDevice", response.data);
-  //           }
-  //         })
-  //         .catch();
-  //     }
-  //   }
-  // }, [pairingCodeGeneratedAt]);
 
   const closeRemoveDeviceModal = () => {
     setIsRemoveDeviceModalOpen(false);
@@ -52,9 +49,8 @@ export default function Devices() {
     if (response.status) {
       updateState("pairedDevice", null);
       setUserProfile(null);
-      // New pairing code is delivered via WebSocket 'unpaired' event (with newCode payload)
-      // The socket.js handler updates pairingCode in store + state automatically.
-      // No API call needed here.
+      // Main clears the workspace binding and pushes the replacement pairing
+      // code over `window:listener`.
     } else {
       openAlertModal(
         "Something went wrong while removing paired device. If this message persists, please contact the support team.",
@@ -66,7 +62,7 @@ export default function Devices() {
   return (
     <div className="space-y-3">
       {pairedDevice && (
-        <Card title="Paired Device">
+        <Card title="Connected Workspace">
           <div
             className="relative overflow-hidden rounded-xl border p-3"
             style={{
@@ -81,19 +77,27 @@ export default function Devices() {
                     className="px-2 py-0.5 rounded-full border bg-[#F5F4EF] text-[#2D7D46]"
                     style={{ borderColor: "#E9E8E3" }}
                   >
-                    Device
+                    Workspace
                   </span>
                   <span className="text-xs text-[#9A9A97]">•</span>
                   <span className="text-xs text-[#787774]">
-                    OS {pairedDevice.os}
+                    {pairedDevice.os || "Desktop"}
                   </span>
                 </div>
                 <div className="text-xl font-semibold tracking-wide">
-                  {pairedDevice.name}
+                  {userProfile?.workspace?.name || workspace?.name || pairedDevice.name}
                 </div>
                 <div className="text-xs text-[#9A9A97]">
-                  Last sync: {pairedDevice.last ? pairedDevice.last : "never"}
+                  Status: {badgeLabel}
                 </div>
+                <div className="text-xs text-[#9A9A97]">
+                  Last sync: {lastSync ? new Date(lastSync).toLocaleString() : (pairedDevice.last || "never")}
+                </div>
+                {userProfile?.lastCloudBackupAt && (
+                  <div className="text-xs text-[#9A9A97]">
+                    Last cloud backup: {new Date(Number(userProfile.lastCloudBackupAt) * 1000).toLocaleString()}
+                  </div>
+                )}
               </div>
               <div>
                 <div className="flex justify-end">
@@ -101,7 +105,7 @@ export default function Devices() {
                     className="text-xs font-semibold rounded-full border px-2 py-0.5"
                     style={{ borderColor: "#E9E8E3", width: "fit-content" }}
                   >
-                    PAIRED
+                    {badgeLabel}
                   </div>
                 </div>
                 <div className="mt-3 flex gap-2">

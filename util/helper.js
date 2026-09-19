@@ -1,4 +1,6 @@
-require('dotenv').config();
+const path = require("path");
+// Load .env from Desktop app root (util/ → ..) so BACKEND_URL applies even when cwd ≠ project
+require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 const { execFile, exec } = require("child_process");
 const { promisify } = require("util");
 const axios = require("axios");
@@ -6,20 +8,30 @@ const http = require("http");
 const https = require("https");
 const { autoUpdater } = require("electron-updater");
 const { app } = require("electron");
-const path = require("path");
 
 const { error, info } = require("./logger");
 const getDeviceProfile = require("./deviceProfile");
 const store = require("./store");
-const { DEFAULT_DEV_BACKEND_URL, PROD_BACKEND_URL } = require("./backendConfig");
+const { saveDeviceSecret, getDeviceSecret } = require("./deviceCredential");
+const { resolveBackendEnvironment } = require("./backendConfig");
 
 const execFileAsync = promisify(execFile);
 const MS_PER_DAY = 86_400_000;
 
-const isDev = !!process.env.ELECTRON_DEV;
-const baseURL = process.env.BACKEND_URL || process.env.BASE_URL ||
-  (isDev ? DEFAULT_DEV_BACKEND_URL : PROD_BACKEND_URL);
-// Dev default: util/backendConfig.js — override via BACKEND_URL in .env if needed
+let resolvedBackend;
+try {
+  resolvedBackend = resolveBackendEnvironment();
+} catch (err) {
+  // Fail closed rather than silently writing to the wrong backend.
+  error(`[config] ${err.message}`, "backend_config");
+  console.error(`\n[TallyDekho] ${err.message}\n`);
+  throw err;
+}
+
+const { appEnv: APP_ENV, url: baseURL, isDev, warnings: backendWarnings } =
+  resolvedBackend;
+for (const warning of backendWarnings) error(warning);
+info(`Backend baseURL=${baseURL} (TD_BACKEND_ENV=${APP_ENV})`);
 
 const axiosInstance = axios.create({
   baseURL,
@@ -32,6 +44,15 @@ const axiosInstance = axios.create({
   httpAgent: new http.Agent({ keepAlive: true, maxSockets: 50 }),
   httpsAgent: new https.Agent({ keepAlive: true, maxSockets: 50 }),
   transitional: { clarifyTimeoutError: true },
+});
+
+axiosInstance.interceptors.request.use((cfg) => {
+  const secret = getDeviceSecret();
+  if (secret) {
+    cfg.headers = cfg.headers || {};
+    cfg.headers["x-device-secret"] = secret;
+  }
+  return cfg;
 });
 
 // axiosInstance.interceptors.request.use((cfg) => {
@@ -72,7 +93,7 @@ const isTallyOpen = async () => {
 const isOnlineHandler = async (timeoutMs = 5000) => {
   // Ping local backend first — if it responds, we're connected (avoids Google DNS blocks)
   try {
-    const res = await axiosInstance.get("/app/ping", { timeout: timeoutMs });
+    const res = await axiosInstance.get("/health", { timeout: timeoutMs });
     if (res.status >= 200 && res.status < 400) return true;
   } catch (_) {}
 
@@ -199,9 +220,20 @@ async function registerDevice() {
   if (response.status) {
     store.set("lastSync", response.data.lastSync);
 
-    // Store the permanent pairing code returned on every register
+    // Do not persist register pairingCode — codes are session-bound and temporary.
+    // Fresh code comes from GET /desktop/pairing-code after startup.
     if (response.data?.pairingCode) {
-      store.set('pairingCode', response.data.pairingCode);
+      try {
+        store.delete("pairingCode");
+      } catch (_) {}
+    }
+    if (response.data?.deviceSecret) {
+      saveDeviceSecret(response.data.deviceSecret);
+      await axiosInstance.post("/desktop/claim-credential").catch(() => {});
+    }
+    if (response.data?.workspace) {
+      // Server-authoritative workspace metadata — UI via register response consumers only.
+      // Do not persist in electron-store (config schema strips unknown key 'workspace').
     }
 
     // Handle version compatibility levels returned by backend
@@ -224,6 +256,10 @@ async function registerDevice() {
 }
 
 async function checkForUpdates(mainWindow) {
+  // The update feed only carries production artifacts; letting a staging build
+  // update itself would swap it for the production client mid-test.
+  if (APP_ENV !== "production") return null;
+
   const update = await autoUpdater.checkForUpdates();
   if (update?.isUpdateAvailable) {
     const savedVersion = store.get("savedVersion");
@@ -285,6 +321,7 @@ function pollJobStatus({
           response = await axiosInstance(url, fetchOptions);
           response = response.data;
         } catch (err) {
+          // Response bodies can carry business payloads — log the envelope only.
           info("error", {
             message: err.message,
             code: err.code,
@@ -292,7 +329,7 @@ function pollJobStatus({
             address: err.address,
             port: err.port,
             responseStatus: err.response?.status,
-            responseData: err.response?.data,
+            responseCode: err.response?.data?.code,
             configUrl: err.config?.baseURL + err.config?.url,
             headersSent: !!err.response,
           });
@@ -302,7 +339,7 @@ function pollJobStatus({
           });
         }
 
-        info("Polling Status", response);
+        info("Polling Status", { status: response?.status, message: response?.message });
 
         if (response.status) {
           return resolve({
@@ -344,7 +381,11 @@ module.exports = {
   registerDevice,
   axiosInstance,
   baseURL,
+  APP_ENV,
+  isDev,
   pollJobStatus,
   checkForUpdates,
   assetPath,
+  getDeviceSecret,
+  saveDeviceSecret,
 };

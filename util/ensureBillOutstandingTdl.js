@@ -472,7 +472,7 @@ async function activateTdlByRestartingTally(tallyDir, destTdl, opts = {}) {
 }
 
 function selectedCompanyMeta() {
-  const c = store.get("selectedCompanies")?.[0] || {};
+  const c = require("./companySelection").getSelectedCompanies()[0] || {};
   return {
     companyName: c.name || "",
     companyNumber: c.companyNumber ?? c.COMPANYNUMBER ?? null,

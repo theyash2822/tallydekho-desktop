@@ -4,6 +4,191 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-09-19 — Snapshot branch `19-09-2026-final-code`
+
+Pushed local `cursor` tip as `19-09-2026-final-code`. No billing-authority
+code on Desktop this pass. LAN backend remains `http://192.168.29.243:3001`.
+
+---
+
+## 2026-09-19 — Desktop production remediation (pairing lifecycle + tenant)
+
+**Branch:** `cursor` (local only — not pushed)
+**Files:** `util/pairingLifecycle.js`, `util/pairingRuntime.js`, `util/companySelection.js`, `util/writeback.js`, `util/backendConfig.js`, `main.js`, `preload.js`, `util/ipcRegistry.js`, `util/socket.js`, `renderer/app/App.jsx`, `renderer/app/views/dashboard/PairingPanel.jsx`, `scripts/test-*.js`
+
+**Behavior:**
+- Main process owns pairing sessions (`expiresAt` authority, pre-expiry remint, generation guard, claim single-flight).
+- Refresh-code workaround removed. Sleep/wake and network restore remint expired sessions.
+- Unpair clears workspace-scoped `selectedCompanies`, lastSync and myLastSyncEpoch.
+- Sync/Hard Sync disabled while unpaired.
+- store IPC allowlisted. Unpackaged `electron .` fails closed instead of targeting production.
+- Writeback reconciliation pull on startup/reconnect in addition to the socket wake-up.
+- Cloud restore binds from the new backend credential and drops leftover local tenant state.
+- Restore dest copy rolls back from the safety snapshot on failure; lastSync/epoch cleared after a successful file restore.
+- `restore_approved` starts the same single-flight cloud restore as the PairingPanel button.
+- Backup zip is written to `*.partial` then renamed; 7z exit 1 is no longer treated as success.
+- Failed backup deletes partial and final staging files. Unix staging is chmod 600/700.
+- Restore dest overwrite rolls back from a safety copy; rollback failure keeps the recovery copy and returns CRITICAL.
+- Cloud restore checks size + SHA-256 + zip header before dest overwrite.
+- Dead local-restore modal, ZipUpload, StartRestoreModal, `tally.startRestore` / `tally:restore_backup` removed.
+- S3 upload PutObject now requests SSE-S3 AES256 (backend objectStore, storage configure only).
+
+**Test:** `npm test` (config guards + node:test behavioral suite)
+
+**Risks:** sandbox:true needs a real packaged/dev Electron smoke; backup/restore still needs real Tally + Owner approval for workspace replace.
+
+---
+
+## 2026-09-18 — Staging build path + auto-update safety
+
+**Branch:** `cursor`
+**Files:** `util/backendConfig.js`, `util/helper.js`, `main.js`, `package.json`, `scripts/set-build-env.js`, `scripts/verify-backend-config.js`
+
+**Behavior:**
+- Backend selection centralised in `resolveBackendEnvironment()`: `production`
+  (default), `staging`, `development`, chosen via `TD_BACKEND_ENV` or a baked
+  `td-env.json`. No arbitrary URL textbox is exposed in production.
+- `npm run build:staging` bakes `{appEnv:"staging"}`; staging window title reads
+  `TallyDekho — STAGING` so a tester cannot confuse it with production.
+- A staging build refuses to resolve to `api.tallydekho.com`; invalid
+  `TD_BACKEND_ENV` fails closed.
+- **Auto-update disabled for non-production builds.** The electron-builder
+  publish feed (`test.tallydekho.com/tallydekho/`) carries production artifacts
+  only, and `autoUpdater.setFeedURL` is commented out so that baked config is the
+  live feed. Without this guard a packaged staging build would poll it, offer an
+  "update", and silently replace itself with the production client pointed at the
+  production API mid-test. Gated in `checkForUpdates` (`util/helper.js`, the
+  single choke point for all three call sites) and `configureUpdater` (`main.js`).
+
+**Note:** the `test.tallydekho.com` feed is **active infrastructure** serving
+shipped clients despite the misleading name. Do not delete it.
+
+**Test:** `npm run verify:config` — 12 checks PASS, including the two new
+update-feed guards.
+
+**Risks:** no packaged staging build has been produced or installed yet; the
+guards are verified by static assertion, not by running an installed staging app.
+
+---
+
+## 2026-09-17 — Pairing-code 409 while already paired
+
+**Branch:** `cursor`
+**Files:** `renderer/app/App.jsx`, `renderer/app/views/dashboard/PairingPanel.jsx`, `util/ipcRegistry.js`
+**Behavior:** Startup / Refresh no longer request a pairing session when Desktop is already paired (was showing raw HTTP 409).
+**Test:** Restart paired Desktop → no red 409; companies/pairing UI reflects paired state
+
+---
+
+## 2026-09-17 — Auto first soft sync after pair claim (selected cos + FY only)
+
+**Branch:** `cursor`
+**Files:** `renderer/app/App.jsx`
+**Behavior:** On claim/ACK (`pairingClaimed`), Desktop confirms Tally online, refreshes company list, then auto soft-syncs **only** `selectedCompanies` with their selected FY years (never all Tally companies). If Tally is closed or selection empty, sets `pendingFirstSyncAfterPair` and retries when ready. Web/Mobile leave Demo when `init-sync` → CONNECTED (unchanged).
+**Test:** Pair → no Sync tap → status becomes CONNECTED; Demo clears on Web/Mobile
+**Risks:** Needs Desktop restart; empty selection still needs user to pick company/FY once
+
+---
+
+## 2026-09-17 — Stale pairing code after unpair / CLAIMED session
+
+**Branch:** `cursor`
+**Files:** `renderer/app/App.jsx`, `renderer/app/views/dashboard/PairingPanel.jsx`
+**Behavior:** On `unpairedAlert`, clear displayed code and auto-fetch a fresh `/desktop/pairing-code` session. PairingPanel auto-refreshes once when unpaired so CLAIMED leftovers (e.g. 207185) are not shown.
+**Test:** QA YELLOW; after unpair UI must not keep old digits
+**Risks:** Needs Desktop restart/rebuild to pick up renderer changes
+
+---
+
+## 2026-09-17 — Force Mac LAN .243; reject Windows loopback BACKEND_URL
+
+**Branch:** `cursor`
+**Files:** `util/backendConfig.js`, `util/helper.js`, `.env.example`
+**Behavior:** Dev hardcoded `http://192.168.29.243:3001`. If `.env` still has `127.0.0.1`/`localhost`, remap to `.243` (fixes Windows `xhr poll error`).
+**Test:** Backend health 200 on `.243`; Windows must pull + restart Desktop
+**Risks:** Mac DHCP off `.243` requires updating `DEFAULT_DEV_BACKEND_URL`
+
+---
+
+**Branch:** `cursor`
+**Files:** `util/backendConfig.js`, `.env.example`, `API_USAGE.md`, `BLUEPRINT.md`, `KNOWN_ISSUES.md`
+**Behavior:** Dev default is `http://192.168.29.243:3001` so Windows Desktop reaches Mac backend (loopback was ECONNREFUSED on Windows).
+**Test:** Mac `*:3001` health 200 on `.243`; Windows must pull + restart Desktop
+**Risks:** If Mac DHCP moves off `.243`, update `backendConfig.js` or Windows `.env`
+
+---
+
+## 2026-09-14 — Block dead .241 backend host; socket polling fallback
+
+**Branch:** `cursor`
+**Files:** `util/helper.js`, `main.js`, `util/socket.js`
+**Behavior:**
+- If `BACKEND_URL` still points at known-dead hosts (e.g. `192.168.29.241`), force loopback `http://127.0.0.1:3001` and log an error
+- Socket.io client uses `polling` + `websocket` (was websocket-only)
+- `connect_error` logs include `baseURL` for diagnosis
+**Test:** node probe — `.241` timeout; `127.0.0.1` / `.243` connect ok
+**Risks:** LAN Desktop on another PC must set `.env` to this Mac’s current IP (not loopback)
+
+---
+
+**Branch:** `cursor`
+**Files:** `main.js`, `util/helper.js`, `KNOWN_ISSUES.md`, `BLUEPRINT.md`, `API_USAGE.md`
+**Behavior:**
+- `dotenv` loads from Desktop app root (`__dirname`), not process cwd — so `BACKEND_URL` in `.env` always applies
+- Startup logs `Backend baseURL=…` (no secrets) for connectivity diagnosis
+- Docs no longer advertise dead LAN IP `192.168.29.241`; loopback default + local `.env` for LAN
+**Test:** After restart, Desktop log shows `baseURL=http://127.0.0.1:3001`; `/desktop/pairing-code` returns sessionId+claimToken
+**Risks:** Packaged prod still uses `api.tallydekho.com` unless env override
+
+---
+
+## 2026-09-14 — Pairing session hygiene + env-driven backend URL
+
+**Branch:** `cursor`
+**Files:** `util/backendConfig.js`, `util/pairingSessionState.js`, `util/claimPairing.js`, `util/ipcRegistry.js`, `util/helper.js`, `util/socket.js`, `main.js`, `preload.js`, `renderer/app/App.jsx`, `PairingPanel.jsx`, `.gitignore`, `.env.example`
+**Behavior:**
+- Backend URL: loopback default only; LAN via local `.env` (`BACKEND_URL`) — `.env` untracked
+- pairingCode/sessionId/claimToken are temporary in-memory; restart always fetches a fresh session
+- Claim distinguishes PENDING vs EXPIRED/NOT_FOUND; no claimToken in logs (hasClaimToken only)
+- claimToken never sent to renderer IPC
+**Test:** HTTP Desktop E2E: session → PENDING claim → Owner approve → HTTP claim+ACK → RECONNECTING → CONNECTED
+**Risks:** Requires Backend `PAIRING_SESSION_PENDING` code for quiet poll
+
+---
+
+## 2026-09-14 — Phase C pairing claim/ACK on cursor
+
+**Branch:** `cursor`
+**Files:** `util/claimPairing.js`, `util/socket.js`, `util/ipcRegistry.js`, `util/deviceCredential.js`, `preload.js`, `renderer/app/App.jsx`, `renderer/app/views/dashboard/PairingPanel.jsx`
+**Behavior:**
+- Short-lived pairing session: store `sessionId` + `claimToken` from `/desktop/pairing-code`
+- `pairing_approved` wake-up → HTTP claim + ACK (secret not dependent on socket alone)
+- App polls claim while unpaired; PairingPanel Refresh code; poll recovery updates UI
+- Legacy `pairing_confirmed` still accepted when backend uses immediate-secret bridge
+- Credential hygiene: safeStorage + AES-GCM fallback (no plaintext electron-store)
+**Test:** Refresh code on Desktop → approve from Web/Mobile → Desktop claims → first sync → CONNECTED
+**Risks:** Backend must run Phase B/C pairing service (claim/ack). Old permanent-code backend will not return claimToken.
+
+---
+
+## 2026-09-14 — Wave 3 Desktop credential hygiene (ported to cursor)
+
+**Files:** `util/deviceCredential.js`, sync error unmask, Hard Sync single-flight
+**Behavior:** Device secret OS/encrypted storage; sync errors show real codes; HS single-flight + continue-once
+**Test:** Pair → secret not plaintext; unpair clears secret
+**Risks:** Live Electron QA still needed for GREEN
+
+---
+
+## 2026-09-12 — Workspace binding + cloud backup/restore
+
+**Files:** deviceCredential.js, workspaceCloud.js, saveBackup.js, restoreBackup.js, helper.js, socket.js, ipcRegistry.js, preload.js, Devices.jsx, BackupRestore.jsx, PairingPanel.jsx, Dashboard.jsx, App.jsx, Sidebar.jsx, IPC_MAP.md
+**Behavior:** Device secret in OS secure storage; Connected Workspace UI; Hard Sync waits for Owner/Admin when multi-member; cloud backup upload (no machine-ID zip password); restore request/code on unpaired desktop; progress stages fixed (0–100). Tally XML/TDL unchanged.
+**Test:** Pair from Web; Run Backup Now; restore code on a second desktop; Hard Sync still auto-runs for single-user workspaces.
+**Risks:** Cloud list empty until backend is updated and a backup completes. S3 optional (`AWS_S3_BACKUP_BUCKET`); local object store used otherwise.
+
+---
+
 ## 2026-08-25 — Export CREDITLIMIT for OD / loan facilities
 
 **Files:** `xmls/LedgerFull.xml`

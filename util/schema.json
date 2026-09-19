@@ -250,7 +250,11 @@
       "type": "integer",
       "minimum": 0
     },
-    "pairingCode": {
+    "boundWorkspaceId": {
+      "type": "string",
+      "default": ""
+    },
+    "selectedCompaniesWorkspaceId": {
       "type": "string",
       "default": ""
     }

@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useRef, useState } from "react";
+import React, { useContext, useState } from "react";
 import Card from "../components/Card";
 import { TallyContext } from "../../utils/TallyContext.js";
 
@@ -10,71 +10,8 @@ export default function PairingPanel() {
   } = useContext(TallyContext);
 
   const [masked, setMasked] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const backoffRef = useRef(2000);
-  const autoRefreshOnce = useRef(false);
 
   const displayCode = pairingCode || "------";
-
-  const refreshPairingCode = async () => {
-    if (!window.api?.pairingCode) return;
-    if (pairedDevice) return;
-    setRefreshing(true);
-    try {
-      const res = await window.api.pairingCode();
-      const data = res?.data || {};
-      const code = data.code || data.pairingCode;
-      if (res?.code === "DEVICE_ALREADY_PAIRED") {
-        updateState("pairingBackendError", "");
-        updateState("pairingCode", null);
-        try {
-          const paired = await window.api.pairedDevice?.();
-          if (paired?.status && paired.data) updateState("pairedDevice", paired.data);
-        } catch (_) {}
-        return;
-      }
-      if (res?.status && code && data.sessionId) {
-        updateState("pairingCode", code);
-        updateState("pairingCodeGeneratedAt", Date.now());
-        updateState("pairingBackendError", "");
-        backoffRef.current = 2000;
-      } else {
-        const msg =
-          res?.message ||
-          "Backend unavailable — unable to generate pairing code.";
-        updateState("pairingBackendError", msg);
-        updateState("pairingCodeGeneratedAt", 0);
-        openAlertModal(msg);
-        // Controlled backoff for automatic retries (caller may re-invoke)
-        await new Promise((r) => setTimeout(r, backoffRef.current));
-        backoffRef.current = Math.min(backoffRef.current * 2, 30_000);
-      }
-    } catch (e) {
-      const msg = e?.message || "Backend unavailable — unable to generate pairing code.";
-      updateState("pairingBackendError", msg);
-      updateState("pairingCodeGeneratedAt", 0);
-      openAlertModal(msg);
-    } finally {
-      setRefreshing(false);
-    }
-  };
-
-  // After unpair (pairedDevice goes null), mint a fresh session once.
-  // Cold start is handled by App init (paired check first) — do not race it here.
-  useEffect(() => {
-    if (pairedDevice) {
-      autoRefreshOnce.current = false;
-      return;
-    }
-    if (autoRefreshOnce.current) return;
-    autoRefreshOnce.current = true;
-    const t = setTimeout(() => {
-      // Only if still unpaired after App init had a chance to hydrate
-      refreshPairingCode();
-    }, 1200);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pairedDevice]);
 
   const startRestore = async () => {
     const res = await window.tally.restoreRequest();
@@ -88,9 +25,11 @@ export default function PairingPanel() {
   const pollAndRestore = async () => {
     const st = await window.tally.restoreStatus();
     if (st?.data?.status === "APPROVED") {
+      // startCloudRestore emits restoreComplete; App shows the result once.
       const done = await window.tally.restoreCloud();
-      if (done?.status) openAlertModal("Restore complete. Run a sync after Tally opens.");
-      else openAlertModal(done?.message || "Restore failed");
+      if (!done?.status && done?.message && done.message !== "Restore already running") {
+        openAlertModal(done.message);
+      }
       return;
     }
     openAlertModal("Still waiting for Owner/Admin approval on Web or Mobile.");
@@ -117,18 +56,10 @@ export default function PairingPanel() {
           >
             {masked ? "Reveal code" : "Hide code"}
           </button>
-          <button
-            onClick={refreshPairingCode}
-            className="px-3 py-1.5 rounded-full border bg-[#F5F4EF] hover:bg-[#F0EFE9] text-[#787774]"
-            style={{ borderColor: "#E9E8E3" }}
-            disabled={refreshing || !!pairedDevice}
-          >
-            {refreshing ? "Refreshing…" : "Refresh code"}
-          </button>
         </div>
 
         <div className="text-xs text-[#9A9A97]">
-          Enter this code in Web or Mobile → Settings → Tally Sync. Codes expire in about 10 minutes — use Refresh code if needed.
+          Enter this code in Web or Mobile → Settings → Tally Sync. Codes refresh automatically.
         </div>
         {!pairedDevice && (
           <div className="pt-2 border-t space-y-2" style={{ borderColor: "#E9E8E3" }}>

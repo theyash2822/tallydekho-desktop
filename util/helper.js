@@ -18,8 +18,18 @@ const { resolveBackendEnvironment } = require("./backendConfig");
 const execFileAsync = promisify(execFile);
 const MS_PER_DAY = 86_400_000;
 
+let resolvedBackend;
+try {
+  resolvedBackend = resolveBackendEnvironment();
+} catch (err) {
+  // Fail closed rather than silently writing to the wrong backend.
+  error(`[config] ${err.message}`, "backend_config");
+  console.error(`\n[TallyDekho] ${err.message}\n`);
+  throw err;
+}
+
 const { appEnv: APP_ENV, url: baseURL, isDev, warnings: backendWarnings } =
-  resolveBackendEnvironment();
+  resolvedBackend;
 for (const warning of backendWarnings) error(warning);
 info(`Backend baseURL=${baseURL} (TD_BACKEND_ENV=${APP_ENV})`);
 
@@ -311,6 +321,7 @@ function pollJobStatus({
           response = await axiosInstance(url, fetchOptions);
           response = response.data;
         } catch (err) {
+          // Response bodies can carry business payloads — log the envelope only.
           info("error", {
             message: err.message,
             code: err.code,
@@ -318,7 +329,7 @@ function pollJobStatus({
             address: err.address,
             port: err.port,
             responseStatus: err.response?.status,
-            responseData: err.response?.data,
+            responseCode: err.response?.data?.code,
             configUrl: err.config?.baseURL + err.config?.url,
             headersSent: !!err.response,
           });
@@ -328,7 +339,7 @@ function pollJobStatus({
           });
         }
 
-        info("Polling Status", response);
+        info("Polling Status", { status: response?.status, message: response?.message });
 
         if (response.status) {
           return resolve({

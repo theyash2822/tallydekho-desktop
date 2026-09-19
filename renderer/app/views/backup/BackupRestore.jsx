@@ -1,12 +1,10 @@
-import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { useContext, useEffect, useMemo, useState } from "react";
 import Card from "../components/Card";
 import { TallyContext } from "../../utils/TallyContext";
 import { formatDate, formatDateTime } from "../../utils/datetime";
-import StartRestoreModal from "../components/StartRestoreModal";
 import Progress from "../components/Progress";
 import { computeNextSync } from "../../controllers/scheduler";
 import CustomSelect from "../components/CustomSelect";
-// import ZipUpload from "./ZipUpload";
 
 const options = [
   { value: "off", label: "OFF" },
@@ -19,10 +17,6 @@ export default function BackupRestore() {
   const [localPath, setLocalPath] = useState(
     "C:/ProgramData/TallyDekho/Backups"
   );
-
-  const [isConfirmationModalOpen, setIsConfirmationModalOpen] = useState(false);
-
-  const backupPath = useRef(null);
 
   const {
     state: {
@@ -61,21 +55,6 @@ export default function BackupRestore() {
 
     await window.tally.startBackup();
   }
-
-  const successConfirmationModal = async () => {
-    const response = await window.api.closeByName("Tally.exe", {
-      // timeoutMs: 2500,
-      forceIfNoExit: true,
-    });
-
-    closeConfirmationModal();
-
-    window.tally.startRestore(backupPath.current);
-  };
-
-  const closeConfirmationModal = () => {
-    setIsConfirmationModalOpen(false);
-  };
 
   const saveAutoBackupHandler = (value) => {
     // const value = event.target.value;
@@ -264,12 +243,6 @@ export default function BackupRestore() {
           )}
         </ul>
       </Card>
-      {isConfirmationModalOpen && (
-        <StartRestoreModal
-          onClose={closeConfirmationModal}
-          onConfirm={successConfirmationModal}
-        />
-      )}
     </div>
   );
 }

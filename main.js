@@ -9,6 +9,7 @@ const {
   dialog,
   shell,
   nativeImage,
+  powerMonitor,
 } = require("electron");
 const os = require("os");
 const path = require("path");
@@ -38,6 +39,16 @@ const {
   assetPath,
 } = require("./util/helper");
 const validateSchema = require("./util/validateSchema");
+const {
+  getSelectedCompanies,
+  setSelectedCompanies,
+} = require("./util/companySelection");
+const {
+  initPairingRuntime,
+  reconcileBinding,
+  handleResume,
+} = require("./util/pairingRuntime");
+const { reconcilePendingWriteback } = require("./util/writeback");
 
 // Note: ipcRegistry already required above via destructuring — do NOT require again
 // require("./util/ipcRegistry"); // REMOVED: double-require crashes Electron (duplicate IPC handlers)
@@ -115,6 +126,49 @@ function configureUpdater() {
 
 configureUpdater();
 
+/** Renderer origins this app is ever allowed to load. */
+function isTrustedRendererUrl(target) {
+  try {
+    const parsed = new URL(target);
+    if (parsed.protocol === "file:") {
+      return parsed.pathname.endsWith("/renderer/dist/index.html");
+    }
+    // Vite dev server, development builds only.
+    return (
+      isDev &&
+      parsed.protocol === "http:" &&
+      parsed.hostname === "localhost" &&
+      parsed.port === "5173"
+    );
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * Deny navigation and window creation by default. External links are opened
+ * through the explicit `openExternal` IPC, never by renderer-supplied URLs.
+ */
+function applyNavigationPolicy(window) {
+  const contents = window.webContents;
+
+  contents.setWindowOpenHandler(({ url }) => {
+    info(`[security] blocked window.open → ${url}`);
+    return { action: "deny" };
+  });
+
+  contents.on("will-navigate", (event, url) => {
+    if (isTrustedRendererUrl(url)) return;
+    event.preventDefault();
+    info(`[security] blocked navigation → ${url}`);
+  });
+
+  contents.on("will-attach-webview", (event) => {
+    event.preventDefault();
+    info("[security] blocked webview attach");
+  });
+}
+
 async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 800,
@@ -133,9 +187,14 @@ async function createWindow() {
       preload: path.join(__dirname, "preload.js"),
       nodeIntegration: false,
       contextIsolation: true,
+      // preload.js only pulls contextBridge/ipcRenderer, both available to a
+      // sandboxed preload, so the renderer runs with OS sandboxing on.
+      sandbox: true,
       zoomFactor: 1.0,
     },
   });
+
+  applyNavigationPolicy(mainWindow);
 
   // A staging installer looks identical to production; label it so a tester
   // never mistakes which backend they are writing to.
@@ -303,15 +362,48 @@ ipcMain.handle("backend:ping", async () => {
   }
 });
 
+const {
+  canRendererRead,
+  canRendererWrite,
+} = require("./util/storeAllowlist");
+
 ipcMain.handle("store:get", (_event, key) => {
+  if (!canRendererRead(key)) {
+    error(`blocked renderer read of '${key}'`, "store:get");
+    return undefined;
+  }
+  // Selection is workspace-scoped; never hand back another workspace's list.
+  if (key === "selectedCompanies") return getSelectedCompanies();
   return store.get(key);
 });
 
 ipcMain.handle("store:set", (_event, key, value) => {
+  if (!canRendererWrite(key)) {
+    error(`blocked renderer write of '${key}'`, "store:set");
+    return false;
+  }
+  if (key === "selectedCompanies") {
+    setSelectedCompanies(value);
+    return true;
+  }
+  const previousOnline = key === "isOnline" ? store.get("isOnline") : null;
   store.set(key, value);
+  // Offline → online is a pairing/writeback recovery edge. Socket reconnect
+  // covers most cases; this catches a restored network before the socket is up.
+  if (key === "isOnline" && value && !previousOnline) {
+    handleResume("network-online");
+    reconcileBinding("network-online").then((result) => {
+      if (result.paired) reconcilePendingWriteback("network-online");
+    });
+    require("./util/helper").axiosInstance.post("/desktop/heartbeat").catch(() => {});
+  }
+  return true;
 });
 
 ipcMain.handle("updater:check", async () => {
+  if (!app.isPackaged || APP_ENV !== "production") {
+    return { ok: false, error: "Updates are only available on the production Desktop." };
+  }
   try {
     info("[updater:check] called");
     const r = await autoUpdater.checkForUpdates();
@@ -322,6 +414,9 @@ ipcMain.handle("updater:check", async () => {
 });
 
 ipcMain.handle("updater:download", async () => {
+  if (!app.isPackaged || APP_ENV !== "production") {
+    return { ok: false, error: "Updates are only available on the production Desktop." };
+  }
   try {
     info("[updater:download] called");
     await autoUpdater.downloadUpdate();
@@ -488,9 +583,6 @@ app.whenReady().then(async () => {
       store.set("forceUpdate", true);
     }
 
-    // Pairing codes are temporary sessions — never hydrate UI from stored pairingCode.
-    // Renderer requests a fresh /desktop/pairing-code on startup.
-
     // Version compatibility: level 2 = sync blocked, level 3 = force update
     const vLevel = response.versionLevel || 0;
     store.set("versionLevel", vLevel);
@@ -556,14 +648,35 @@ app.whenReady().then(async () => {
 
   require("./util/socket")(mainWindow, socket);
 
+  // Main process owns the pairing session lifecycle; the renderer only displays it.
+  initPairingRuntime(mainWindow);
+  reconcileBinding("startup").then((result) => {
+    if (result.paired) reconcilePendingWriteback("startup");
+  });
+
   // ── Heartbeat: keep last_seen fresh so mobile can detect desktop online status
-  // Runs every 2 minutes. Lightweight — just updates a timestamp in DB.
+  // Lightweight — just updates a timestamp in DB. A heartbeat failure never
+  // clears pairing; only an authoritative backend response can do that.
   const { axiosInstance } = require("./util/helper");
-  const heartbeatInterval = setInterval(async () => {
+  const sendHeartbeat = async () => {
     try {
       await axiosInstance.post("/desktop/heartbeat");
     } catch (_) { /* silently ignore — will retry next tick */ }
-  }, 2 * 60 * 1000);
+  };
+
+  sendHeartbeat();
+  const heartbeatInterval = setInterval(sendHeartbeat, 2 * 60 * 1000);
+
+  // Suspended timers cannot be trusted to have fired: on wake, re-check the
+  // pairing session against wall-clock time and refresh presence immediately.
+  powerMonitor.on("resume", () => {
+    info("[power] resume");
+    sendHeartbeat();
+    handleResume("power-resume");
+    reconcileBinding("power-resume").then((result) => {
+      if (result.paired) reconcilePendingWriteback("power-resume");
+    });
+  });
 
   // Clear on quit
   app.once("before-quit", () => clearInterval(heartbeatInterval));

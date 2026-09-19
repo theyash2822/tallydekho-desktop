@@ -7,9 +7,12 @@
  *   staging      `npm run build:staging` bakes td-env.json → staging backend
  *   development  ELECTRON_DEV=1, LAN backend (Backend on Mac, Desktop on Windows)
  *
- * A packaged PRODUCTION build deliberately ignores BACKEND_URL: an installed
- * client must not be redirectable to an arbitrary host by a stray environment
- * variable or a planted .env file.
+ * A packaged PRODUCTION build deliberately ignores BACKEND_URL and
+ * TD_BACKEND_ENV: an installed client must not be redirectable to an arbitrary
+ * host by a stray environment variable or a planted .env file.
+ *
+ * An unpackaged launch with no environment selected fails closed rather than
+ * quietly targeting production.
  *
  * Typical setup: Dev default is hardcoded to the Mac LAN IP so Windows never
  * hits its own localhost. Loopback overrides are rejected in ELECTRON_DEV.
@@ -45,22 +48,49 @@ function readBuildEnv(file = BUILD_ENV_FILE) {
   }
 }
 
-/**
- * Environment identity. TD_BACKEND_ENV is honoured for local/CI use; the baked
- * build stamp is what a packaged staging installer relies on.
- */
-function resolveAppEnv(env = process.env, buildEnv = readBuildEnv()) {
-  const explicit = String(env.TD_BACKEND_ENV || "").trim().toLowerCase();
-  if (explicit) {
-    if (!APP_ENVS.includes(explicit)) {
-      throw new Error(
-        `Invalid TD_BACKEND_ENV "${env.TD_BACKEND_ENV}". Expected one of: ${APP_ENVS.join(", ")}`
-      );
-    }
-    return explicit;
+/** True only inside a packaged installer; false for `electron .` and tests. */
+function readIsPackaged() {
+  try {
+    const { app } = require("electron");
+    return !!app?.isPackaged;
+  } catch (_) {
+    return false;
   }
+}
+
+/**
+ * Environment identity.
+ *
+ * A packaged client takes its environment from the build stamp alone, so no
+ * stray environment variable can repoint an installed Desktop.
+ *
+ * An unpackaged launch must say what it is targeting. Defaulting `electron .`
+ * to production was a live footgun: a developer with Tally open could write
+ * into production while believing they were local. It now fails closed.
+ */
+function resolveAppEnv(
+  env = process.env,
+  buildEnv = readBuildEnv(),
+  isPackaged = readIsPackaged()
+) {
+  const explicit = String(env.TD_BACKEND_ENV || "").trim().toLowerCase();
+  if (explicit && !APP_ENVS.includes(explicit)) {
+    throw new Error(
+      `Invalid TD_BACKEND_ENV "${env.TD_BACKEND_ENV}". Expected one of: ${APP_ENVS.join(", ")}`
+    );
+  }
+
+  if (isPackaged) return buildEnv || "production";
+
+  if (explicit) return explicit;
   if (buildEnv) return buildEnv;
-  return env.ELECTRON_DEV ? "development" : "production";
+  if (env.ELECTRON_DEV) return "development";
+
+  throw new Error(
+    "Refusing to start: this is an unpackaged Desktop with no environment selected, " +
+      "and an unpackaged build must never default to the production backend. " +
+      "Use `npm run dev`, or set TD_BACKEND_ENV=development (or staging) explicitly."
+  );
 }
 
 function hostOf(url) {
@@ -74,8 +104,12 @@ function hostOf(url) {
 /**
  * @returns {{ appEnv: string, url: string, isDev: boolean, warnings: string[] }}
  */
-function resolveBackendEnvironment(env = process.env, buildEnv = readBuildEnv()) {
-  const appEnv = resolveAppEnv(env, buildEnv);
+function resolveBackendEnvironment(
+  env = process.env,
+  buildEnv = readBuildEnv(),
+  isPackaged = readIsPackaged()
+) {
+  const appEnv = resolveAppEnv(env, buildEnv, isPackaged);
   const warnings = [];
 
   if (appEnv === "production") {
@@ -118,6 +152,7 @@ module.exports = {
   STAGING_BACKEND_URL,
   DEAD_BACKEND_HOSTS,
   readBuildEnv,
+  readIsPackaged,
   resolveAppEnv,
   resolveBackendEnvironment,
 };

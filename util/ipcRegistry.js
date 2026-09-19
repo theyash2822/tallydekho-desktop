@@ -26,8 +26,22 @@ const {
 const store = require("./store.js");
 const { info, error, logPath } = require("./logger.js");
 const { startBackup } = require("./saveBackup.js");
+const { getSelectedCompanies } = require("./companySelection.js");
+const { getDeviceSecret } = require("./deviceCredential.js");
 
 let tallyConnectStatus = false;
+
+/**
+ * A device with no stored credential cannot be paired, so background work is
+ * skipped without a round trip. The backend remains the final authority.
+ */
+const isDevicePaired = () => !!getDeviceSecret();
+
+/** Log company identity only — never addresses, contacts or GST numbers. */
+const describeCompanies = (companies = []) =>
+  `${companies.length} selected [${companies
+    .map((c) => c?.guid || c?.id || "?")
+    .join(", ")}]`;
 
 const isTallyConnected = async () => {
   const status = await isTallyOpen();
@@ -191,6 +205,14 @@ const registerTallySync = (windowContent) => {
       syncStartInFlight = true;
 
       try {
+      if (!isDevicePaired()) {
+        return {
+          status: false,
+          code: "DEVICE_NOT_PAIRED",
+          message: "This Desktop is not paired to a workspace.",
+        };
+      }
+
       const status = await isTallyConnected();
 
       info(`Foreground [tally status]: ${status}`);
@@ -287,7 +309,7 @@ const registerTallySync = (windowContent) => {
       store.set("isSyncing", true);
       store.set("syncMode", isHardSync ? "hard" : "normal");
 
-      info(`Foreground [companies]`, companies);
+      info(`Foreground [companies]: ${describeCompanies(companies)}`);
 
       let syncStatus;
       try {
@@ -334,6 +356,11 @@ const registerTallySync = (windowContent) => {
 const startAutoSync = async (windowContent) => {
   // We can tell react to start manual sync also
 
+  if (!isDevicePaired()) {
+    info("Background [sync skipped]: device not paired");
+    return;
+  }
+
   const status = await isTallyConnected();
   const isOnline = store.get("isOnline");
   const isSyncing = store.get("isSyncing");
@@ -349,9 +376,9 @@ const startAutoSync = async (windowContent) => {
     });
     store.set("isSyncing", true);
 
-    const companies = store.get("selectedCompanies");
+    const companies = getSelectedCompanies();
 
-    info(`Background [companies]`, companies);
+    info(`Background [companies]: ${describeCompanies(companies)}`);
 
     const syncStatus = await syncTallyData(windowContent, companies);
 
@@ -378,6 +405,11 @@ const startAutoSync = async (windowContent) => {
 };
 
 const startAutoSyncHeadless = async () => {
+  if (!isDevicePaired()) {
+    info("Headless [sync skipped]: device not paired");
+    return;
+  }
+
   const status = await isTallyConnected();
 
   info(`Headless [tally status]: ${status}`);
@@ -395,9 +427,9 @@ const startAutoSyncHeadless = async () => {
       return;
     }
 
-    const companies = store.get("selectedCompanies");
+    const companies = getSelectedCompanies();
 
-    info(`Headless [companies]`, companies);
+    info(`Headless [companies]: ${describeCompanies(companies)}`);
 
     const syncStatus = await syncTallyData(
       { isDestroyed: () => true },
@@ -535,167 +567,33 @@ const startAutoBackupHeadless = async () => {
   }
 })();
 
-ipcMain.handle("api:pairing_code", async () => {
-  let response;
-
-  try {
-    response = await axiosInstance.get("/desktop/pairing-code");
-    response = response.data;
-  } catch (err) {
-    error(err?.message, "pairing_code");
-    const { clearPairingSession } = require("./pairingSessionState");
-    clearPairingSession();
-    try {
-      store.delete("pairingCode");
-    } catch (_) {}
-    const apiCode = err?.response?.data?.code;
-    const apiMsg = err?.response?.data?.message;
-    if (apiCode === "DEVICE_ALREADY_PAIRED") {
-      return {
-        status: false,
-        code: "DEVICE_ALREADY_PAIRED",
-        message: apiMsg || "This Desktop is already paired to a workspace.",
-      };
-    }
-    return {
-      status: false,
-      code: apiCode || "BACKEND_UNAVAILABLE",
-      message:
-        err?.code === "ECONNABORTED" || /ETIMEDOUT|ECONNREFUSED|ENOTFOUND/i.test(String(err?.message || ""))
-          ? "Backend unavailable — unable to generate pairing code. Check network and backend URL."
-          : apiMsg || err?.message || "Unable to generate pairing code",
-    };
-  }
-
-  const data = response.data || {};
-  const code = data.code || data.pairingCode;
-  if (!data.sessionId || !data.claimToken || !code) {
-    error("pairing-code response missing session fields", "pairing_code");
-    return {
-      status: false,
-      code: "PAIRING_SESSION_INCOMPLETE",
-      message: "Backend did not return a complete pairing session. Try again.",
-    };
-  }
-
-  const { setPairingSession, clearPairingSession } = require("./pairingSessionState");
-  // All session material is process-local / temporary — never persist to config.json
-  clearPairingSession();
-  setPairingSession({
-    pairingCode: code,
-    sessionId: data.sessionId,
-    claimToken: data.claimToken,
-    expiresAt: data.expiresAt,
-  });
-
-  try {
-    store.delete("pairingCode");
-    store.delete("pairingSessionId");
-    store.delete("pairingClaimToken");
-    store.delete("pairingExpiresAt");
-    store.delete("workspace");
-  } catch (_) {}
-
-  // Safe log: never claimToken / secrets
-  info(
-    `[pairing] session ready sessionId=${data.sessionId} hasClaimToken=true expiresAt=${data.expiresAt || "n/a"}`
-  );
-
-  // claimToken stays in main-process memory only — never send to renderer
+/**
+ * Read-only snapshot for renderer hydration on mount. The main process owns
+ * the pairing session; the renderer never triggers a mint and never sees the
+ * claim token.
+ */
+ipcMain.handle("api:pairing_state", async () => {
+  const { getStatus } = require("./pairingLifecycle");
+  const status = getStatus();
   return {
     status: true,
     data: {
-      code,
-      pairingCode: code,
-      sessionId: data.sessionId,
-      expiresAt: data.expiresAt,
-      hasClaimToken: true,
+      pairingCode: status.pairingCode,
+      expiresAt: status.expiresAt,
+      running: status.running,
     },
-  };
-});
-
-/** Manual / recovery: claim credential if session already approved */
-ipcMain.handle("api:claim_pairing", async () => {
-  try {
-    const { hasValidPairingSession } = require("./pairingSessionState");
-    if (!hasValidPairingSession()) {
-      return {
-        status: false,
-        code: "PAIRING_SESSION_NOT_READY",
-        message: "Pairing session not ready",
-      };
-    }
-    const { claimAndAck } = require("./claimPairing");
-    const data = await claimAndAck(axiosInstance);
-    return { status: true, data };
-  } catch (err) {
-    const code = err?.response?.data?.code || err?.code;
-    // Quiet pending — poll continues without spam
-    if (
-      code === "PAIRING_SESSION_NOT_READY" ||
-      code === "PAIRING_SESSION_PENDING" ||
-      code === "PAIRING_NOT_APPROVED" ||
-      (code === "PAIRING_SESSION_NOT_FOUND" && /not approved/i.test(String(err?.response?.data?.message || err?.message || "")))
-    ) {
-      return {
-        status: false,
-        code: code === "PAIRING_SESSION_NOT_READY" ? code : "PAIRING_SESSION_PENDING",
-        message: err?.response?.data?.message || err?.message || "Waiting for approval",
-      };
-    }
-    if (code === "PAIRING_SESSION_EXPIRED" || code === "PAIRING_SESSION_NOT_FOUND" || code === "PAIRING_CODE_INVALID") {
-      try {
-        require("./pairingSessionState").clearPairingSession();
-      } catch (_) {}
-    }
-    // Only log non-pending failures; never log claimToken
-    error(err?.message, "claim_pairing");
-    return {
-      status: false,
-      message: err?.response?.data?.message || err?.message || "Claim failed",
-      code,
-    };
-  }
-});
-
-ipcMain.handle("api:has_pairing_session", async () => {
-  const { hasValidPairingSession, getPairingSession } = require("./pairingSessionState");
-  const ok = hasValidPairingSession();
-  const s = getPairingSession();
-  return {
-    status: ok,
-    data: ok
-      ? { sessionId: s.sessionId, expiresAt: s.expiresAt, hasClaimToken: !!s.claimToken }
-      : null,
   };
 });
 
 ipcMain.handle("api:paired_device", async () => {
-  let response;
-
   try {
-    response = await axiosInstance.get("/desktop/pairing-device");
-    response = response.data;
+    const response = await axiosInstance.get("/desktop/pairing-device");
+    const { mapPairedDevice } = require("./pairingRuntime");
+    return { status: true, data: mapPairedDevice(response.data?.data?.pairing) };
   } catch (err) {
     error(err?.message, "paired_device");
     return { status: false };
   }
-
-  if (!response.data?.pairing) {
-    return { status: true, data: null };
-  }
-
-  const pairing = response.data.pairing;
-
-  return {
-    status: true,
-    data: {
-      name: pairing.USER_NAME || pairing.NAME || pairing.MOBILE || 'Paired Account',
-      os: pairing.IS_ANDROID ? 'Android' : (pairing.IS_PAIRED ? 'Mobile' : 'Unknown'),
-      last: pairing.LAST_SYNC_AT,
-      mobile: pairing.MOBILE || '',
-    },
-  };
 });
 
 ipcMain.handle("api:remove_paired_device", async () => {
@@ -714,9 +612,11 @@ ipcMain.handle("api:remove_paired_device", async () => {
   try {
     require("./pairingSessionState").clearPairingSession();
     store.delete("workspace");
-    store.delete("pairingSessionId");
-    store.delete("pairingClaimToken");
   } catch (_) {}
+
+  // Actual unpair: drop the workspace binding and its company selection, then
+  // start a fresh pairing session automatically.
+  await require("./pairingRuntime").handleUnpaired("unpair");
 
   return {
     status: true,
@@ -735,11 +635,6 @@ ipcMain.handle("api:ai_chat", async (event, { messages }) => {
     error(err?.message, "api:ai_chat");
     return 'Could not connect to AI assistant. Make sure the backend is running.';
   }
-});
-
-// Attachment upload via legacy /app/ai/attachment removed (no server route) — use support channel
-ipcMain.handle("api:ai_attachment", async () => {
-  return false;
 });
 
 // Fetch real user profile from backend via device-id (no token needed)

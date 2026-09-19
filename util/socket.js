@@ -3,6 +3,11 @@ const { checkForUpdates } = require("./helper");
 const { info, error } = require("./logger");
 const store = require("./store.js");
 const { postToTally, fetchAndIngestSingleVouchers } = require("./xml");
+const { getSelectedCompanies } = require("./companySelection");
+const {
+  processCompanyWriteback,
+  reconcilePendingWriteback,
+} = require("./writeback");
 
 module.exports = (window, socket) => {
   // const socketId = socket.id;
@@ -11,14 +16,28 @@ module.exports = (window, socket) => {
   //   info(`[client] got event: ${event}`, args);
   // });
 
+  /**
+   * Connectivity returned: re-check the pairing session against wall-clock
+   * time and pull any writeback wake-up that was emitted while we were away.
+   */
+  const onConnectivityRestored = (reason) => {
+    const { reconcileBinding, handleResume } = require("./pairingRuntime");
+    handleResume(reason);
+    reconcileBinding(reason).then((result) => {
+      if (result.paired) reconcilePendingWriteback(reason);
+    });
+  };
+
   socket.on("connect", () => {
     info(`[socket] connected ${socket.id}`);
     registerDevice(socket);
+    onConnectivityRestored("socket-connect");
   });
 
   socket.on("reconnect", (attempt) => {
     info(`[socket] reconnected after ${attempt} attempts ${socket.id}`);
     registerDevice(socket);
+    onConnectivityRestored("socket-reconnect");
   });
 
   socket.on("connect_error", (err) => {
@@ -81,145 +100,106 @@ module.exports = (window, socket) => {
     window && window.webContents && checkForUpdates(window);
   });
 
-  // Mobile or web portal unpaired this desktop
-  // payload.newCode = the fresh replacement pairing code (already stored in DB)
-  socket.on("unpaired", (payload) => {
+  // Mobile or web portal unpaired this desktop.
+  socket.on("unpaired", () => {
     info("[socket] unpaired — clearing pairing state");
     try {
       require("./pairingSessionState").clearPairingSession();
-      store.delete("pairingCode");
       store.delete("workspace");
-      store.delete("pairingSessionId");
-      store.delete("pairingClaimToken");
     } catch (_) {}
 
     if (window && window.webContents) {
       window.webContents.send("window:listener", { key: "isSyncing", value: false });
       window.webContents.send("window:listener", { key: "syncProgress", value: 0 });
       window.webContents.send("window:listener", { key: "pairedDevice", value: null });
-      // Do not display unpair newCode as a usable session code — renderer must refresh
       window.webContents.send("window:listener", { key: "pairingCode", value: null });
       window.webContents.send("window:listener", { key: "unpairedAlert", value: true });
     }
     store.set("isSyncing", false);
     const { clearDeviceSecret } = require("./deviceCredential");
     clearDeviceSecret();
+    // Drops the workspace binding and its company selection, then starts a
+    // fresh pairing session automatically.
+    require("./pairingRuntime").handleUnpaired("unpaired-event");
   });
 
   // tally:write - receive XML from backend and forward to Tally HTTP port
   // Backend sends: { jobId, xml, companyName }
   // Desktop POSTs to Tally and acks back with result
-  // pairing_confirmed — legacy immediate secret path (bridge). Prefer pairing_approved + HTTP claim.
+  // LEGACY-BLOCK: pairing_confirmed delivers the device secret straight over the
+  // socket. Superseded by pairing_approved + HTTP claim/ack, kept only while an
+  // older backend may still emit it. No new code may depend on this path.
+  // Deletion prerequisite: confirm no deployed backend emits `pairing_confirmed`.
   socket.on("pairing_confirmed", async (payload) => {
-    info("[socket] pairing_confirmed");
+    info("[socket] pairing_confirmed (legacy path)");
     try {
       const { axiosInstance } = require("./helper");
       const { saveDeviceSecret } = require("./deviceCredential");
+      const { lifecycle, reconcileBinding } = require("./pairingRuntime");
+
       if (payload?.deviceSecret) {
         saveDeviceSecret(payload.deviceSecret);
         await axiosInstance.post("/desktop/claim-credential").catch(() => {});
       } else {
-        const { hasValidPairingSession } = require("./pairingSessionState");
-        if (hasValidPairingSession()) {
-          const { claimAndAck } = require("./claimPairing");
-          await claimAndAck(axiosInstance).catch((e) => error(e?.message, "pairing_confirmed_claim"));
-        }
+        // Route through the lifecycle so this cannot race the claim poll.
+        await lifecycle.claimNow("pairing_confirmed");
       }
-      const pairedDevice = await axiosInstance.get("/desktop/pairing-device");
-      const device = pairedDevice.data?.data?.pairing;
-      if (device) {
-        window.webContents.send("window:listener", { key: "pairedDevice", value: {
-          name: device.USER_NAME || device.NAME || device.MOBILE || 'Mobile App',
-          os: 'Mobile',
-          last: device.LAST_SYNC_AT,
-          mobile: device.MOBILE || '',
-        }});
-      }
+      await reconcileBinding("pairing_confirmed");
       if (payload?.workspace) {
-        // UI only — do not persist workspace in config.json (schema strips it)
         window.webContents.send("window:listener", { key: "workspace", value: payload.workspace });
       }
-    } catch (e) { error(e?.message, "pairing_confirmed"); }
+    } catch (e) {
+      error(e?.message, "pairing_confirmed");
+    }
   });
 
-  // pairing_approved — wake-up; secret via HTTP claim (correctness path)
+  // pairing_approved — wake-up only. The claim itself runs through the
+  // lifecycle's single-flight guard, so socket and poll can never both claim.
   socket.on("pairing_approved", async (payload) => {
     info("[socket] pairing_approved", payload?.sessionId || "");
     try {
-      const { axiosInstance } = require("./helper");
-      const { claimAndAck } = require("./claimPairing");
-      const { setPairingSession } = require("./pairingSessionState");
-      if (payload?.sessionId) {
-        setPairingSession({ sessionId: payload.sessionId });
+      const { getPairingSession } = require("./pairingSessionState");
+      const { lifecycle } = require("./pairingRuntime");
+
+      const current = getPairingSession();
+      if (
+        payload?.sessionId &&
+        current.sessionId &&
+        String(payload.sessionId) !== String(current.sessionId)
+      ) {
+        info("[socket] pairing_approved for a superseded session — ignored");
+        return;
       }
-      const data = await claimAndAck(axiosInstance, {
-        sessionId: payload?.sessionId,
-      });
-      if (data?.workspace) {
-        window.webContents.send("window:listener", { key: "workspace", value: data.workspace });
-      }
-      const pairedDevice = await axiosInstance.get("/desktop/pairing-device");
-      const device = pairedDevice.data?.data?.pairing;
-      if (device) {
-        window.webContents.send("window:listener", {
-          key: "pairedDevice",
-          value: {
-            name: device.USER_NAME || device.NAME || device.MOBILE || "Mobile App",
-            os: "Mobile",
-            last: device.LAST_SYNC_AT,
-            mobile: device.MOBILE || "",
-          },
-        });
-      }
-      window.webContents.send("window:listener", {
-        key: "pairingClaimed",
-        value: { connectionStatus: data?.connectionStatus || "RECONNECTING" },
-      });
+      await lifecycle.claimNow("pairing_approved");
     } catch (e) {
       error(e?.message, "pairing_approved");
-      // Recover if wake-up arrived before local claim token was ready / race
-      try {
-        const { axiosInstance } = require("./helper");
-        const { pollClaimUntilReady } = require("./claimPairing");
-        const data = await pollClaimUntilReady(axiosInstance, { attempts: 15, intervalMs: 1500 });
-        if (data?.workspace) {
-          window.webContents.send("window:listener", { key: "workspace", value: data.workspace });
-        }
-        const pairedDevice = await axiosInstance.get("/desktop/pairing-device");
-        const device = pairedDevice.data?.data?.pairing;
-        if (device) {
-          window.webContents.send("window:listener", {
-            key: "pairedDevice",
-            value: {
-              name: device.USER_NAME || device.NAME || device.MOBILE || "Mobile App",
-              os: "Mobile",
-              last: device.LAST_SYNC_AT,
-              mobile: device.MOBILE || "",
-            },
-          });
-        }
-        window.webContents.send("window:listener", {
-          key: "pairingClaimed",
-          value: { connectionStatus: data?.connectionStatus || "RECONNECTING" },
-        });
-      } catch (e2) {
-        error(e2?.message, "pairing_approved_poll");
-      }
     }
   });
 
   socket.on("hard_sync_approved", (payload) => {
     window?.webContents?.send("window:listener", { key: "hardSyncApproved", value: payload });
   });
-  socket.on("restore_approved", (payload) => {
+  socket.on("restore_approved", async (payload) => {
     window?.webContents?.send("window:listener", { key: "restoreApproved", value: payload });
+    try {
+      const { startCloudRestore } = require("./restoreBackup");
+      await startCloudRestore(window?.webContents || window);
+    } catch (err) {
+      error(err?.message, "restore_approved");
+    }
   });
+  // This Desktop was replaced or revoked server-side: drop every piece of local
+  // tenant state so a stale cache can never keep acting for the old workspace.
   socket.on("binding_revoked", (payload) => {
     const { clearDeviceSecret } = require("./deviceCredential");
     clearDeviceSecret();
+    try {
+      require("./pairingSessionState").clearPairingSession();
+    } catch (_) {}
     store.delete("workspace");
     store.set("isSyncing", false);
     window?.webContents?.send("window:listener", { key: "bindingRevoked", value: payload || true });
+    require("./pairingRuntime").handleUnpaired("binding-revoked");
   });
 
   socket.on("hard_sync_rejected", (payload) => {
@@ -245,7 +225,7 @@ module.exports = (window, socket) => {
       info('[sync:request] already syncing — current sync will pick up new voucher(s)');
       return;
     }
-    const selectedCompanies = store.get('selectedCompanies') || [];
+    const selectedCompanies = getSelectedCompanies();
     if (!selectedCompanies.length) {
       info('[sync:request] no selected companies — skipping');
       return;
@@ -285,57 +265,13 @@ module.exports = (window, socket) => {
     }
   });
 
-  // pending_tally_writeback_available — Phase C targeted posting
-  // Backend sends this when desktop reconnects and there are offline entries.
-  // Desktop pulls, claims, posts, and reports result via API (no full sync).
+  // Event-driven writeback. A wake-up emitted while Desktop was offline is
+  // never redelivered, so `reconcilePendingWriteback` covers that case on
+  // startup and on every connectivity restore.
   socket.on("pending_tally_writeback_available", async (payload) => {
     const { companyGuid, count } = payload || {};
     if (!companyGuid || !count) return;
-    info(`[writeback] ${count} pending entries for company ${companyGuid}`);
-    const { axiosInstance } = require('./helper');
-    const deviceId = getDeviceProfile().deviceId;
-    try {
-      // Pull pending (max 10 per wake-up)
-      const pendingRes = await axiosInstance.post('/tally/desktop/writeback/pending', { companyGuid, limit: 10 });
-      const items = pendingRes.data?.data?.items || [];
-      if (!items.length) return;
-      info(`[writeback] processing ${items.length} entries`);
-
-      for (const item of items) {
-        if (!item.outboxId) continue;
-        try {
-          // Claim
-          const claimRes = await axiosInstance.post(`/tally/desktop/writeback/${item.outboxId}/claim`, {});
-          const claimData = claimRes.data?.data;
-          if (!claimData?.claimed || !claimData?.xml) {
-            info(`[writeback] entry ${item.outboxId} claim failed or no XML`);
-            continue;
-          }
-          // Post to Tally
-          const tallyResult = await postToTally(claimData.xml);
-          // Report result
-          await axiosInstance.post(`/tally/desktop/writeback/${item.outboxId}/result`, {
-            success:           tallyResult?.status === true,
-            tallyVoucherNumber: tallyResult?.voucherNumber || null,
-            tallyVoucherGuid:  tallyResult?.tallyId || null,
-            tallyAlterId:      tallyResult?.alterId || null,
-            errorCode:         tallyResult?.status === true ? null : 'TALLY_ERROR',
-            errorMessage:      tallyResult?.status === true ? null : (tallyResult?.message || 'Tally posting failed'),
-          });
-          info(`[writeback] entry ${item.outboxId} → ${tallyResult?.status === true ? 'success' : 'failed'}`);
-        } catch (entryErr) {
-          error(entryErr?.message, `writeback.entry.${item.outboxId}`);
-          // Release lock by reporting failure
-          try {
-            await axiosInstance.post(`/tally/desktop/writeback/${item.outboxId}/result`, {
-              success: false, errorCode: 'DESKTOP_ERROR', errorMessage: entryErr?.message,
-            });
-          } catch {}
-        }
-      }
-    } catch (err) {
-      error(err?.message, 'pending_tally_writeback_available');
-    }
+    await processCompanyWriteback(companyGuid);
   });
 
   socket.on("tally:write", async (payload, callback) => {
@@ -362,7 +298,7 @@ module.exports = (window, socket) => {
       if (result.status === true) {
         setTimeout(() => {
           if (store.get('isSyncing')) return; // ongoing sync will pick it up
-          const selectedCompanies = store.get('selectedCompanies') || [];
+          const selectedCompanies = getSelectedCompanies();
           if (selectedCompanies.length > 0) {
             info('[tally:write] triggering post-write sync to capture voucher number');
             window.webContents.send('window:listener', { key: 'triggerPostWriteSync', value: Date.now() });

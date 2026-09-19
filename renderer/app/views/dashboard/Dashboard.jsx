@@ -20,6 +20,7 @@ export default function Dashboard({ hardSync }) {
       syncMode,
       syncMessage,
       hardSyncWaitMessage,
+      pairedDevice,
     },
   } = useContext(TallyContext);
 
@@ -69,9 +70,12 @@ export default function Dashboard({ hardSync }) {
     setIsHardSyncModalOpen(false);
   };
 
+  // An unpaired Desktop has no workspace to sync into — the backend rejects it
+  // with DEVICE_NOT_PAIRED, so the controls must not invite the attempt.
   const disableSyncButton = useMemo(() => {
+    if (!pairedDevice) return true;
     return ["Uploading Data", "Processing Data"].includes(syncMessage);
-  }, [syncMessage]);
+  }, [syncMessage, pairedDevice]);
 
   return (
     <div className="space-y-3">

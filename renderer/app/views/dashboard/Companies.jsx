@@ -55,7 +55,7 @@ export default function Companies({
   const [refreshing, setRefreshing] = useState(false);
 
   const {
-    state: { companies, selectedCompanies, isSyncing, isTallyOnline, isOnline },
+    state: { companies, selectedCompanies, isSyncing, isTallyOnline, isOnline, pairedDevice },
     updateState,
     fetchCompanies,
   } = useContext(TallyContext);
@@ -110,6 +110,13 @@ export default function Companies({
   };
 
   const syncingHelper = () => {
+    if (!pairedDevice) {
+      setAlertModalData({
+        isOpen: true,
+        message: "Pair this Desktop with your workspace before syncing.",
+      });
+      return false;
+    }
     if (!isSyncing) {
       if (!isTallyOnline) {
         setAlertModalData({

@@ -31,20 +31,40 @@ function check(name, fn) {
 
 console.log("desktop backend configuration guard");
 
+const PACKAGED = true;
+const UNPACKAGED = false;
+
 check("packaged default is production", () => {
-  const r = resolveBackendEnvironment({}, null);
+  const r = resolveBackendEnvironment({}, null, PACKAGED);
   assert.equal(r.appEnv, "production");
   assert.equal(r.url, PROD_BACKEND_URL);
   assert.equal(r.isDev, false);
 });
 
 check("a packaged production build ignores BACKEND_URL injection", () => {
-  const r = resolveBackendEnvironment({ BACKEND_URL: "http://evil.example.com" }, null);
+  const r = resolveBackendEnvironment(
+    { BACKEND_URL: "http://evil.example.com" },
+    null,
+    PACKAGED
+  );
   assert.equal(r.url, PROD_BACKEND_URL);
 });
 
+check("a packaged build ignores TD_BACKEND_ENV redirection", () => {
+  const r = resolveBackendEnvironment({ TD_BACKEND_ENV: "development" }, null, PACKAGED);
+  assert.equal(r.appEnv, "production");
+  assert.equal(r.url, PROD_BACKEND_URL);
+});
+
+check("an unpackaged launch without an explicit environment fails closed", () => {
+  assert.throws(
+    () => resolveBackendEnvironment({}, null, UNPACKAGED),
+    /never default to the production backend/
+  );
+});
+
 check("ELECTRON_DEV selects the LAN backend", () => {
-  const r = resolveBackendEnvironment({ ELECTRON_DEV: "1" }, null);
+  const r = resolveBackendEnvironment({ ELECTRON_DEV: "1" }, null, UNPACKAGED);
   assert.equal(r.appEnv, "development");
   assert.equal(r.url, DEFAULT_DEV_BACKEND_URL);
   assert.equal(r.isDev, true);
@@ -53,30 +73,42 @@ check("ELECTRON_DEV selects the LAN backend", () => {
 check("dev loopback override is rejected and reported", () => {
   const r = resolveBackendEnvironment(
     { ELECTRON_DEV: "1", BACKEND_URL: "http://localhost:3001" },
-    null
+    null,
+    UNPACKAGED
   );
   assert.equal(r.url, DEFAULT_DEV_BACKEND_URL);
   assert.equal(r.warnings.length, 1);
 });
 
 check("baked staging stamp selects the staging backend", () => {
-  const r = resolveBackendEnvironment({}, "staging");
+  const r = resolveBackendEnvironment({}, "staging", PACKAGED);
   assert.equal(r.appEnv, "staging");
   assert.equal(r.url, STAGING_BACKEND_URL);
 });
 
 check("TD_BACKEND_ENV overrides the stamp for local use", () => {
-  assert.equal(resolveAppEnv({ TD_BACKEND_ENV: "staging" }, null), "staging");
-  assert.equal(resolveAppEnv({ TD_BACKEND_ENV: "production" }, "staging"), "production");
+  assert.equal(resolveAppEnv({ TD_BACKEND_ENV: "staging" }, null, UNPACKAGED), "staging");
+  assert.equal(
+    resolveAppEnv({ TD_BACKEND_ENV: "production" }, "staging", UNPACKAGED),
+    "production"
+  );
 });
 
 check("an invalid TD_BACKEND_ENV fails closed", () => {
-  assert.throws(() => resolveAppEnv({ TD_BACKEND_ENV: "prod" }, null), /Invalid TD_BACKEND_ENV/);
+  assert.throws(
+    () => resolveAppEnv({ TD_BACKEND_ENV: "prod" }, null, UNPACKAGED),
+    /Invalid TD_BACKEND_ENV/
+  );
 });
 
 check("staging refuses to be pointed at production", () => {
   assert.throws(
-    () => resolveBackendEnvironment({ TD_BACKEND_ENV: "staging", BACKEND_URL: PROD_BACKEND_URL }, null),
+    () =>
+      resolveBackendEnvironment(
+        { TD_BACKEND_ENV: "staging", BACKEND_URL: PROD_BACKEND_URL },
+        null,
+        UNPACKAGED
+      ),
     /pointed at the production backend/
   );
 });

@@ -406,13 +406,14 @@ const postToTally = async (xmlBody) => {
       const hasCancelled = cancelledMatch ? parseInt(cancelledMatch[1]) > 0 : false;
       const hasImportResult = data.includes('IMPORTRESULT') || data.includes('CREATED') || data.includes('ALTERED');
 
+      // Metadata only — a Tally response body carries voucher amounts, party
+      // names and GST details and must never reach a persistent log.
       info('[tally:write] response', {
         url: TALLY_URL,
         length: data.length,
         hasLineError,
         hasCancelled,
         hasImportResult,
-        preview: data.slice(0, 200),
       });
 
       if (hasLineError) {
@@ -449,7 +450,8 @@ const postToTally = async (xmlBody) => {
           || (exceptions > 0
             ? `Tally rejected the entry (${exceptions} exception${exceptions > 1 ? 's' : ''})`
             : 'Tally did not create the voucher (CREATED=0)');
-        info('[tally:write] treated as failure', { created, altered, exceptions, tallyIdRaw, preview: data.slice(0, 400) });
+        // `msg` is Tally's own error description; the response body is not logged.
+        info('[tally:write] treated as failure', { created, altered, exceptions, tallyIdRaw, reason: msg });
         return { status: false, message: msg, data, created, altered, exceptions, tallyId: null, voucherNumber: null };
       }
 

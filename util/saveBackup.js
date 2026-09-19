@@ -3,7 +3,6 @@ const path = require("path");
 const fse = require("fs-extra");
 const { spawn } = require("child_process");
 const { path7za } = require("7zip-bin");
-const fs = require("fs");
 const fsp = require("fs/promises");
 
 const store = require("./store");
@@ -11,6 +10,8 @@ const getDeviceProfile = require("./deviceProfile");
 const { info } = require("./logger");
 const { prettyBytes, axiosInstance } = require("./helper");
 const { sha256File, uploadFile } = require("./workspaceCloud");
+const { getSelectedCompanies } = require("./companySelection");
+const { restrictOwnerOnly, restrictOwnerDir, unlinkQuiet } = require("./filePrivacy");
 
 const sevenZipPath = path7za.replace("app.asar", "app.asar.unpacked");
 const final7z = sevenZipPath.includes("app.asar.unpacked")
@@ -98,60 +99,24 @@ function createZip({
     child.stderr.on("data", (b) => (stderr += b.toString()));
     child.on("error", reject);
     child.on("close", (code) => {
-      if (code === 0 || code === 1) return resolve({ code, stdout, stderr });
+      if (code === 0) return resolve({ code, stdout, stderr });
       reject(new Error(`7z exit ${code}\n${stdout}\n${stderr}`));
     });
   });
 }
 
-async function uploadZipWithProgress({ zipPath, uploadUrl, fields }, send) {
-  const got = (await import("got")).default;
-  const FormData = (await import("form-data")).default;
-
-  const form = new FormData();
-
-  if (fields && typeof fields === "object") {
-    for (const [k, v] of Object.entries(fields)) {
-      form.append(k, String(v));
-    }
-  }
-
-  const stat = await fsp.stat(zipPath);
-  const fileStream = fs.createReadStream(zipPath);
-  form.append("file", fileStream, {
-    filename: path.basename(zipPath),
-    contentType: "application/zip",
-    knownLength: stat.size,
-  });
-
-  const request = got(uploadUrl, {
-    method: "POST",
-    body: form,
-    headers: form.getHeaders(),
-    throwHttpErrors: false,
-  });
-
-  request.on("uploadProgress", (p) => {
-    const pct = 70 + (p.percent || 0) * 29;
-    send(pct);
-  });
-
-  const res = await request; // await the response
-  if (res.statusCode >= 200 && res.statusCode < 300) {
-    send(99);
-    return res.body;
-  }
-  throw new Error(`Upload failed: ${res.statusCode} ${res.body || ""}`);
-}
-
 async function startBackup(windowContent) {
-  const companies = store.get("selectedCompanies");
+  const companies = getSelectedCompanies();
   const backupFolder = store.get("backup.dir");
   const newActivity = store.get("backupAndRestoreActivity") || [];
 
   const deviceProfile = getDeviceProfile();
 
-  info(`Backup [companies]`, companies);
+  info(
+    `Backup [companies]: ${companies.length} selected [${companies
+      .map((c) => c?.guid || c?.id || "?")
+      .join(", ")}]`
+  );
 
   if (companies.length == 0) {
     return { status: false, data: null, message: "No company is selected" };
@@ -189,7 +154,9 @@ async function startBackup(windowContent) {
     .replaceAll("/", "-");
 
   const sendProgress = createTallyBackupProgressSender(windowContent);
-  const zipPath = path.join(backupFolder, `tallydekho-backup-${date}.zip`);
+  const nonce = Math.random().toString(16).slice(2, 10);
+  const zipPath = path.join(backupFolder, `tallydekho-backup-${date}-${nonce}.zip`);
+  const partialZip = `${zipPath}.partial`;
 
   if (store.get("isSyncing")) {
     store.set("isBackingUp", false);
@@ -203,16 +170,27 @@ async function startBackup(windowContent) {
     sendProgress(5, "Preparing");
 
     await ensureDir(backupFolder);
+    await restrictOwnerDir(backupFolder);
 
     sendProgress(10, "Backing up");
-    await createZip({
-      folderPaths: companies.map((company) => company.path),
-      outZipPath: zipPath,
-      password: null,
-      encryption: null,
-      preserveFolderNames: true,
-      onProgress: (p) => sendProgress(10 + Math.min(50, Math.round(p * 0.5)), "Backing up"),
-    });
+    await unlinkQuiet(partialZip);
+    try {
+      await createZip({
+        folderPaths: companies.map((company) => company.path),
+        outZipPath: partialZip,
+        password: null,
+        encryption: null,
+        preserveFolderNames: true,
+        onProgress: (p) => sendProgress(10 + Math.min(50, Math.round(p * 0.5)), "Backing up"),
+      });
+      await restrictOwnerOnly(partialZip);
+      await fsp.rename(partialZip, zipPath);
+      await restrictOwnerOnly(zipPath);
+    } catch (zipErr) {
+      await unlinkQuiet(partialZip);
+      await unlinkQuiet(zipPath);
+      throw zipErr;
+    }
 
     const stat = await fsp.stat(zipPath);
     const size = prettyBytes(stat.size);
@@ -247,7 +225,7 @@ async function startBackup(windowContent) {
       throw new Error(completeRes.data?.message || "Backup verify failed");
     }
 
-    await fsp.unlink(zipPath).catch(() => {});
+    await unlinkQuiet(zipPath);
 
     sendProgress(100, "Available");
 
@@ -264,7 +242,9 @@ async function startBackup(windowContent) {
     return { status: true, data: session.backupId, message: null, size };
   } catch (err) {
     status = false;
-    info(`[backup error message:  ${err.message}]`);
+    await unlinkQuiet(partialZip);
+    await unlinkQuiet(zipPath);
+    info(`[backup] failed (${err.message})`);
     return { status: false, data: null, message: err.message };
   } finally {
     store.set("isBackingUp", false);

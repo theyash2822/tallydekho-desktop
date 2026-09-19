@@ -62,26 +62,14 @@ export default function Help() {
     try {
       const files = await window.api.pickFiles({ properties: ['openFile', 'multiSelections'], filters: [{ name: 'Images & PDFs', extensions: ['jpg','jpeg','png','gif','pdf'] }] });
       if (!files || files.length === 0) return;
-      const fs = window.require ? window.require('fs') : null;
       for (const filePath of files.slice(0, 5)) {
         const fileName = filePath.split(/[\/\\]/).pop();
-        const loadingId = Date.now() + Math.random();
+        // There is no attachment upload route on the server, so never claim the
+        // file was delivered — point the user at the support mailbox instead.
         setMsgs(m => [...m,
           { from: 'me', text: `(Attached: ${fileName})` },
-          { from: 'bot', text: '', loading: true, id: loadingId },
+          { from: 'bot', text: `Attachments cannot be uploaded from Desktop. Please email "${fileName}" to project@tallydekho.com and we'll pick it up from there.` },
         ]);
-        try {
-          await window.api.sendAttachment({ filePath, fileName });
-          setMsgs(m => m.map(msg => msg.id === loadingId
-            ? { from: 'bot', text: `Got it! Your attachment "${fileName}" has been forwarded to the TallyDekho team at project@tallydekho.com. We'll get back to you soon.` }
-            : msg
-          ));
-        } catch {
-          setMsgs(m => m.map(msg => msg.id === loadingId
-            ? { from: 'bot', text: `Could not send "${fileName}". Please email it directly to project@tallydekho.com` }
-            : msg
-          ));
-        }
       }
     } catch { /* ignore */ }
   }

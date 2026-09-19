@@ -9,7 +9,7 @@ export default function Devices() {
   const [userProfile, setUserProfile] = useState(null);
 
   const {
-    state: { pairedDevice, pairingCodeGeneratedAt, lastSync, workspace },
+    state: { pairedDevice, lastSync, workspace },
     updateState,
     openAlertModal,
   } = useContext(TallyContext);
@@ -39,28 +39,6 @@ export default function Devices() {
     }).catch(() => {});
   }, []);
 
-  // useEffect(() => {
-  //   if (pairingCodeGeneratedAt && !pairedDevice) {
-  //     const generatedAt = new Date(pairingCodeGeneratedAt);
-  //     const currentDate = new Date();
-
-  //     const differenceInMillis = currentDate - generatedAt;
-
-  //     const differenceInMinutes = differenceInMillis / (1000 * 60);
-
-  //     if (differenceInMinutes < 10) {
-  //       window.api
-  //         .pairedDevice()
-  //         .then((response) => {
-  //           if (response.status) {
-  //             updateState("pairedDevice", response.data);
-  //           }
-  //         })
-  //         .catch();
-  //     }
-  //   }
-  // }, [pairingCodeGeneratedAt]);
-
   const closeRemoveDeviceModal = () => {
     setIsRemoveDeviceModalOpen(false);
   };
@@ -71,9 +49,8 @@ export default function Devices() {
     if (response.status) {
       updateState("pairedDevice", null);
       setUserProfile(null);
-      // New pairing code is delivered via WebSocket 'unpaired' event (with newCode payload)
-      // The socket.js handler updates pairingCode in store + state automatically.
-      // No API call needed here.
+      // Main clears the workspace binding and pushes the replacement pairing
+      // code over `window:listener`.
     } else {
       openAlertModal(
         "Something went wrong while removing paired device. If this message persists, please contact the support team.",

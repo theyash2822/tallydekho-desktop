@@ -47,9 +47,9 @@ function clearPairingSession() {
   };
 }
 
-function hasValidPairingSession() {
+function hasValidPairingSession(now = Date.now()) {
   if (!session.sessionId || !session.claimToken) return false;
-  if (session.expiresAt && Date.now() > session.expiresAt) return false;
+  if (session.expiresAt && now > session.expiresAt) return false;
   return true;
 }
 

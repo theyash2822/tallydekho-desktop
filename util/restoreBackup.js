@@ -8,16 +8,16 @@ const fse = require("fs-extra");
 const { spawn } = require("child_process");
 const { path7za } = require("7zip-bin"); // 7z.exe
 
-const http = require("http");
-const https = require("https");
-const { URL } = require("url");
-
 const getDeviceProfile = require("./deviceProfile");
 const store = require("./store");
 const { info } = require("./logger");
 const { axiosInstance } = require("./helper");
 const { sha256File, downloadFile } = require("./workspaceCloud");
 const { saveDeviceSecret } = require("./deviceCredential");
+const { looksLikeZipArchive } = require("./backupArchive");
+const { applyRestoreWithSafety, RESTORE_ROLLBACK_FAILED } = require("./restoreCopy");
+const { restrictOwnerOnly, restrictOwnerDir, unlinkQuiet } = require("./filePrivacy");
+const { tryBeginCloudRestore, endCloudRestore } = require("./restoreFlight");
 
 const sevenZipPath = path7za.replace("app.asar", "app.asar.unpacked");
 const final7z = sevenZipPath.includes("app.asar.unpacked")
@@ -142,6 +142,17 @@ async function restoreBackup(windowContent, zipPath) {
     return { status: false, message: "Restore already running" };
   }
 
+  if (!zipPath || !fs.existsSync(zipPath)) {
+    return { status: false, message: "Backup archive not found" };
+  }
+  const zipStat = await fsp.stat(zipPath).catch(() => null);
+  if (!zipStat || !zipStat.isFile() || zipStat.size < 22) {
+    return { status: false, message: "Backup archive is empty or incomplete" };
+  }
+  if (!looksLikeZipArchive(zipPath)) {
+    return { status: false, message: "Backup file is not a valid archive" };
+  }
+
   newActivity.unshift({
     date: new Date(),
     message: "Restore started",
@@ -158,14 +169,11 @@ async function restoreBackup(windowContent, zipPath) {
     value: true,
   });
 
-  info(`Restore [path]`, zipPath);
+  info("Restore [archive] accepted after header/size check");
 
   const sendProgress = createTallyRestoreProgressSender(windowContent);
 
   const temporaryRoot = temporaryDirectory("tallydekho_restore");
-
-  info(`Restore [Temp Root]`, temporaryRoot);
-
   const unzipDir = path.join(temporaryRoot, "unzipped");
 
   const deviceProfile = getDeviceProfile();
@@ -176,10 +184,7 @@ async function restoreBackup(windowContent, zipPath) {
   try {
     sendProgress(5, "Verifying");
     await ensureDir(temporaryRoot);
-
-    if (!zipPath || !fs.existsSync(zipPath)) {
-      throw new Error("Backup archive not found");
-    }
+    await restrictOwnerDir(temporaryRoot);
 
     try {
       const st = await fsp.stat(zipPath);
@@ -198,22 +203,34 @@ async function restoreBackup(windowContent, zipPath) {
       await unzipWithPassword(zipPath, unzipDir, deviceProfile.uniqueid, sendProgress);
     }
 
-    if (dest && fs.existsSync(dest)) {
-      const safety = path.join(os.tmpdir(), `tallydekho-safety-${Date.now()}`);
-      await copyWithProgress(dest, safety, (p) => sendProgress(Math.min(70, p * 0.5), "Restoring"));
-    }
-
     if (!dest) throw new Error("Tally destination is not set. Connect Tally once so the data path is known.");
 
-    await copyWithProgress(unzipDir, dest, sendProgress);
+    const applied = await applyRestoreWithSafety({
+      dest,
+      incoming: unzipDir,
+      copy: (src, target) => copyWithProgress(src, target, sendProgress),
+      exists: async (p) => fs.existsSync(p),
+      remove: rimrafSafe,
+    });
+
+    if (!applied.status) {
+      if (applied.code === RESTORE_ROLLBACK_FAILED) {
+        info("[restore] rollback failed; recovery copy retained");
+      }
+      throw Object.assign(new Error(applied.message), { code: applied.code });
+    }
+
+    store.delete("lastSync");
+    store.delete("myLastSyncEpoch");
+    windowContent.send("window:listener", { key: "lastSync", value: null });
 
     status = true;
 
     return { status: true, message: null };
   } catch (err) {
     status = false;
-    info(`[restore error message:  ${err.message}]`);
-    return { status: false, message: err.message };
+    info(`[restore] failed (${err.code || "RESTORE_FAILED"})`);
+    return { status: false, code: err.code || "RESTORE_FAILED", message: err.message };
   } finally {
     await rimrafSafe(temporaryRoot);
     sendProgress(100, status ? "Complete" : null);
@@ -239,6 +256,31 @@ async function restoreBackup(windowContent, zipPath) {
 }
 
 async function startCloudRestore(windowContent) {
+  if (!tryBeginCloudRestore()) {
+    return { status: false, message: "Restore already running" };
+  }
+  if (store.get("isRestoring")) {
+    endCloudRestore();
+    return { status: false, message: "Restore already running" };
+  }
+  try {
+    const result = await runCloudRestore(windowContent);
+    if (windowContent && !windowContent.isDestroyed?.()) {
+      windowContent.send("window:listener", { key: "restoreComplete", value: result });
+    }
+    return result;
+  } catch (err) {
+    const result = { status: false, message: err.message };
+    if (windowContent && !windowContent.isDestroyed?.()) {
+      windowContent.send("window:listener", { key: "restoreComplete", value: result });
+    }
+    return result;
+  } finally {
+    endCloudRestore();
+  }
+}
+
+async function runCloudRestore(windowContent) {
   const sendProgress = createTallyRestoreProgressSender(windowContent);
   sendProgress(2, "Waiting for approval");
   const statusRes = await axiosInstance.get("/desktop/restore/status");
@@ -256,21 +298,33 @@ async function startCloudRestore(windowContent) {
   }
 
   sendProgress(10, "Downloading");
-  const zipPath = path.join(os.tmpdir(), `tallydekho-restore-${Date.now()}.zip`);
+  const zipPath = path.join(os.tmpdir(), `tallydekho-restore-${Date.now()}-${Math.random().toString(16).slice(2)}.zip`);
   await downloadFile(data.download.url, zipPath, (p) =>
     sendProgress(10 + Math.round((p || 0) * 30), "Downloading")
   );
+  await restrictOwnerOnly(zipPath);
 
   sendProgress(42, "Verifying");
+  const zipStat = await fsp.stat(zipPath).catch(() => null);
+  if (data.backup.sizeBytes && zipStat && Number(data.backup.sizeBytes) !== zipStat.size) {
+    await unlinkQuiet(zipPath);
+    await axiosInstance.post("/desktop/restore/complete", { ok: false }).catch(() => {});
+    return { status: false, code: "BACKUP_SIZE_MISMATCH", message: "Backup size did not match" };
+  }
   const hash = await sha256File(zipPath);
   if (hash !== data.backup.sha256) {
-    await fsp.unlink(zipPath).catch(() => {});
+    await unlinkQuiet(zipPath);
     await axiosInstance.post("/desktop/restore/complete", { ok: false }).catch(() => {});
     return { status: false, code: "BACKUP_CHECKSUM_MISMATCH", message: "Backup checksum did not match" };
   }
+  if (!looksLikeZipArchive(zipPath)) {
+    await unlinkQuiet(zipPath);
+    await axiosInstance.post("/desktop/restore/complete", { ok: false }).catch(() => {});
+    return { status: false, code: "BACKUP_ARCHIVE_INVALID", message: "Backup file is not a valid archive" };
+  }
 
   const restored = await restoreBackup(windowContent, zipPath);
-  await fsp.unlink(zipPath).catch(() => {});
+  await unlinkQuiet(zipPath);
   if (!restored?.status) {
     await axiosInstance.post("/desktop/restore/complete", { ok: false }).catch(() => {});
     return restored;
@@ -279,17 +333,22 @@ async function startCloudRestore(windowContent) {
   sendProgress(96, "Validating Tally");
   const done = await axiosInstance.post("/desktop/restore/complete", { ok: true });
   if (done.data?.data?.deviceSecret) {
+    // Replacement credential comes from the backend, not from the zip or a
+    // cached workspaceId. Drop any leftover local tenant state first.
+    const { clearWorkspaceBinding } = require("./companySelection");
+    clearWorkspaceBinding();
     saveDeviceSecret(done.data.data.deviceSecret);
     await axiosInstance.post("/desktop/claim-credential").catch(() => {});
   }
+  try {
+    const { reconcileBinding } = require("./pairingRuntime");
+    await reconcileBinding("cloud-restore");
+  } catch (_) {}
   sendProgress(100, "Complete");
   return { status: true, message: null, data: done.data?.data };
 }
 
 function registerRestoreBackup(windowContent) {
-  ipcMain.handle("tally:restore_backup", async (event, args) => {
-    return restoreBackup(windowContent, args);
-  });
   ipcMain.handle("tally:restore_request", async () => {
     const res = await axiosInstance.post("/desktop/restore/request");
     return res.data;
@@ -304,3 +363,5 @@ function registerRestoreBackup(windowContent) {
 }
 
 module.exports = registerRestoreBackup;
+module.exports.restoreBackup = restoreBackup;
+module.exports.startCloudRestore = startCloudRestore;

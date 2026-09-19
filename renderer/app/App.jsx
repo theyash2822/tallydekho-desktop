@@ -50,7 +50,6 @@ export default function App() {
     appVersion: "1.0.0",
     pairingState: "hidden",
     pairingCode: null,
-    pairingCodeGeneratedAt: null,
     pairingBackendError: "",
     pairedDevice: null,
     pairingClaimed: null,
@@ -87,8 +86,6 @@ export default function App() {
     active,
     isSyncing,
     selectedCompanies,
-    pairingCode,
-    pairingCodeGeneratedAt,
     pairedDevice,
   } = state;
 
@@ -150,72 +147,6 @@ export default function App() {
     const backendTimer = setInterval(checkBackend, 15_000);
     return () => clearInterval(backendTimer);
   }, []);
-
-  useEffect(() => {
-    // HTTP claim poll recovers when socket pairing_approved is missed.
-    // Do NOT start unless a valid in-memory pairing session exists.
-    if (pairedDevice || !pairingCode || !window.api?.claimPairing) return undefined;
-    let cancelled = false;
-    let tries = 0;
-    let timer;
-
-    const tick = async () => {
-      if (cancelled || tries >= 40) return;
-      try {
-        const sess = await window.api.hasPairingSession?.();
-        if (!sess?.status) {
-          // Session lost/expired — clear displayed code; user must Refresh
-          if (!cancelled) {
-            updateState("pairingCode", null);
-            updateState("pairingCodeGeneratedAt", 0);
-            updateState(
-              "pairingBackendError",
-              "Pairing session expired. Tap Refresh code to generate a new one."
-            );
-          }
-          return;
-        }
-        tries += 1;
-        const res = await window.api.claimPairing();
-        if (res?.status) {
-          if (res.data?.workspace) updateState("workspace", res.data.workspace);
-          updateState("pairingClaimed", {
-            connectionStatus: res.data?.connectionStatus || "RECONNECTING",
-            at: Date.now(),
-          });
-          updateState("pairingCode", null);
-          updateState("pairingBackendError", "");
-          const paired = await window.api.pairedDevice?.();
-          if (paired?.status && paired.data) updateState("pairedDevice", paired.data);
-          return;
-        }
-        if (res?.code === "PAIRING_SESSION_PENDING" || res?.code === "PAIRING_SESSION_NOT_READY") {
-          if (!cancelled) timer = setTimeout(tick, 3000);
-          return;
-        }
-        if (
-          res?.code === "PAIRING_SESSION_EXPIRED" ||
-          res?.code === "PAIRING_SESSION_NOT_FOUND" ||
-          res?.code === "PAIRING_CODE_INVALID"
-        ) {
-          updateState("pairingCode", null);
-          updateState("pairingCodeGeneratedAt", 0);
-          updateState(
-            "pairingBackendError",
-            "Pairing session expired. Tap Refresh code to generate a new one."
-          );
-          return;
-        }
-      } catch (_) {}
-      if (!cancelled) timer = setTimeout(tick, 3000);
-    };
-
-    timer = setTimeout(tick, 4000);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [pairingCode, pairingCodeGeneratedAt, pairedDevice]);
 
   useEffect(() => {
     if (isInitCompleted.current && window.api) {
@@ -332,53 +263,13 @@ export default function App() {
 
       isInitCompleted.current = true;
 
-      // Prefer a fresh pairing session on every unpaired startup — never reuse a
-      // stored pairingCode after sessionId/claimToken were lost on restart.
+      // Pairing is owned by the main process: hydrate whatever session is
+      // already live, then follow the pushes on `window:listener`.
       try {
-        store.delete?.("pairingCode");
-      } catch (_) {}
-      updateState("pairingCode", null);
-      updateState("pairingCodeGeneratedAt", 0);
-      updateState("pairingBackendError", "");
-
-      // Check paired FIRST — requesting /desktop/pairing-code while already paired → 409.
-      const pairedRes = await window.api.pairedDevice();
-      const paired = pairedRes?.status ? pairedRes.data : null;
-      updateState("pairedDevice", paired || null);
-
-      if (paired) {
-        updateState("pairingBackendError", "");
+        const snapshot = await window.api.pairingState?.();
+        updateState("pairingCode", snapshot?.data?.pairingCode || null);
+      } catch (_) {
         updateState("pairingCode", null);
-      } else {
-        let sessionReady = false;
-        try {
-          const fresh = await window.api.pairingCode?.();
-          const code = fresh?.data?.code || fresh?.data?.pairingCode;
-          if (fresh?.code === "DEVICE_ALREADY_PAIRED") {
-            const again = await window.api.pairedDevice();
-            updateState("pairedDevice", again?.data || null);
-            updateState("pairingBackendError", "");
-          } else if (fresh?.status && code && fresh?.data?.sessionId) {
-            updateState("pairingCode", code);
-            updateState("pairingCodeGeneratedAt", Date.now());
-            updateState("pairingBackendError", "");
-            sessionReady = true;
-          } else {
-            updateState(
-              "pairingBackendError",
-              fresh?.message || "Backend unavailable — unable to generate pairing code."
-            );
-          }
-        } catch (_) {
-          updateState(
-            "pairingBackendError",
-            "Backend unavailable — unable to generate pairing code."
-          );
-        }
-        if (!sessionReady) {
-          updateState("pairingCode", null);
-          updateState("pairingCodeGeneratedAt", 0);
-        }
       }
     };
 
@@ -425,46 +316,24 @@ export default function App() {
         resetSyncStates(true);
         openAlertModal("Data synced successfully");
       } else if (key == "unpairedAlert" && value === true) {
+        // Main clears the binding and mints the replacement session; the
+        // renderer only drops the state tied to the old pairing.
         resetSyncStates(false);
         updateState("pairedDevice", null);
         updateState("workspace", null);
         updateState("pairingCode", null);
-        updateState("pairingCodeGeneratedAt", 0);
         updateState("pairingBackendError", "");
         updateState("pairingClaimed", null);
         updateState("pendingFirstSyncAfterPair", false);
         autoFirstSyncClaimTokenRef.current = null;
         autoFirstSyncInFlightRef.current = false;
         autoFirstSyncStartedForBindRef.current = null;
-        openAlertModal("Workspace connection is no longer active. Generating a new pairing code…");
-        // Stale digits (already CLAIMED) must never stay on screen — mint a fresh session.
-        (async () => {
-          try {
-            const fresh = await window.api?.pairingCode?.();
-            const code = fresh?.data?.code || fresh?.data?.pairingCode;
-            if (fresh?.status && code && fresh?.data?.sessionId) {
-              updateState("pairingCode", code);
-              updateState("pairingCodeGeneratedAt", Date.now());
-              updateState("pairingBackendError", "");
-            } else {
-              updateState(
-                "pairingBackendError",
-                fresh?.message || "Tap Refresh code on Desktop to generate a new pairing code."
-              );
-            }
-          } catch (_) {
-            updateState(
-              "pairingBackendError",
-              "Tap Refresh code on Desktop to generate a new pairing code."
-            );
-          }
-        })();
+        openAlertModal("Workspace connection is no longer active.");
         return;
       } else if (key == "bindingRevoked") {
         updateState("pairedDevice", null);
         updateState("workspace", null);
         updateState("pairingCode", null);
-        updateState("pairingCodeGeneratedAt", 0);
         updateState("pairingClaimed", null);
         updateState("pendingFirstSyncAfterPair", false);
         autoFirstSyncClaimTokenRef.current = null;
@@ -493,10 +362,21 @@ export default function App() {
       } else if (key == "restoreApproved") {
         updateState("restoreApproved", value);
         return;
+      } else if (key == "restoreComplete") {
+        if (value?.status) {
+          openAlertModal("Restore complete. Run a sync after Tally opens.");
+        } else if (value?.message && value.message !== "Restore already running") {
+          openAlertModal(value.message);
+        }
+        return;
       } else if (key == "workspaceReset") {
         updateState("resetWaitMessage", "Workspace was reset. Pair again after new Tally setup, or restore a backup.");
         updateState("pairedDevice", null);
         updateState("workspace", null);
+        updateState("selectedCompanies", []);
+        updateState("pairingCode", null);
+        updateState("pairingClaimed", null);
+        updateState("pendingFirstSyncAfterPair", false);
         openAlertModal("Workspace was reset. This Desktop is unpaired. Local Tally files were not deleted.");
         return;
       }

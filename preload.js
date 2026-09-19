@@ -14,16 +14,15 @@ contextBridge.exposeInMainWorld("api", {
   },
   closeByName: (name, opts) =>
     ipcRenderer.invoke("window:closeByName", name, opts),
-  pairingCode: () => ipcRenderer.invoke("api:pairing_code"),
-  claimPairing: () => ipcRenderer.invoke("api:claim_pairing"),
-  hasPairingSession: () => ipcRenderer.invoke("api:has_pairing_session"),
+  // Display-safe snapshot only. The main process owns the pairing session and
+  // pushes updates over `window:listener`; the renderer cannot mint or claim.
+  pairingState: () => ipcRenderer.invoke("api:pairing_state"),
   pairedDevice: () => ipcRenderer.invoke("api:paired_device"),
   removePairedDevice: () => ipcRenderer.invoke("api:remove_paired_device"),
   pingBackend: () => ipcRenderer.invoke("backend:ping"),
   sendLogs: () => ipcRenderer.invoke("api:send_logs"),
   userProfile: () => ipcRenderer.invoke("api:user_profile"),
   aiChat: (payload) => ipcRenderer.invoke("api:ai_chat", payload),
-  sendAttachment: (payload) => ipcRenderer.invoke("api:ai_attachment", payload),
 });
 
 contextBridge.exposeInMainWorld("tally", {
@@ -48,7 +47,6 @@ contextBridge.exposeInMainWorld("tally", {
     ipcRenderer.on("tally:backup_progress", handler);
     return () => ipcRenderer.removeListener("tally:backup_progress", handler);
   },
-  startRestore: (args) => ipcRenderer.invoke("tally:restore_backup", args),
   restoreProgress: (cb) => {
     const handler = (_e, payload) => cb(payload);
     ipcRenderer.on("tally:restore_progress", handler);
@@ -65,7 +63,6 @@ contextBridge.exposeInMainWorld("tally", {
 contextBridge.exposeInMainWorld("backup", {
   chooseDir: () => ipcRenderer.invoke("backup:chooseDir"),
   getDir: () => ipcRenderer.invoke("backup:getDir"),
-  runBackup: (payload) => ipcRenderer.invoke("backup:run", payload),
 });
 
 contextBridge.exposeInMainWorld("updater", {

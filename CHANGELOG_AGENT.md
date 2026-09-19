@@ -4,6 +4,34 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-09-19 — Desktop production remediation (pairing lifecycle + tenant)
+
+**Branch:** `cursor` (local only — not pushed)
+**Files:** `util/pairingLifecycle.js`, `util/pairingRuntime.js`, `util/companySelection.js`, `util/writeback.js`, `util/backendConfig.js`, `main.js`, `preload.js`, `util/ipcRegistry.js`, `util/socket.js`, `renderer/app/App.jsx`, `renderer/app/views/dashboard/PairingPanel.jsx`, `scripts/test-*.js`
+
+**Behavior:**
+- Main process owns pairing sessions (`expiresAt` authority, pre-expiry remint, generation guard, claim single-flight).
+- Refresh-code workaround removed. Sleep/wake and network restore remint expired sessions.
+- Unpair clears workspace-scoped `selectedCompanies`, lastSync and myLastSyncEpoch.
+- Sync/Hard Sync disabled while unpaired.
+- store IPC allowlisted. Unpackaged `electron .` fails closed instead of targeting production.
+- Writeback reconciliation pull on startup/reconnect in addition to the socket wake-up.
+- Cloud restore binds from the new backend credential and drops leftover local tenant state.
+- Restore dest copy rolls back from the safety snapshot on failure; lastSync/epoch cleared after a successful file restore.
+- `restore_approved` starts the same single-flight cloud restore as the PairingPanel button.
+- Backup zip is written to `*.partial` then renamed; 7z exit 1 is no longer treated as success.
+- Failed backup deletes partial and final staging files. Unix staging is chmod 600/700.
+- Restore dest overwrite rolls back from a safety copy; rollback failure keeps the recovery copy and returns CRITICAL.
+- Cloud restore checks size + SHA-256 + zip header before dest overwrite.
+- Dead local-restore modal, ZipUpload, StartRestoreModal, `tally.startRestore` / `tally:restore_backup` removed.
+- S3 upload PutObject now requests SSE-S3 AES256 (backend objectStore, storage configure only).
+
+**Test:** `npm test` (config guards + node:test behavioral suite)
+
+**Risks:** sandbox:true needs a real packaged/dev Electron smoke; backup/restore still needs real Tally + Owner approval for workspace replace.
+
+---
+
 ## 2026-09-18 — Staging build path + auto-update safety
 
 **Branch:** `cursor`

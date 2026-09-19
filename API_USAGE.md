@@ -42,7 +42,7 @@ Note: Exact endpoint paths need verification against `util/helper.js` + `util/ip
 
 ## Authentication
 - Desktop uses device_id (from `util/deviceProfile.js`) not user JWT
-- After pairing, backend associates device_id with user_id
+- After pairing, backend binds this device to one workspace (not to a user)
 - Some API calls may use user token (Needs verification)
 
 ## Store Keys (electron-store via util/store.js)

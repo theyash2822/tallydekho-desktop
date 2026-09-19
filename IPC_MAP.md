@@ -11,18 +11,17 @@ Defined in `preload.js`.
 | api.close() | window:close | main.js | Closes app |
 | api.pickFiles(opts) | dialog:openFile | main.js | File picker dialog |
 | api.openExternal() | openExternal | main.js | Opens external URL |
-| api.getPref(key) | store:get | main.js | electron-store get |
-| api.setPref(key, val) | store:set | main.js | electron-store set |
+| api.getPref(key) | store:get | main.js | Allowlisted preference read |
+| api.setPref(key, val) | store:set | main.js | Allowlisted preference write |
 | api.listener(cb) | window:listener | main.js | Event listener setup |
 | api.closeByName(name) | window:closeByName | main.js | Close named window |
-| api.pairingCode() | api:pairing_code | ipcRegistry.js | Returns current pairing code |
+| api.pairingState() | api:pairing_state | ipcRegistry.js | Display-safe pairing snapshot (no claimToken) |
 | api.pairedDevice() | api:paired_device | ipcRegistry.js | Returns paired device info |
 | api.removePairedDevice() | api:remove_paired_device | ipcRegistry.js | Unpairing |
 | api.pingBackend() | backend:ping | main.js | Backend connectivity check |
 | api.sendLogs() | api:send_logs | ipcRegistry.js | Send diagnostic logs |
-| api.userProfile() | api:user_profile | ipcRegistry.js | Fetch user profile from backend |
+| api.userProfile() | api:user_profile | ipcRegistry.js | Fetch display profile from backend |
 | api.aiChat(payload) | api:ai_chat | ipcRegistry.js | AI chat relay |
-| api.sendAttachment(p) | api:ai_attachment | ipcRegistry.js | AI attachment relay |
 
 ## window.tally.* (Tally Integration)
 | Renderer Call | IPC Channel | Notes |
@@ -40,7 +39,6 @@ Defined in `preload.js`.
 | tally.deleteAutoSync() | tally:delete_auto_sync | Removes auto-sync |
 | tally.startBackup() | tally:start_backup | Triggers backup |
 | tally.backupProgress(cb) | tally:backup_progress | Backup progress events |
-| tally.startRestore(args) | tally:restore_backup | Triggers restore |
 | tally.restoreProgress(cb) | tally:restore_progress | Restore progress events |
 | tally.saveAutoBackup(args) | tally:save_auto_backup | Auto-backup schedule |
 | tally.hardSyncStatus(id) | tally:hard_sync_status | Poll Hard Sync approval |
@@ -54,7 +52,6 @@ Defined in `preload.js`.
 |---------------|-------------|-------|
 | backup.chooseDir() | backup:chooseDir | Directory picker |
 | backup.getDir() | backup:getDir | Get saved backup dir |
-| backup.runBackup(payload) | backup:run | Execute backup |
 
 ## Auto-Updater Events (main → renderer via window:listener)
 | Event | Payload | Notes |
@@ -66,7 +63,7 @@ Defined in `preload.js`.
 | download-progress | {percent, ...} | Download progress |
 
 ## Key Rules
-- ⚠️ `util/ipcRegistry.js` is NOT required from `main.js` — it was causing double-require crashes
-- All active IPC handlers are in `main.js` directly
-- Never add a new `ipcMain.handle()` to ipcRegistry.js — add to main.js only
+- `util/ipcRegistry.js` is required once from `main.js` (do not require it twice)
+- Pairing sessions are owned by the main process (`util/pairingLifecycle.js`)
 - Renderer must only call via `window.api.*` / `window.tally.*` (contextBridge) — never ipcRenderer directly
+- store:get / store:set are allowlisted; secrets and binding keys are not exposed

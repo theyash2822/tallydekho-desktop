@@ -12,7 +12,7 @@
         "build": "node scripts/set-build-env.js production && npm run build --prefix renderer && electron-builder",
         "build:staging": "node scripts/set-build-env.js staging && npm run build --prefix renderer && electron-builder",
         "verify:config": "node scripts/verify-backend-config.js",
-        "test": "npm run verify:config",
+        "test": "npm run verify:config && node --test scripts/test-pairing-lifecycle.js scripts/test-workspace-writeback.js scripts/test-backup-restore.js",
         "postinstall": "electron-builder install-app-deps",
         "dist": "electron-builder"
     },

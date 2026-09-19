@@ -4,6 +4,13 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-09-19 — Snapshot branch `19-09-2026-final-code`
+
+Pushed local `cursor` tip as `19-09-2026-final-code`. No billing-authority
+code on Desktop this pass. LAN backend remains `http://192.168.29.243:3001`.
+
+---
+
 ## 2026-09-19 — Desktop production remediation (pairing lifecycle + tenant)
 
 **Branch:** `cursor` (local only — not pushed)

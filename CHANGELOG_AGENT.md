@@ -4,6 +4,21 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-09-21 — UnitFull / VoucherTypeFull include unaltered masters
+
+TDL filter was `$AlterId > 0`, so units/voucher types that Tally never edited
+came back as an empty envelope. Filter is now `$AlterId >= $$ALTER_ID` (Hard
+Sync alter id 0 includes them). Needs one Desktop Hard Sync to land in DB.
+
+---
+
+## 2026-09-21 — StockFYBalance keeps the selected FY label
+
+`syncHelperWithDate` now sends `year.finYear`. FY-end queries (e.g. 20270331)
+are no longer tagged `2027-2028`, so closing stock writes the intended year.
+
+---
+
 ## 2026-09-21 — Partial sync message
 
 `/ingest/complete` `outcome=partial` shows a Desktop status line; sync still succeeds.

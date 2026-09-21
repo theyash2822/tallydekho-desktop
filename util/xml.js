@@ -713,6 +713,7 @@ const syncHelperWithDate = async ({
   toDate,
   companyGuid,
   yearId,
+  financialYear: financialYearArg,
 }) => {
   const response = await getData(xml, [
     {
@@ -739,7 +740,8 @@ const syncHelperWithDate = async ({
 
   const json = parser.parse(response.data);
 
-  const financialYear = computeFinancialYear(fromDate);
+  // Never derive FY from an FY-end / day-before query date (20270331 → 2027-2028).
+  const financialYear = financialYearArg || computeFinancialYear(fromDate);
   const envelope = json.ENVELOPE || json.Envelope || {};
   const baseRows =
     xml === "BillOutstanding.xml"
@@ -1087,6 +1089,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
           toDate,
           companyGuid,
           yearId: yearIds[companyGuid]?.[outstandingYear.finYear] || null,
+          financialYear: outstandingYear.finYear,
         });
         promises.push(billOutstandingResponse);
         info("[sync] BillOutstanding.xml", {
@@ -1126,6 +1129,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
         toDate: year.end,
         companyGuid,
         yearId,
+        financialYear: year.finYear,
       });
       promises.push(stockValuationResponse);
 
@@ -1147,6 +1151,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
         toDate:   fyEndStr,
         companyGuid,
         yearId,
+        financialYear: year.finYear,
       });
       promises.push(stockFYClosingResponse);
 
@@ -1159,6 +1164,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
         toDate:   prevDayStr,
         companyGuid,
         yearId,
+        financialYear: year.finYear,
       });
       promises.push(stockFYOpeningResponse);
 
@@ -1170,6 +1176,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
         toDate: year.end,
         companyGuid,
         yearId,
+        financialYear: year.finYear,
       });
       promises.push(stockresponse);
 
@@ -1181,6 +1188,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
         toDate: year.end,
         companyGuid,
         yearId,
+        financialYear: year.finYear,
       });
       promises.push(stockTransactionResponse);
 
@@ -1193,6 +1201,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
         toDate: year.end,
         companyGuid,
         yearId,
+        financialYear: year.finYear,
       });
       promises.push(voucherResponse);
 
@@ -1204,6 +1213,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
         toDate: year.end,
         companyGuid,
         yearId,
+        financialYear: year.finYear,
       });
 
       promises.push(ledgerTransactionResponse);
@@ -1217,6 +1227,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
         toDate: year.end,
         companyGuid,
         yearId,
+        financialYear: year.finYear,
       });
       promises.push(voucherInventoryResponse);
 
@@ -1229,6 +1240,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
         toDate: year.end,
         companyGuid,
         yearId,
+        financialYear: year.finYear,
       });
       promises.push(gstDetailsResponse);
 
@@ -1240,6 +1252,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
         toDate: year.end,
         companyGuid,
         yearId,
+        financialYear: year.finYear,
       });
 
       promises.push(ledgerOpeningBalanceResponse);

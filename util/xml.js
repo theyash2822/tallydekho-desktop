@@ -183,9 +183,15 @@ async function uploadLargeArray({
 
   info(`[sync] API response`, completeRes);
 
+  if (completeRes?.outcome === 'partial') {
+    sendMessage(completeRes.message || 'Books synced. Some calculations could not be updated.');
+  }
+
   return {
     status: true,
     uploadId,
+    outcome: completeRes?.outcome || 'complete',
+    message: completeRes?.message || 'Sync complete',
   };
 }
 

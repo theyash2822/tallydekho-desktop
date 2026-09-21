@@ -4,6 +4,12 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-09-21 — Partial sync message
+
+`/ingest/complete` `outcome=partial` shows a Desktop status line; sync still succeeds.
+
+---
+
 ## 2026-09-19 — Snapshot branch `19-09-2026-final-code`
 
 Pushed local `cursor` tip as `19-09-2026-final-code`. No billing-authority

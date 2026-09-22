@@ -574,13 +574,23 @@ const startAutoBackupHeadless = async () => {
  */
 ipcMain.handle("api:pairing_state", async () => {
   const { getStatus } = require("./pairingLifecycle");
+  const { getLastPairedSnapshot, reconcileBinding } = require("./pairingRuntime");
   const status = getStatus();
+  // Prefer a live reconcile so a missed startup emit cannot leave Sync Now stuck.
+  let paired = getLastPairedSnapshot();
+  try {
+    const result = await reconcileBinding("renderer-hydrate");
+    if (result.reachable) paired = result.paired;
+  } catch (_) {
+    /* keep cached snapshot */
+  }
   return {
     status: true,
     data: {
       pairingCode: status.pairingCode,
       expiresAt: status.expiresAt,
       running: status.running,
+      pairedDevice: paired || null,
     },
   };
 });

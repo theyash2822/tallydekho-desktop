@@ -36,6 +36,7 @@ export default function Companies({
   onManualSync,
   onHardSync,
   disableSyncButton,
+  syncDisabledReason = "",
 }) {
   const [checkedCompanies, setCheckedCompanies] = useState({});
   const [isAddCompanyModalOpen, setIsAddCompanyModalOpen] = useState(false);
@@ -288,6 +289,7 @@ export default function Companies({
             }`}
             style={{ borderColor: "#E9E8E3" }}
             disabled={disableSyncButton}
+            title={disableSyncButton ? syncDisabledReason : undefined}
           >
             {isSyncing ? "Stop Syncing" : "Sync Now"}
           </button>
@@ -299,6 +301,11 @@ export default function Companies({
                 : "text-[#787774] hover:bg-[#FDECEA] hover:text-[#C0392B] border-[#EDBBB8]"
             }`}
             disabled={disableSyncButton || isSyncing}
+            title={
+              disableSyncButton || isSyncing
+                ? syncDisabledReason || "Stop the current sync first."
+                : undefined
+            }
           >
             Hard Sync
           </button>

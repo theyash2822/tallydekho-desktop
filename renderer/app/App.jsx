@@ -263,11 +263,18 @@ export default function App() {
 
       isInitCompleted.current = true;
 
-      // Pairing is owned by the main process: hydrate whatever session is
-      // already live, then follow the pushes on `window:listener`.
+      // Pairing is owned by the main process. Hydrate BOTH the pairing code and
+      // pairedDevice here — reconcileBinding can emit before this listener is up,
+      // which left Sync Now disabled despite a live backend binding.
       try {
         const snapshot = await window.api.pairingState?.();
         updateState("pairingCode", snapshot?.data?.pairingCode || null);
+        if (snapshot?.data?.pairedDevice) {
+          updateState("pairedDevice", snapshot.data.pairedDevice);
+        } else {
+          const paired = await window.api.pairedDevice?.();
+          updateState("pairedDevice", paired?.status ? (paired.data || null) : null);
+        }
       } catch (_) {
         updateState("pairingCode", null);
       }

@@ -77,6 +77,12 @@ export default function Dashboard({ hardSync }) {
     return ["Uploading Data", "Processing Data"].includes(syncMessage);
   }, [syncMessage, pairedDevice]);
 
+  const syncDisabledReason = !pairedDevice
+    ? "Pair this Desktop with your workspace first (Pairing Code panel)."
+    : ["Uploading Data", "Processing Data"].includes(syncMessage)
+      ? "Sync is already uploading/processing."
+      : "";
+
   return (
     <div className="space-y-3">
       <HeaderBar />
@@ -111,6 +117,7 @@ export default function Dashboard({ hardSync }) {
         onManualSync={onManualSync}
         onHardSync={onHardSync}
         disableSyncButton={disableSyncButton}
+        syncDisabledReason={syncDisabledReason}
       />
       {isHardSyncModalOpen && (
         <HardSyncModal

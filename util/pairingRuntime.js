@@ -14,6 +14,8 @@ const {
 } = require("./companySelection");
 
 let targetWindow = null;
+/** Last successful pairing snapshot for renderer hydrate (survives emit-before-listen). */
+let lastPairedSnapshot = null;
 
 function emit(key, value) {
   const contents = targetWindow?.webContents;
@@ -90,12 +92,14 @@ async function reconcileBinding(reason = "startup") {
 
   if (paired) {
     lifecycle.stop("paired");
+    lastPairedSnapshot = paired;
     emit("pairedDevice", paired);
     await syncWorkspaceBinding();
     return { reachable: true, paired };
   }
 
   // No server-side binding: this Desktop is genuinely unpaired or was revoked.
+  lastPairedSnapshot = null;
   clearWorkspaceBinding();
   emit("pairedDevice", null);
   emit("selectedCompanies", []);
@@ -114,6 +118,7 @@ function initPairingRuntime(window) {
 
 /** Local teardown after an actual unpair / revoked binding. */
 function handleUnpaired(reason = "unpaired") {
+  lastPairedSnapshot = null;
   clearWorkspaceBinding();
   emit("selectedCompanies", []);
   return lifecycle.start(reason);
@@ -123,6 +128,10 @@ function handleResume(reason = "resume") {
   return lifecycle.revalidate(reason);
 }
 
+function getLastPairedSnapshot() {
+  return lastPairedSnapshot;
+}
+
 module.exports = {
   initPairingRuntime,
   reconcileBinding,
@@ -130,5 +139,6 @@ module.exports = {
   handleUnpaired,
   handleResume,
   mapPairedDevice,
+  getLastPairedSnapshot,
   lifecycle,
 };

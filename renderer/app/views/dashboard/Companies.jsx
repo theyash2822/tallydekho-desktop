@@ -36,6 +36,7 @@ export default function Companies({
   onManualSync,
   onHardSync,
   disableSyncButton,
+  syncDisabledReason = "",
 }) {
   const [checkedCompanies, setCheckedCompanies] = useState({});
   const [isAddCompanyModalOpen, setIsAddCompanyModalOpen] = useState(false);
@@ -55,7 +56,7 @@ export default function Companies({
   const [refreshing, setRefreshing] = useState(false);
 
   const {
-    state: { companies, selectedCompanies, isSyncing, isTallyOnline, isOnline },
+    state: { companies, selectedCompanies, isSyncing, isTallyOnline, isOnline, pairedDevice },
     updateState,
     fetchCompanies,
   } = useContext(TallyContext);
@@ -110,6 +111,13 @@ export default function Companies({
   };
 
   const syncingHelper = () => {
+    if (!pairedDevice) {
+      setAlertModalData({
+        isOpen: true,
+        message: "Pair this Desktop with your workspace before syncing.",
+      });
+      return false;
+    }
     if (!isSyncing) {
       if (!isTallyOnline) {
         setAlertModalData({
@@ -281,6 +289,7 @@ export default function Companies({
             }`}
             style={{ borderColor: "#E9E8E3" }}
             disabled={disableSyncButton}
+            title={disableSyncButton ? syncDisabledReason : undefined}
           >
             {isSyncing ? "Stop Syncing" : "Sync Now"}
           </button>
@@ -292,6 +301,11 @@ export default function Companies({
                 : "text-[#787774] hover:bg-[#FDECEA] hover:text-[#C0392B] border-[#EDBBB8]"
             }`}
             disabled={disableSyncButton || isSyncing}
+            title={
+              disableSyncButton || isSyncing
+                ? syncDisabledReason || "Stop the current sync first."
+                : undefined
+            }
           >
             Hard Sync
           </button>

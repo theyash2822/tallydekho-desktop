@@ -38,13 +38,22 @@ export default function App() {
     backupProgress: 0,
     backupAndRestoreActivity: [],
     backups: [],
+    cloudBackups: [],
+    workspace: null,
+    hardSyncRequestId: null,
+    hardSyncWaitMessage: "",
+    restoreCode: null,
+    backupStage: "",
+    restoreStage: "",
     isRestoring: false,
     restoreProgress: 0,
     appVersion: "1.0.0",
     pairingState: "hidden",
     pairingCode: null,
-    pairingCodeGeneratedAt: null,
+    pairingBackendError: "",
     pairedDevice: null,
+    pairingClaimed: null,
+    pendingFirstSyncAfterPair: false,
     isVersionUpdateModalOpen: false,
     syncMessage: "",
     isCloseConfirmationModalOpen: false,
@@ -65,12 +74,18 @@ export default function App() {
   const selectedCompaniesRef = useRef([]);
   const isSyncingRef = useRef(false);
   const isInitCompleted = useRef(false);
+  const hardSyncContinueOnceRef = useRef(null);
+  const hardSyncRequestIdRef = useRef(null);
+  const lineageMismatchRef = useRef(null);
+  const autoFirstSyncInFlightRef = useRef(false);
+  const autoFirstSyncClaimTokenRef = useRef(null);
+  /** Once first soft sync has been kicked for this bind, ignore late duplicate pairingClaimed. */
+  const autoFirstSyncStartedForBindRef = useRef(null);
 
   const {
     active,
     isSyncing,
     selectedCompanies,
-    pairingCodeGeneratedAt,
     pairedDevice,
   } = state;
 
@@ -134,11 +149,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Pairing code is now permanent — no expiry timer needed
-    return () => {};
-  }, [pairingCodeGeneratedAt, pairedDevice]);
-
-  useEffect(() => {
     if (isInitCompleted.current && window.api) {
       window.api.setPref("selectedCompanies", selectedCompanies);
       selectedCompaniesRef.current = selectedCompanies;
@@ -159,6 +169,34 @@ export default function App() {
   useEffect(() => {
     isSyncingRef.current = isSyncing;
   }, [isSyncing]);
+
+  useEffect(() => {
+    hardSyncRequestIdRef.current = state.hardSyncRequestId;
+  }, [state.hardSyncRequestId]);
+
+  const continueHardSyncOnce = async (requestId) => {
+    if (!requestId) return;
+    const waitingId = hardSyncRequestIdRef.current;
+    if (waitingId && String(waitingId) !== String(requestId)) return;
+    if (hardSyncContinueOnceRef.current === requestId) return;
+    if (isSyncingRef.current) return;
+    hardSyncContinueOnceRef.current = requestId;
+    updateState("hardSyncWaitMessage", "Approved by Workspace administrator. Starting full sync...");
+    updateState("hardSyncRequestId", null);
+    const mismatch = lineageMismatchRef.current;
+    await window.tally.startSync({
+      companies: selectedCompaniesRef.current,
+      isHardSync: true,
+      guidReplacement:
+        mismatch?.reason === "guid_replacement_candidate"
+          ? {
+              operation: "GUID_REPLACEMENT",
+              oldGuid: mismatch.missing?.[0] || null,
+              newGuid: mismatch.extra?.[0] || null,
+            }
+          : undefined,
+    });
+  };
 
   useEffect(() => {
     // Guard: window.api/tally only exist inside Electron (preload.js).
@@ -225,12 +263,21 @@ export default function App() {
 
       isInitCompleted.current = true;
 
-      // Load permanent pairing code from store
-      const pairingCode = await window.api.getPref('pairingCode');
-      if (pairingCode) updateState('pairingCode', pairingCode);
-
-      const pairedDevice = await window.api.pairedDevice();
-      updateState("pairedDevice", pairedDevice.data);
+      // Pairing is owned by the main process. Hydrate BOTH the pairing code and
+      // pairedDevice here — reconcileBinding can emit before this listener is up,
+      // which left Sync Now disabled despite a live backend binding.
+      try {
+        const snapshot = await window.api.pairingState?.();
+        updateState("pairingCode", snapshot?.data?.pairingCode || null);
+        if (snapshot?.data?.pairedDevice) {
+          updateState("pairedDevice", snapshot.data.pairedDevice);
+        } else {
+          const paired = await window.api.pairedDevice?.();
+          updateState("pairedDevice", paired?.status ? (paired.data || null) : null);
+        }
+      } catch (_) {
+        updateState("pairingCode", null);
+      }
     };
 
     init();
@@ -243,16 +290,31 @@ export default function App() {
         resetSyncStates(false);
         if (value.message == "Data Mismatch") {
           setIsHardSyncConfirmationModalOpen(true);
-        } else if (CODE_ERROR_MESSAGE[value.code]) {
-          setAlertModalData({
-            isOpen: true,
-            message: CODE_ERROR_MESSAGE[value.code],
-            sendLogs: false,
-          });
-        } else if (value.code != "manually_stopped" && value.message) {
+        } else if (value.code === "TALLY_DATA_MISMATCH") {
+          lineageMismatchRef.current = value;
+          updateState("lineageMismatch", value);
           setAlertModalData({
             isOpen: true,
             message:
+              value.reason === "guid_replacement_candidate"
+                ? "Company GUID changed. Owner/Admin must approve a GUID Replacement Hard Sync."
+                : value.message ||
+                  CODE_ERROR_MESSAGE.TALLY_DATA_MISMATCH ||
+                  "This Tally data does not match the workspace. Use Restore Existing Workspace, or Reset Workspace for New Tally.",
+            sendLogs: false,
+          });
+        } else if (CODE_ERROR_MESSAGE[value.code]) {
+          setAlertModalData({
+            isOpen: true,
+            message: value.message || CODE_ERROR_MESSAGE[value.code],
+            sendLogs: false,
+          });
+        } else if (value.code != "manually_stopped" && (value.message || value.code)) {
+          setAlertModalData({
+            isOpen: true,
+            message:
+              value.message ||
+              (value.code ? `Sync failed (${value.code})` : null) ||
               "Something went wrong while syncing. If this message persists, please contact the support team.",
             sendLogs: true,
           });
@@ -261,10 +323,69 @@ export default function App() {
         resetSyncStates(true);
         openAlertModal("Data synced successfully");
       } else if (key == "unpairedAlert" && value === true) {
-        // Remote unpair from mobile/web — stop sync, show alert
+        // Main clears the binding and mints the replacement session; the
+        // renderer only drops the state tied to the old pairing.
         resetSyncStates(false);
-        openAlertModal("Device unpaired from mobile or web portal. Please generate a new pairing code to reconnect.");
-        return; // don't call updateState("unpairedAlert")
+        updateState("pairedDevice", null);
+        updateState("workspace", null);
+        updateState("pairingCode", null);
+        updateState("pairingBackendError", "");
+        updateState("pairingClaimed", null);
+        updateState("pendingFirstSyncAfterPair", false);
+        autoFirstSyncClaimTokenRef.current = null;
+        autoFirstSyncInFlightRef.current = false;
+        autoFirstSyncStartedForBindRef.current = null;
+        openAlertModal("Workspace connection is no longer active.");
+        return;
+      } else if (key == "bindingRevoked") {
+        updateState("pairedDevice", null);
+        updateState("workspace", null);
+        updateState("pairingCode", null);
+        updateState("pairingClaimed", null);
+        updateState("pendingFirstSyncAfterPair", false);
+        autoFirstSyncClaimTokenRef.current = null;
+        autoFirstSyncInFlightRef.current = false;
+        autoFirstSyncStartedForBindRef.current = null;
+        openAlertModal("Workspace connection is no longer active.");
+        return;
+      } else if (key == "pairingClaimed" && value) {
+        updateState("pairingClaimed", {
+          ...(typeof value === "object" && value ? value : {}),
+          connectionStatus: value?.connectionStatus || "RECONNECTING",
+          at: value?.at || Date.now(),
+        });
+        return;
+      } else if (key == "hardSyncApproved" && value) {
+        const approvedId = value.requestId || value.data?.requestId || value.id;
+        // Prefer socket approval path; poll uses the same continue-once gate.
+        continueHardSyncOnce(approvedId);
+        return;
+      } else if (key == "hardSyncRejected") {
+        updateState("hardSyncWaitMessage", "");
+        updateState("hardSyncRequestId", null);
+        hardSyncContinueOnceRef.current = null;
+        setAlertModalData({ isOpen: true, message: "Hard Sync was rejected.", sendLogs: false });
+        return;
+      } else if (key == "restoreApproved") {
+        updateState("restoreApproved", value);
+        return;
+      } else if (key == "restoreComplete") {
+        if (value?.status) {
+          openAlertModal("Restore complete. Run a sync after Tally opens.");
+        } else if (value?.message && value.message !== "Restore already running") {
+          openAlertModal(value.message);
+        }
+        return;
+      } else if (key == "workspaceReset") {
+        updateState("resetWaitMessage", "Workspace was reset. Pair again after new Tally setup, or restore a backup.");
+        updateState("pairedDevice", null);
+        updateState("workspace", null);
+        updateState("selectedCompanies", []);
+        updateState("pairingCode", null);
+        updateState("pairingClaimed", null);
+        updateState("pendingFirstSyncAfterPair", false);
+        openAlertModal("Workspace was reset. This Desktop is unpaired. Local Tally files were not deleted.");
+        return;
       }
       updateState(key, value);
     });
@@ -281,19 +402,45 @@ export default function App() {
 
   useEffect(() => {
     if (!window.tally) return;
-    const listener = window.tally.backupProgress(({ percent }) => {
+    const listener = window.tally.backupProgress(({ percent, stage }) => {
       updateState("backupProgress", percent);
+      if (stage) updateState("backupStage", stage);
     });
     return () => listener && listener();
   }, []);
 
   useEffect(() => {
     if (!window.tally) return;
-    const listener = window.tally.restoreProgress(({ percent }) => {
+    const listener = window.tally.restoreProgress(({ percent, stage }) => {
       updateState("restoreProgress", percent);
+      if (stage) updateState("restoreStage", stage);
     });
     return () => listener && listener();
   }, []);
+
+  useEffect(() => {
+    if (!state.hardSyncRequestId || !window.tally?.hardSyncStatus) return;
+    // Poll fallback when socket approval is missed. Shares continue-once gate with socket.
+    const t = setInterval(async () => {
+      try {
+        const r = await window.tally.hardSyncStatus(state.hardSyncRequestId);
+        const st = r?.data?.requestStatus;
+        if (st === "APPROVED") {
+          await continueHardSyncOnce(state.hardSyncRequestId);
+        } else if (st === "REJECTED" || st === "EXPIRED") {
+          updateState("hardSyncWaitMessage", "");
+          updateState("hardSyncRequestId", null);
+          hardSyncContinueOnceRef.current = null;
+          openAlertModal(
+            st === "EXPIRED"
+              ? "Hard Sync request expired. Request approval again."
+              : "Hard Sync was rejected."
+          );
+        }
+      } catch (_) {}
+    }, 4000);
+    return () => clearInterval(t);
+  }, [state.hardSyncRequestId]);
 
   const resetSyncStates = (isSuccess) => {
     if (isSuccess) {
@@ -426,23 +573,136 @@ export default function App() {
         .map((item) => ({ ...item, years: item.years.slice(-2) }));
     }
 
+    const prevSynced = (selectedCompaniesRef.current || []).filter((c) => c.isSynced);
+    selectedCompaniesRef.current = newSelectedCompanies;
     updateState("selectedCompanies", newSelectedCompanies);
     updateState("companies", data);
 
     // ── GUID change detection ─────────────────────────────────────────
     // If a previously-synced company GUID is no longer in the live Tally list,
     // the company was migrated/reinstalled. Suggest hard sync.
-    const prevSynced = selectedCompaniesRef.current.filter(c => c.isSynced);
     const newIds = new Set(ids);
-    const missingGuids = prevSynced.filter(c => !newIds.has(c.guid));
+    const missingGuids = prevSynced.filter((c) => !newIds.has(c.guid));
     if (missingGuids.length > 0) {
-      const names = missingGuids.map(c => c.name).join(", ");
+      const names = missingGuids.map((c) => c.name).join(", ");
       openAlertModal(
         `Company GUID changed for: ${names}.\n\nThis usually means Tally was reinstalled or the company was recreated. ` +
         `Hard Sync is recommended to rebuild data safely.`
       );
     }
+
+    return newSelectedCompanies;
   };
+
+  /**
+   * After pair claim+ACK → RECONNECTING, Web/Mobile stay on Demo until first soft sync
+   * flips CONNECTED. Auto-run soft sync for Desktop-selected companies + their FYs only
+   * (never all Tally companies).
+   */
+  const startAutoFirstSyncAfterPair = async () => {
+    if (!window.tally) return false;
+    if (autoFirstSyncInFlightRef.current || isSyncingRef.current) return false;
+    const bindKey =
+      state.workspace?.id ||
+      pairedDevice?.deviceId ||
+      pairedDevice?.name ||
+      "bound";
+    if (autoFirstSyncStartedForBindRef.current === bindKey) return false;
+    autoFirstSyncInFlightRef.current = true;
+    try {
+      let tallyOk = false;
+      try {
+        tallyOk = !!(await window.tally.connected());
+      } catch (_) {
+        tallyOk = false;
+      }
+      updateState("isTallyOnline", tallyOk);
+      if (!tallyOk) {
+        updateState("pendingFirstSyncAfterPair", true);
+        openAlertModal(
+          "Open Tally to finish connecting. First sync will start automatically when Tally is online."
+        );
+        return false;
+      }
+
+      let selection = selectedCompaniesRef.current || [];
+      try {
+        selection = (await fetchCompanies()) || selection;
+      } catch (_) {
+        // keep prior selection
+      }
+
+      const toSync = (selection || []).filter(
+        (c) => c && (c.guid || c.id) && Array.isArray(c.years) && c.years.length > 0
+      );
+      if (!toSync.length) {
+        updateState("pendingFirstSyncAfterPair", true);
+        openAlertModal(
+          "Select at least one company and FY on Desktop. First sync will start once a selection is ready."
+        );
+        return false;
+      }
+
+      autoFirstSyncStartedForBindRef.current = bindKey;
+      updateState("pendingFirstSyncAfterPair", false);
+      updateState("pairingClaimed", null);
+      updateState("isSyncing", true);
+      updateState("syncMode", "normal");
+      updateState("syncMessage", "First sync after pairing…");
+      updateState("syncProgress", 0);
+
+      const { data, code } = await window.tally.startSync({
+        companies: toSync,
+        isHardSync: false,
+      });
+      if (data?.code === "tally_not_connected" || code === "tally_not_connected") {
+        autoFirstSyncStartedForBindRef.current = null;
+        updateState("isSyncing", false);
+        updateState("pendingFirstSyncAfterPair", true);
+        await updateTallyStatus();
+        return false;
+      }
+      return true;
+    } catch (e) {
+      autoFirstSyncStartedForBindRef.current = null;
+      updateState("isSyncing", false);
+      updateState("pendingFirstSyncAfterPair", true);
+      openAlertModal(
+        e?.message ||
+          "First sync after pairing could not start. Open Tally, confirm company/FY selection, then Sync."
+      );
+      return false;
+    } finally {
+      autoFirstSyncInFlightRef.current = false;
+    }
+  };
+
+  // Claim/ACK succeeded → auto soft first sync (selected companies + FYs only).
+  useEffect(() => {
+    const claimed = state.pairingClaimed;
+    if (!claimed) return undefined;
+    const token = claimed.at || claimed.connectionStatus || "claimed";
+    if (autoFirstSyncClaimTokenRef.current === token) return undefined;
+    autoFirstSyncClaimTokenRef.current = token;
+    startAutoFirstSyncAfterPair();
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.pairingClaimed]);
+
+  // Retry when Tally comes online or selection appears after a deferred first sync.
+  useEffect(() => {
+    if (!state.pendingFirstSyncAfterPair) return undefined;
+    if (!state.isTallyOnline) return undefined;
+    const ready = (selectedCompanies || []).some(
+      (c) => Array.isArray(c?.years) && c.years.length > 0
+    );
+    if (!ready) return undefined;
+    const t = setTimeout(() => {
+      startAutoFirstSyncAfterPair();
+    }, 800);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.pendingFirstSyncAfterPair, state.isTallyOnline, selectedCompanies]);
 
   const stopSync = async (code) => {
     await window.tally.stopSync(code);
@@ -470,12 +730,36 @@ export default function App() {
     updateState("isSyncing", true);
     updateState("syncMessage", "");
     updateState("syncMode", "hard");
-    const { status, data } = await window.tally.startSync({
+    const { status, data, code, message } = await window.tally.startSync({
       companies: selectedCompanies,
       isHardSync: true,
     });
-    if (data?.code == "tally_not_connected") {
+    if (code === "HARD_SYNC_APPROVAL_REQUIRED" || data?.code === "HARD_SYNC_APPROVAL_REQUIRED") {
+      updateState("isSyncing", false);
+      hardSyncContinueOnceRef.current = null;
+      updateState("hardSyncRequestId", data?.requestId || data?.data?.requestId);
+      updateState("hardSyncWaitMessage", "Waiting for Owner/Admin approval");
+      openAlertModal("Waiting for Owner/Admin approval. Approve Hard Sync in Web → Settings → Tally Sync.");
+      return;
+    }
+    if (code === "HARD_SYNC_IN_FLIGHT" || data?.code === "HARD_SYNC_IN_FLIGHT") {
+      updateState("isSyncing", false);
+      openAlertModal(message || CODE_ERROR_MESSAGE.HARD_SYNC_IN_FLIGHT);
+      return;
+    }
+    if (code === "HARD_SYNC_REJECTED" || code === "HARD_SYNC_EXPIRED") {
+      updateState("isSyncing", false);
+      updateState("hardSyncRequestId", null);
+      hardSyncContinueOnceRef.current = null;
+      openAlertModal(message || CODE_ERROR_MESSAGE[code]);
+      return;
+    }
+    if (data?.code == "tally_not_connected" || code === "tally_not_connected") {
       updateTallyStatus();
+    }
+    if (code === "TALLY_DATA_MISMATCH") {
+      updateState("isSyncing", false);
+      openAlertModal(message || "This Tally data does not match the workspace.");
     }
     // if (status) {
     //   const date = new Date();

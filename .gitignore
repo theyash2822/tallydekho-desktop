@@ -5,3 +5,11 @@ build/
 .DS_Store
 renderer/node_modules/
 renderer/dist/
+.env
+.env.*
+!.env.example
+
+# Build-time environment stamp written by scripts/set-build-env.js.
+# Never commit it: a stale staging stamp in the tree would silently point a
+# production release at the staging backend. Absence means production.
+td-env.json

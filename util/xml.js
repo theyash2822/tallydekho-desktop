@@ -183,9 +183,15 @@ async function uploadLargeArray({
 
   info(`[sync] API response`, completeRes);
 
+  if (completeRes?.outcome === 'partial') {
+    sendMessage(completeRes.message || 'Books synced. Some calculations could not be updated.');
+  }
+
   return {
     status: true,
     uploadId,
+    outcome: completeRes?.outcome || 'complete',
+    message: completeRes?.message || 'Sync complete',
   };
 }
 
@@ -406,13 +412,14 @@ const postToTally = async (xmlBody) => {
       const hasCancelled = cancelledMatch ? parseInt(cancelledMatch[1]) > 0 : false;
       const hasImportResult = data.includes('IMPORTRESULT') || data.includes('CREATED') || data.includes('ALTERED');
 
+      // Metadata only — a Tally response body carries voucher amounts, party
+      // names and GST details and must never reach a persistent log.
       info('[tally:write] response', {
         url: TALLY_URL,
         length: data.length,
         hasLineError,
         hasCancelled,
         hasImportResult,
-        preview: data.slice(0, 200),
       });
 
       if (hasLineError) {
@@ -449,7 +456,8 @@ const postToTally = async (xmlBody) => {
           || (exceptions > 0
             ? `Tally rejected the entry (${exceptions} exception${exceptions > 1 ? 's' : ''})`
             : 'Tally did not create the voucher (CREATED=0)');
-        info('[tally:write] treated as failure', { created, altered, exceptions, tallyIdRaw, preview: data.slice(0, 400) });
+        // `msg` is Tally's own error description; the response body is not logged.
+        info('[tally:write] treated as failure', { created, altered, exceptions, tallyIdRaw, reason: msg });
         return { status: false, message: msg, data, created, altered, exceptions, tallyId: null, voucherNumber: null };
       }
 
@@ -705,6 +713,7 @@ const syncHelperWithDate = async ({
   toDate,
   companyGuid,
   yearId,
+  financialYear: financialYearArg,
 }) => {
   const response = await getData(xml, [
     {
@@ -731,7 +740,8 @@ const syncHelperWithDate = async ({
 
   const json = parser.parse(response.data);
 
-  const financialYear = computeFinancialYear(fromDate);
+  // Never derive FY from an FY-end / day-before query date (20270331 → 2027-2028).
+  const financialYear = financialYearArg || computeFinancialYear(fromDate);
   const envelope = json.ENVELOPE || json.Envelope || {};
   const baseRows =
     xml === "BillOutstanding.xml"
@@ -1079,6 +1089,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
           toDate,
           companyGuid,
           yearId: yearIds[companyGuid]?.[outstandingYear.finYear] || null,
+          financialYear: outstandingYear.finYear,
         });
         promises.push(billOutstandingResponse);
         info("[sync] BillOutstanding.xml", {
@@ -1118,6 +1129,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
         toDate: year.end,
         companyGuid,
         yearId,
+        financialYear: year.finYear,
       });
       promises.push(stockValuationResponse);
 
@@ -1139,6 +1151,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
         toDate:   fyEndStr,
         companyGuid,
         yearId,
+        financialYear: year.finYear,
       });
       promises.push(stockFYClosingResponse);
 
@@ -1151,6 +1164,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
         toDate:   prevDayStr,
         companyGuid,
         yearId,
+        financialYear: year.finYear,
       });
       promises.push(stockFYOpeningResponse);
 
@@ -1162,6 +1176,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
         toDate: year.end,
         companyGuid,
         yearId,
+        financialYear: year.finYear,
       });
       promises.push(stockresponse);
 
@@ -1173,6 +1188,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
         toDate: year.end,
         companyGuid,
         yearId,
+        financialYear: year.finYear,
       });
       promises.push(stockTransactionResponse);
 
@@ -1185,6 +1201,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
         toDate: year.end,
         companyGuid,
         yearId,
+        financialYear: year.finYear,
       });
       promises.push(voucherResponse);
 
@@ -1196,6 +1213,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
         toDate: year.end,
         companyGuid,
         yearId,
+        financialYear: year.finYear,
       });
 
       promises.push(ledgerTransactionResponse);
@@ -1209,6 +1227,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
         toDate: year.end,
         companyGuid,
         yearId,
+        financialYear: year.finYear,
       });
       promises.push(voucherInventoryResponse);
 
@@ -1221,6 +1240,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
         toDate: year.end,
         companyGuid,
         yearId,
+        financialYear: year.finYear,
       });
       promises.push(gstDetailsResponse);
 
@@ -1232,6 +1252,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
         toDate: year.end,
         companyGuid,
         yearId,
+        financialYear: year.finYear,
       });
 
       promises.push(ledgerOpeningBalanceResponse);
@@ -1293,12 +1314,14 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
       sendMessage,
     });
   } catch (err) {
-    info(`[sync] API Error main`, {
-      err: err?.response?.data?.message || err?.message,
-    });
+    const apiMessage = err?.response?.data?.message || err?.message;
+    const apiCode = err?.response?.data?.code;
+    info(`[sync] API Error main`, { err: apiMessage, code: apiCode });
     response = {
       status: false,
-      message: "Something went wrong",
+      message: apiMessage || "Something went wrong",
+      code: apiCode,
+      data: err?.response?.data,
     };
   }
 
@@ -1315,7 +1338,12 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
     }
     return {
       status: false,
-      data: { message: response.message, code: response.data?.code },
+      data: {
+        message: response.message,
+        code: response.code || response.data?.code,
+      },
+      code: response.code || response.data?.code,
+      message: response.message,
     };
   }
 

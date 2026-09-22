@@ -9,7 +9,10 @@
         "react": "npm run dev --prefix renderer",
         "electron": "cross-env ELECTRON_DEV=1 electronmon .",
         "dev": "concurrently \"npm run react\" \"npm run electron\"",
-        "build": "npm run build --prefix renderer && electron-builder",
+        "build": "node scripts/set-build-env.js production && npm run build --prefix renderer && electron-builder",
+        "build:staging": "node scripts/set-build-env.js staging && npm run build --prefix renderer && electron-builder",
+        "verify:config": "node scripts/verify-backend-config.js",
+        "test": "npm run verify:config && node --test scripts/test-pairing-lifecycle.js scripts/test-workspace-writeback.js scripts/test-backup-restore.js",
         "postinstall": "electron-builder install-app-deps",
         "dist": "electron-builder"
     },
@@ -26,6 +29,7 @@
             "preload.js",
             "util/**",
             "xmls/**",
+            "td-env.json",
             {
                 "from": "renderer/dist",
                 "to": "renderer/dist",

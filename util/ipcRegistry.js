@@ -26,8 +26,22 @@ const {
 const store = require("./store.js");
 const { info, error, logPath } = require("./logger.js");
 const { startBackup } = require("./saveBackup.js");
+const { getSelectedCompanies } = require("./companySelection.js");
+const { getDeviceSecret } = require("./deviceCredential.js");
 
 let tallyConnectStatus = false;
+
+/**
+ * A device with no stored credential cannot be paired, so background work is
+ * skipped without a round trip. The backend remains the final authority.
+ */
+const isDevicePaired = () => !!getDeviceSecret();
+
+/** Log company identity only — never addresses, contacts or GST numbers. */
+const describeCompanies = (companies = []) =>
+  `${companies.length} selected [${companies
+    .map((c) => c?.guid || c?.id || "?")
+    .join(", ")}]`;
 
 const isTallyConnected = async () => {
   const status = await isTallyOpen();
@@ -173,10 +187,31 @@ ipcMain.handle("tally:delete_auto_sync", async (event) => {
 });
 
 const registerTallySync = (windowContent) => {
+  let syncStartInFlight = false;
+
   ipcMain.handle(
     "tally:start_sync",
     async (event, { companies, isHardSync }) => {
       info("Foreground [sync]");
+
+      // Single-flight: reject a second start while one sync (or start sequence) is active.
+      if (store.get("isSyncing") || syncStartInFlight) {
+        return {
+          status: false,
+          code: "HARD_SYNC_IN_FLIGHT",
+          message: "A sync is already in progress on this Desktop.",
+        };
+      }
+      syncStartInFlight = true;
+
+      try {
+      if (!isDevicePaired()) {
+        return {
+          status: false,
+          code: "DEVICE_NOT_PAIRED",
+          message: "This Desktop is not paired to a workspace.",
+        };
+      }
 
       const status = await isTallyConnected();
 
@@ -224,21 +259,72 @@ const registerTallySync = (windowContent) => {
         } catch (_) { /* non-critical — never block sync due to this check */ }
       }
 
+      if (isHardSync) {
+        try {
+          const reqRes = await axiosInstance.post("/desktop/hard-sync/request", {
+            operation: "REBUILD",
+            companies: (companies || []).map((c) => ({ guid: c.guid || c.id, name: c.name })),
+          });
+          const hs = reqRes.data?.data;
+          if (!reqRes.data?.status) {
+            return { status: false, code: reqRes.data?.code, message: reqRes.data?.message };
+          }
+          if (hs.requestStatus === "PENDING") {
+            return {
+              status: false,
+              code: "HARD_SYNC_APPROVAL_REQUIRED",
+              message: "Waiting for Owner/Admin approval",
+              data: { requestId: hs.requestId },
+            };
+          }
+          if (hs.requestStatus === "REJECTED") {
+            return {
+              status: false,
+              code: "HARD_SYNC_REJECTED",
+              message: "Hard Sync was rejected by Owner/Admin.",
+              data: { requestId: hs.requestId },
+            };
+          }
+          if (hs.requestStatus === "EXPIRED") {
+            return {
+              status: false,
+              code: "HARD_SYNC_EXPIRED",
+              message: "Hard Sync request expired. Request approval again.",
+              data: { requestId: hs.requestId },
+            };
+          }
+          // APPROVED / alreadyApproved: continue once under the in-flight gate.
+          // alreadyApproved is not free re-entry — gate rejects concurrent starts.
+        } catch (err) {
+          const body = err?.response?.data;
+          return {
+            status: false,
+            code: body?.code || "HARD_SYNC_APPROVAL_REQUIRED",
+            message: body?.message || err.message,
+          };
+        }
+      }
+
+      // Claim the in-flight slot before awaiting sync work.
       store.set("isSyncing", true);
       store.set("syncMode", isHardSync ? "hard" : "normal");
 
-      info(`Foreground [companies]`, companies);
+      info(`Foreground [companies]: ${describeCompanies(companies)}`);
 
-      const syncStatus = await syncTallyData(
-        windowContent,
-        companies,
-        isHardSync
-      );
+      let syncStatus;
+      try {
+        syncStatus = await syncTallyData(
+          windowContent,
+          companies,
+          isHardSync
+        );
+      } finally {
+        store.set("isSyncing", false);
+      }
 
       info(`Foreground [sync status]: ${syncStatus.status}`);
       info(`Foreground [sync status data]:`, syncStatus.data);
 
-      store.set("isSyncing", false);
       windowContent.send("window:listener", { key: "isSyncing", value: false });
       windowContent.send("window:listener", { key: "syncProgress", value: 0 });
       if (syncStatus.status) {
@@ -255,13 +341,25 @@ const registerTallySync = (windowContent) => {
         });
       }
 
-      return syncStatus;
+      return {
+        ...syncStatus,
+        code: syncStatus.code || syncStatus.data?.code,
+        message: syncStatus.message || syncStatus.data?.message,
+      };
+      } finally {
+        syncStartInFlight = false;
+      }
     }
   );
 };
 
 const startAutoSync = async (windowContent) => {
   // We can tell react to start manual sync also
+
+  if (!isDevicePaired()) {
+    info("Background [sync skipped]: device not paired");
+    return;
+  }
 
   const status = await isTallyConnected();
   const isOnline = store.get("isOnline");
@@ -278,9 +376,9 @@ const startAutoSync = async (windowContent) => {
     });
     store.set("isSyncing", true);
 
-    const companies = store.get("selectedCompanies");
+    const companies = getSelectedCompanies();
 
-    info(`Background [companies]`, companies);
+    info(`Background [companies]: ${describeCompanies(companies)}`);
 
     const syncStatus = await syncTallyData(windowContent, companies);
 
@@ -307,6 +405,11 @@ const startAutoSync = async (windowContent) => {
 };
 
 const startAutoSyncHeadless = async () => {
+  if (!isDevicePaired()) {
+    info("Headless [sync skipped]: device not paired");
+    return;
+  }
+
   const status = await isTallyConnected();
 
   info(`Headless [tally status]: ${status}`);
@@ -324,9 +427,9 @@ const startAutoSyncHeadless = async () => {
       return;
     }
 
-    const companies = store.get("selectedCompanies");
+    const companies = getSelectedCompanies();
 
-    info(`Headless [companies]`, companies);
+    info(`Headless [companies]: ${describeCompanies(companies)}`);
 
     const syncStatus = await syncTallyData(
       { isDestroyed: () => true },
@@ -464,49 +567,43 @@ const startAutoBackupHeadless = async () => {
   }
 })();
 
-ipcMain.handle("api:pairing_code", async () => {
-  let response;
-
+/**
+ * Read-only snapshot for renderer hydration on mount. The main process owns
+ * the pairing session; the renderer never triggers a mint and never sees the
+ * claim token.
+ */
+ipcMain.handle("api:pairing_state", async () => {
+  const { getStatus } = require("./pairingLifecycle");
+  const { getLastPairedSnapshot, reconcileBinding } = require("./pairingRuntime");
+  const status = getStatus();
+  // Prefer a live reconcile so a missed startup emit cannot leave Sync Now stuck.
+  let paired = getLastPairedSnapshot();
   try {
-    response = await axiosInstance.get("/desktop/pairing-code");
-    response = response.data;
-  } catch (err) {
-    error(err?.message, "pairing_code");
-    return { status: false };
+    const result = await reconcileBinding("renderer-hydrate");
+    if (result.reachable) paired = result.paired;
+  } catch (_) {
+    /* keep cached snapshot */
   }
-
   return {
     status: true,
-    data: response.data,
+    data: {
+      pairingCode: status.pairingCode,
+      expiresAt: status.expiresAt,
+      running: status.running,
+      pairedDevice: paired || null,
+    },
   };
 });
 
 ipcMain.handle("api:paired_device", async () => {
-  let response;
-
   try {
-    response = await axiosInstance.get("/desktop/pairing-device");
-    response = response.data;
+    const response = await axiosInstance.get("/desktop/pairing-device");
+    const { mapPairedDevice } = require("./pairingRuntime");
+    return { status: true, data: mapPairedDevice(response.data?.data?.pairing) };
   } catch (err) {
     error(err?.message, "paired_device");
     return { status: false };
   }
-
-  if (!response.data?.pairing) {
-    return { status: true, data: null };
-  }
-
-  const pairing = response.data.pairing;
-
-  return {
-    status: true,
-    data: {
-      name: pairing.USER_NAME || pairing.NAME || pairing.MOBILE || 'Paired Account',
-      os: pairing.IS_ANDROID ? 'Android' : (pairing.IS_PAIRED ? 'Mobile' : 'Unknown'),
-      last: pairing.LAST_SYNC_AT,
-      mobile: pairing.MOBILE || '',
-    },
-  };
 });
 
 ipcMain.handle("api:remove_paired_device", async () => {
@@ -520,31 +617,30 @@ ipcMain.handle("api:remove_paired_device", async () => {
     return { status: false };
   }
 
+  const { clearDeviceSecret } = require("./deviceCredential");
+  clearDeviceSecret();
+  try {
+    require("./pairingSessionState").clearPairingSession();
+    store.delete("workspace");
+  } catch (_) {}
+
+  // Actual unpair: drop the workspace binding and its company selection, then
+  // start a fresh pairing session automatically.
+  await require("./pairingRuntime").handleUnpaired("unpair");
+
   return {
     status: true,
   };
 });
 
-// Send attachment to project@tallydekho.com via backend
-ipcMain.handle("api:ai_attachment", async (event, { filePath, fileName }) => {
-  try {
-    const fileData = fsSync.readFileSync(filePath).toString('base64');
-    const ext = fileName.split('.').pop().toLowerCase();
-    const mimeMap = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', pdf: 'application/pdf' };
-    const fileType = mimeMap[ext] || 'application/octet-stream';
-    const response = await axiosInstance.post('/app/ai/attachment', { fileName, fileData: `data:${fileType};base64,${fileData}`, fileType });
-    return response.data?.status ? true : false;
-  } catch (err) {
-    error(err?.message, 'api:ai_attachment');
-    return false;
-  }
-});
-
-// AI Chat - proxies to backend /app/ai/chat
+// AI Chat — canonical POST /api/ai/help (legacy /app/ai/chat never existed on server)
 ipcMain.handle("api:ai_chat", async (event, { messages }) => {
   try {
-    const response = await axiosInstance.post("/app/ai/chat", { messages });
-    return response.data?.data?.reply || 'No response.';
+    const history = Array.isArray(messages) ? messages.slice(0, -1) : [];
+    const last = Array.isArray(messages) ? messages[messages.length - 1] : null;
+    const message = last?.content || last?.text || '';
+    const response = await axiosInstance.post("/api/ai/help", { message, history });
+    return response.data?.data?.reply || response.data?.reply || response.data?.data?.answer || 'No response.';
   } catch (err) {
     error(err?.message, "api:ai_chat");
     return 'Could not connect to AI assistant. Make sure the backend is running.';
@@ -560,6 +656,16 @@ ipcMain.handle("api:user_profile", async () => {
     error(err?.message, "api:user_profile");
     return { status: false };
   }
+});
+
+ipcMain.handle("tally:hard_sync_status", async (_e, requestId) => {
+  const response = await axiosInstance.get("/desktop/hard-sync/status", { params: { requestId } });
+  return response.data;
+});
+
+ipcMain.handle("tally:backup_list", async () => {
+  const response = await axiosInstance.get("/desktop/backup/list");
+  return response.data;
 });
 
 ipcMain.handle("api:send_logs", async () => {

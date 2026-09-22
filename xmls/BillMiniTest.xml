@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  BillMiniTest.xml — Minimal inline TDL test for Type: Bill
+  Purpose: Confirm whether Type: Bill works in inline HTTP export mode.
+
+  Test from Windows (where Tally is running):
+    PowerShell: Invoke-WebRequest -Uri "http://localhost:9000" -Method POST -ContentType "text/xml" -InFile "BillMiniTest.xml" | Select-Object -ExpandProperty Content
+    OR
+    curl -s -X POST http://localhost:9000 -H "Content-Type: text/xml" --data-binary "@BillMiniTest.xml"
+
+  Expected if Type:Bill works → <ENVELOPE><BILLROW><BillName>...</BillName></BILLROW>...</ENVELOPE>
+  Expected if Type:Bill is unavailable → <ENVELOPE></ENVELOPE> or empty body
+-->
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Data</TYPE>
+    <ID>TDKBillMiniReport</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVCURRENTCOMPANY>Yash Ki Company</SVCURRENTCOMPANY>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+
+          <REPORT NAME="TDKBillMiniReport">
+            <FORMS>TDKBillMiniForm</FORMS>
+            <KEEPXMLCASE>Yes</KEEPXMLCASE>
+          </REPORT>
+
+          <FORM NAME="TDKBillMiniForm">
+            <PARTS>TDKBillMiniPart</PARTS>
+            <XMLTAG>ENVELOPE</XMLTAG>
+          </FORM>
+
+          <PART NAME="TDKBillMiniPart">
+            <LINES>TDKBillMiniLine</LINES>
+            <REPEAT>TDKBillMiniLine : TDKBillMiniCollection</REPEAT>
+          </PART>
+
+          <LINE NAME="TDKBillMiniLine">
+            <FIELDS>TDKBillMiniName</FIELDS>
+            <XMLTAG>BILLROW</XMLTAG>
+          </LINE>
+
+          <FIELD NAME="TDKBillMiniName">
+            <USE>Name Field</USE>
+            <SET>$Name</SET>
+            <XMLTAG>BillName</XMLTAG>
+          </FIELD>
+
+          <COLLECTION NAME="TDKBillMiniCollection">
+            <TYPE>Bill</TYPE>
+            <FETCH>Name</FETCH>
+          </COLLECTION>
+
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>

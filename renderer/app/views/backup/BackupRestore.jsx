@@ -1,12 +1,10 @@
-import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { useContext, useEffect, useMemo, useState } from "react";
 import Card from "../components/Card";
 import { TallyContext } from "../../utils/TallyContext";
 import { formatDate, formatDateTime } from "../../utils/datetime";
-import StartRestoreModal from "../components/StartRestoreModal";
 import Progress from "../components/Progress";
 import { computeNextSync } from "../../controllers/scheduler";
 import CustomSelect from "../components/CustomSelect";
-// import ZipUpload from "./ZipUpload";
 
 const options = [
   { value: "off", label: "OFF" },
@@ -20,10 +18,6 @@ export default function BackupRestore() {
     "C:/ProgramData/TallyDekho/Backups"
   );
 
-  const [isConfirmationModalOpen, setIsConfirmationModalOpen] = useState(false);
-
-  const backupPath = useRef(null);
-
   const {
     state: {
       isBackingUp,
@@ -31,8 +25,11 @@ export default function BackupRestore() {
       backupProgress,
       backupAndRestoreActivity,
       backups,
+      cloudBackups,
       isRestoring,
       restoreProgress,
+      restoreStage,
+      backupStage,
       isSyncing,
       isTallyOnline,
       autoBackupStartedAt,
@@ -42,6 +39,9 @@ export default function BackupRestore() {
 
   useEffect(() => {
     window.backup.getDir().then((r) => setLocalPath(r.dir));
+    window.tally?.backupList?.().then((r) => {
+      if (r?.status && Array.isArray(r.data)) updateState("cloudBackups", r.data);
+    }).catch(() => {});
   }, []);
 
   const selectPathHandle = async () => {
@@ -55,21 +55,6 @@ export default function BackupRestore() {
 
     await window.tally.startBackup();
   }
-
-  const successConfirmationModal = async () => {
-    const response = await window.api.closeByName("Tally.exe", {
-      // timeoutMs: 2500,
-      forceIfNoExit: true,
-    });
-
-    closeConfirmationModal();
-
-    window.tally.startRestore(backupPath.current);
-  };
-
-  const closeConfirmationModal = () => {
-    setIsConfirmationModalOpen(false);
-  };
 
   const saveAutoBackupHandler = (value) => {
     // const value = event.target.value;
@@ -111,10 +96,10 @@ export default function BackupRestore() {
             <div className="text-[#787774] break-all truncate">
               {localPath || "Not set"}
             </div>
-            {backups.length > 0 && (
+            {cloudBackups?.length > 0 && (
               <div className="text-xs text-[#9A9A97]">
                 Last backup:{" "}
-                {formatDate(new Date(backups[backups.length - 1].date))}
+                {formatDate(new Date(Number(cloudBackups[0].completed_at || cloudBackups[0].created_at) * 1000))}
               </div>
             )}
             <div className="mt-2 flex gap-2">
@@ -132,6 +117,7 @@ export default function BackupRestore() {
             style={{ borderColor: "#E9E8E3" }}
           >
             <div className="font-medium mb-1">Cloud backups</div>
+            <div className="text-xs text-[#787774] mb-2">Latest 3 successful backups. Cloud is the source of truth.</div>
             {/* <div className="text-xs text-[#787774]">
               Organization: ACME Pvt. Ltd.
             </div> */}
@@ -148,46 +134,26 @@ export default function BackupRestore() {
                   </tr>
                 </thead>
                 <tbody>
-                  {backups.slice(0, 2).map((backup, index) => (
+                  {(cloudBackups || []).slice(0, 3).map((backup, index) => (
                     <tr
-                      key={index}
+                      key={backup.id || index}
                       className="border-t"
                       style={{ borderColor: "#E9E8E3" }}
                     >
                       <td className="py-1 px-2 text-[12px]">
-                        {formatDateTime(new Date(backup.date))}
+                        {formatDateTime(new Date(Number(backup.completed_at || backup.created_at) * 1000))}
                       </td>
-                      <td className="py-1 px-2">{backup.size}</td>
+                      <td className="py-1 px-2">{backup.size_bytes ? `${Math.round(backup.size_bytes / 1024 / 1024)} MB` : "—"}</td>
                       <td className="py-1 px-2">
-                        {/* <button className="underline text-[#787774]">
-                          Download
-                        </button>{" "}
-                        ·{" "} */}
-                        <button
-                          onClick={() => {
-                            if (isRestoring || isSyncing) {
-                              return;
-                            }
-
-                            if (isTallyOnline) {
-                              setIsConfirmationModalOpen(true);
-                              backupPath.current = backup.path;
-                              return;
-                            }
-                            window.tally.startRestore(backup.path);
-                          }}
-                          className="underline text-[#787774]"
-                        >
-                          Restore
-                        </button>
+                        <span className="text-[#9A9A97]">Approved restore from Web</span>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            {backups.length > 2 && (
-              <div className="text-xs text-[#9A9A97] mt-1">View all on Web</div>
+            {(cloudBackups || []).length > 3 && (
+              <div className="text-xs text-[#9A9A97] mt-1">Only the latest 3 backups are kept</div>
             )}
           </div>
         </div>
@@ -247,7 +213,7 @@ export default function BackupRestore() {
       <Card title="Recent backups & restores">
         {isRestoring && (
           <div>
-            <span className="mr-2">Restore Progress: {restoreProgress}%</span>
+            <span className="mr-2">Restore {restoreStage || "Progress"}: {restoreProgress}%</span>
             {/* <progress
               value={restoreProgress}
               max={100}
@@ -258,7 +224,7 @@ export default function BackupRestore() {
         )}
         {isBackingUp && (
           <div>
-            <span className="mr-2">Backup Progress: {backupProgress}%</span>
+            <span className="mr-2">Backup {backupStage || "Progress"}: {backupProgress}%</span>
             {/* <progress value={backupProgress} max={100} style={{ width: 320 }} /> */}
             <Progress value={backupProgress} />
           </div>
@@ -277,12 +243,6 @@ export default function BackupRestore() {
           )}
         </ul>
       </Card>
-      {isConfirmationModalOpen && (
-        <StartRestoreModal
-          onClose={closeConfirmationModal}
-          onConfirm={successConfirmationModal}
-        />
-      )}
     </div>
   );
 }

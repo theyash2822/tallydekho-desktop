@@ -23,7 +23,7 @@
                         <Compute>FORMAL_NAME:$FORMALNAME</Compute>
                         <Filter>Fltr01</Filter>
                     </COLLECTION>
-                    <SYSTEM TYPE='Formulae' NAME='Fltr01'>$AlterId > 0</SYSTEM>
+                    <SYSTEM TYPE='Formulae' NAME='Fltr01'>$AlterId >= $$ALTER_ID</SYSTEM>
                 </TDLMESSAGE>
             </TDL>
         </DESC>

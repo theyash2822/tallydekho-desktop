@@ -1,5 +1,5 @@
-// Load .env variables before anything else
-require('dotenv').config();
+// Load .env from app root (not process cwd — electronmon/IDE launches vary)
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
 const {
   app,
@@ -9,6 +9,7 @@ const {
   dialog,
   shell,
   nativeImage,
+  powerMonitor,
 } = require("electron");
 const os = require("os");
 const path = require("path");
@@ -33,10 +34,21 @@ const {
   getDefaultMailClient,
   registerDevice,
   baseURL,
+  APP_ENV,
   checkForUpdates,
   assetPath,
 } = require("./util/helper");
 const validateSchema = require("./util/validateSchema");
+const {
+  getSelectedCompanies,
+  setSelectedCompanies,
+} = require("./util/companySelection");
+const {
+  initPairingRuntime,
+  reconcileBinding,
+  handleResume,
+} = require("./util/pairingRuntime");
+const { reconcilePendingWriteback } = require("./util/writeback");
 
 // Note: ipcRegistry already required above via destructuring — do NOT require again
 // require("./util/ipcRegistry"); // REMOVED: double-require crashes Electron (duplicate IPC handlers)
@@ -89,6 +101,13 @@ function configureUpdater() {
     return;
   }
 
+  // The baked publish feed only ever carries production artifacts, so a staging
+  // build must not self-update — it would silently become the production client.
+  if (APP_ENV !== "production") {
+    info(`[updater] skip in ${APP_ENV} build`);
+    return;
+  }
+
   // Set your feed URL EARLY so updater never looks for app-update.yml
   // autoUpdater.setFeedURL({
   //   provider: "generic",
@@ -106,6 +125,49 @@ function configureUpdater() {
 }
 
 configureUpdater();
+
+/** Renderer origins this app is ever allowed to load. */
+function isTrustedRendererUrl(target) {
+  try {
+    const parsed = new URL(target);
+    if (parsed.protocol === "file:") {
+      return parsed.pathname.endsWith("/renderer/dist/index.html");
+    }
+    // Vite dev server, development builds only.
+    return (
+      isDev &&
+      parsed.protocol === "http:" &&
+      parsed.hostname === "localhost" &&
+      parsed.port === "5173"
+    );
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * Deny navigation and window creation by default. External links are opened
+ * through the explicit `openExternal` IPC, never by renderer-supplied URLs.
+ */
+function applyNavigationPolicy(window) {
+  const contents = window.webContents;
+
+  contents.setWindowOpenHandler(({ url }) => {
+    info(`[security] blocked window.open → ${url}`);
+    return { action: "deny" };
+  });
+
+  contents.on("will-navigate", (event, url) => {
+    if (isTrustedRendererUrl(url)) return;
+    event.preventDefault();
+    info(`[security] blocked navigation → ${url}`);
+  });
+
+  contents.on("will-attach-webview", (event) => {
+    event.preventDefault();
+    info("[security] blocked webview attach");
+  });
+}
 
 async function createWindow() {
   mainWindow = new BrowserWindow({
@@ -125,9 +187,20 @@ async function createWindow() {
       preload: path.join(__dirname, "preload.js"),
       nodeIntegration: false,
       contextIsolation: true,
+      // preload.js only pulls contextBridge/ipcRenderer, both available to a
+      // sandboxed preload, so the renderer runs with OS sandboxing on.
+      sandbox: true,
       zoomFactor: 1.0,
     },
   });
+
+  applyNavigationPolicy(mainWindow);
+
+  // A staging installer looks identical to production; label it so a tester
+  // never mistakes which backend they are writing to.
+  if (APP_ENV !== "production") {
+    mainWindow.setTitle(`TallyDekho — ${APP_ENV.toUpperCase()}`);
+  }
 
   registerTallySync(mainWindow);
   registerBackup(mainWindow);
@@ -282,22 +355,55 @@ ipcMain.handle("openExternal", async (_event) => {
 ipcMain.handle("backend:ping", async () => {
   const { axiosInstance } = require("./util/helper");
   try {
-    await axiosInstance.get("/app/ping", { timeout: 10000 }); // 10s timeout — avoids false offline on slow connections
+    await axiosInstance.get("/health", { timeout: 10000 }); // 10s timeout — avoids false offline on slow connections
     return true;
   } catch {
     return false;
   }
 });
 
+const {
+  canRendererRead,
+  canRendererWrite,
+} = require("./util/storeAllowlist");
+
 ipcMain.handle("store:get", (_event, key) => {
+  if (!canRendererRead(key)) {
+    error(`blocked renderer read of '${key}'`, "store:get");
+    return undefined;
+  }
+  // Selection is workspace-scoped; never hand back another workspace's list.
+  if (key === "selectedCompanies") return getSelectedCompanies();
   return store.get(key);
 });
 
 ipcMain.handle("store:set", (_event, key, value) => {
+  if (!canRendererWrite(key)) {
+    error(`blocked renderer write of '${key}'`, "store:set");
+    return false;
+  }
+  if (key === "selectedCompanies") {
+    setSelectedCompanies(value);
+    return true;
+  }
+  const previousOnline = key === "isOnline" ? store.get("isOnline") : null;
   store.set(key, value);
+  // Offline → online is a pairing/writeback recovery edge. Socket reconnect
+  // covers most cases; this catches a restored network before the socket is up.
+  if (key === "isOnline" && value && !previousOnline) {
+    handleResume("network-online");
+    reconcileBinding("network-online").then((result) => {
+      if (result.paired) reconcilePendingWriteback("network-online");
+    });
+    require("./util/helper").axiosInstance.post("/desktop/heartbeat").catch(() => {});
+  }
+  return true;
 });
 
 ipcMain.handle("updater:check", async () => {
+  if (!app.isPackaged || APP_ENV !== "production") {
+    return { ok: false, error: "Updates are only available on the production Desktop." };
+  }
   try {
     info("[updater:check] called");
     const r = await autoUpdater.checkForUpdates();
@@ -308,6 +414,9 @@ ipcMain.handle("updater:check", async () => {
 });
 
 ipcMain.handle("updater:download", async () => {
+  if (!app.isPackaged || APP_ENV !== "production") {
+    return { ok: false, error: "Updates are only available on the production Desktop." };
+  }
   try {
     info("[updater:download] called");
     await autoUpdater.downloadUpdate();
@@ -474,19 +583,6 @@ app.whenReady().then(async () => {
       store.set("forceUpdate", true);
     }
 
-    // Store permanent pairing code (backend returns it on every register)
-    if (response.versionLevel !== undefined) {
-      // version data present — handled below
-    }
-    // pairingCode is already stored in helper.js registerDevice()
-    // Send it to renderer once window is ready
-    const storedCode = store.get('pairingCode');
-    if (storedCode && mainWindow) {
-      mainWindow.once('ready-to-show', () => {
-        mainWindow?.webContents.send('window:listener', { key: 'pairingCode', value: storedCode });
-      });
-    }
-
     // Version compatibility: level 2 = sync blocked, level 3 = force update
     const vLevel = response.versionLevel || 0;
     store.set("versionLevel", vLevel);
@@ -537,7 +633,8 @@ app.whenReady().then(async () => {
   // }
 
   const socket = ioClient(baseURL, {
-    transports: ["websocket"],
+    // Polling first — Electron websocket-only often times out on LAN/VPN; upgrade when possible
+    transports: ["polling", "websocket"],
     reconnection: true,
     reconnectionAttempts: Infinity,
     reconnectionDelay: 1000,
@@ -547,17 +644,39 @@ app.whenReady().then(async () => {
     pingInterval: 25000, // default 25000 ms
     pingTimeout: 60000, // increase from default ~ 5000-20000 to 60s
   });
+  info(`[socket] connecting to ${baseURL}`);
 
   require("./util/socket")(mainWindow, socket);
 
+  // Main process owns the pairing session lifecycle; the renderer only displays it.
+  initPairingRuntime(mainWindow);
+  reconcileBinding("startup").then((result) => {
+    if (result.paired) reconcilePendingWriteback("startup");
+  });
+
   // ── Heartbeat: keep last_seen fresh so mobile can detect desktop online status
-  // Runs every 2 minutes. Lightweight — just updates a timestamp in DB.
+  // Lightweight — just updates a timestamp in DB. A heartbeat failure never
+  // clears pairing; only an authoritative backend response can do that.
   const { axiosInstance } = require("./util/helper");
-  const heartbeatInterval = setInterval(async () => {
+  const sendHeartbeat = async () => {
     try {
       await axiosInstance.post("/desktop/heartbeat");
     } catch (_) { /* silently ignore — will retry next tick */ }
-  }, 2 * 60 * 1000);
+  };
+
+  sendHeartbeat();
+  const heartbeatInterval = setInterval(sendHeartbeat, 2 * 60 * 1000);
+
+  // Suspended timers cannot be trusted to have fired: on wake, re-check the
+  // pairing session against wall-clock time and refresh presence immediately.
+  powerMonitor.on("resume", () => {
+    info("[power] resume");
+    sendHeartbeat();
+    handleResume("power-resume");
+    reconcileBinding("power-resume").then((result) => {
+      if (result.paired) reconcilePendingWriteback("power-resume");
+    });
+  });
 
   // Clear on quit
   app.once("before-quit", () => clearInterval(heartbeatInterval));

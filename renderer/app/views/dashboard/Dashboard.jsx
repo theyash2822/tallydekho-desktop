@@ -19,6 +19,8 @@ export default function Dashboard({ hardSync }) {
       isOnline,
       syncMode,
       syncMessage,
+      hardSyncWaitMessage,
+      pairedDevice,
     },
   } = useContext(TallyContext);
 
@@ -68,9 +70,18 @@ export default function Dashboard({ hardSync }) {
     setIsHardSyncModalOpen(false);
   };
 
+  // An unpaired Desktop has no workspace to sync into — the backend rejects it
+  // with DEVICE_NOT_PAIRED, so the controls must not invite the attempt.
   const disableSyncButton = useMemo(() => {
+    if (!pairedDevice) return true;
     return ["Uploading Data", "Processing Data"].includes(syncMessage);
-  }, [syncMessage]);
+  }, [syncMessage, pairedDevice]);
+
+  const syncDisabledReason = !pairedDevice
+    ? "Pair this Desktop with your workspace first (Pairing Code panel)."
+    : ["Uploading Data", "Processing Data"].includes(syncMessage)
+      ? "Sync is already uploading/processing."
+      : "";
 
   return (
     <div className="space-y-3">
@@ -78,6 +89,9 @@ export default function Dashboard({ hardSync }) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <PairingPanel />
         <Card title="Sync Progress">
+          {hardSyncWaitMessage ? (
+            <div className="text-sm text-[#787774] mb-2">{hardSyncWaitMessage}</div>
+          ) : null}
           {isSyncing ? (
             <div className="space-y-2">
               <div className="text-xs text-[#787774]">
@@ -103,6 +117,7 @@ export default function Dashboard({ hardSync }) {
         onManualSync={onManualSync}
         onHardSync={onHardSync}
         disableSyncButton={disableSyncButton}
+        syncDisabledReason={syncDisabledReason}
       />
       {isHardSyncModalOpen && (
         <HardSyncModal

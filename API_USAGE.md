@@ -3,7 +3,7 @@
 ## Backend Communication
 File: `util/helper.js` → `axiosInstance`
 Base URL: `BACKEND_URL` env var (optional) or `util/backendConfig.js` → `DEFAULT_DEV_BACKEND_URL`
-Default: `http://192.168.29.241:3001` — **update only `util/backendConfig.js` on IP change**
+Default (dev): `http://192.168.29.243:3001` (Windows Desktop → Mac backend). Override via local `.env` if Mac IP changes.
 
 ## Tally HTTP Interface
 URL: `http://localhost:9000` (Tally Prime on same machine)
@@ -42,7 +42,7 @@ Note: Exact endpoint paths need verification against `util/helper.js` + `util/ip
 
 ## Authentication
 - Desktop uses device_id (from `util/deviceProfile.js`) not user JWT
-- After pairing, backend associates device_id with user_id
+- After pairing, backend binds this device to one workspace (not to a user)
 - Some API calls may use user token (Needs verification)
 
 ## Store Keys (electron-store via util/store.js)

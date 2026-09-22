@@ -54,7 +54,6 @@ See TALLY_XML_MAP.md for full list.
 ### renderer/app/controllers/
 | File | Purpose |
 |------|---------|
-| pairing.js | Pairing flow controller |
 | scheduler.js | Scheduler UI controller |
 
 ### renderer/app/utils/

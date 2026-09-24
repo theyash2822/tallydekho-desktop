@@ -28,7 +28,7 @@
                         <SCROLLED>Vertical</SCROLLED>
                     </PART>
                     <LINE NAME='MyLine01'>
-                        <FIELDS>Fld01,Fld02,Fld03,Fld04,Fld05,Fld06</FIELDS>
+                        <FIELDS>Fld01,Fld02,Fld03,Fld04,Fld05,Fld06,Fld07,Fld08</FIELDS>
                     </LINE>
                     <FIELD NAME='Fld01'>
                         <SET>$Guid</SET>
@@ -53,6 +53,14 @@
                     <FIELD NAME='Fld06'>
                         <SET>if $$IsEmpty:$Address then '' else $$FullList:Address:$Address</SET>
                         <XMLTAG>Address</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld07'>
+                        <SET>$OnlyAlias</SET>
+                        <XMLTAG>OnlyAlias</XMLTAG>
+                    </FIELD>
+                    <FIELD NAME='Fld08'>
+                        <SET>$$FullList:Name:$Name</SET>
+                        <XMLTAG>NameList</XMLTAG>
                     </FIELD>
                     <FIELD NAME='FldBlank'>
                         <SET>''</SET>

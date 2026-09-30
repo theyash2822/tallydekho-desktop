@@ -7,7 +7,7 @@
   synced/posted without running a full daybook sync.
 
   Replaces the full AllVoucher.xml sync in the post-write trigger path.
-  Falls back to full sync if $$MASTER_ID is not provided.
+  Falls back to full sync if the master id is not provided.
 
   Returns the same field shape as Voucher.xml (Guid, Reference, Narration,
   PartyLedgerName, BILLALLOCATIONS, etc.) plus ALLLEDGERENTRIES so the

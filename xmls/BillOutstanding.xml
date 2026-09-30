@@ -2,7 +2,10 @@
 <!--
   Thin export envelope for pre-loaded report TDKBillOutstandingWorking.
   Requires TDKBillOutstanding.tdl loaded via tally.ini (Option B).
-  Dates filled by syncHelperWithDate ($$FROM_DATE / $$TO_DATE).
+  Dates filled by syncHelperWithDate. Placeholder names must not appear in this
+  comment: getData replaces only the first occurrence of each.
+  Tally computes outstanding bills as of its "current date" (F2), which can be
+  left on an old date; SVCURRENTDATE pins it to today's machine date.
 -->
 <ENVELOPE>
   <HEADER>
@@ -16,6 +19,7 @@
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
         <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
+        <SVCURRENTDATE TYPE="Date">$$CURRENT_DATE</SVCURRENTDATE>
         <SVFROMDATE TYPE="Date">$$FROM_DATE</SVFROMDATE>
         <SVTODATE TYPE="Date">$$TO_DATE</SVTODATE>
       </STATICVARIABLES>

@@ -21,7 +21,7 @@
                 <SVEXPORTFORMAT>XML (Data Interchange)</SVEXPORTFORMAT>
                 <SVCURRENTCOMPANY>$$COMPANY_NAME</SVCURRENTCOMPANY>
                 <!-- Set FROM = TO = same date so Tally computes AT that exact date -->
-                <!-- Pass the same date as both FROM and TO via $$FROM_DATE / $$TO_DATE -->
+                <!-- Pass the same date as both FROM and TO (placeholder names must not appear in comments) -->
                 <SVFROMDATE TYPE="Date">$$FROM_DATE</SVFROMDATE>
                 <SVTODATE TYPE="Date">$$TO_DATE</SVTODATE>
             </STATICVARIABLES>

@@ -733,6 +733,12 @@ const syncHelper = async ({ xml, companyName, alterId, companyGuid }) => {
   }));
 };
 
+/** Machine date as YYYYMMDD in local time (Tally's date, not UTC). */
+function localYmd(d = new Date()) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}`;
+}
+
 const syncHelperWithDate = async ({
   xml,
   companyName,
@@ -758,6 +764,10 @@ const syncHelperWithDate = async ({
     {
       key: "$$TO_DATE",
       value: toDate,
+    },
+    {
+      key: "$$CURRENT_DATE",
+      value: localYmd(),
     },
   ]);
 

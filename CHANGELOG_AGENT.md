@@ -4,6 +4,14 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-09-30 — Bill Outstanding pinned to today's date; placeholders in XML comments
+
+**Cause (live):** Tally computes outstanding bills as of its own "current date" (F2). On the user's Tally it was 31-Mar-24, so Hard Sync saved 2,137 bills as of that date (none after it) → AR/AP for FY 2026-27 empty. Machine date was 30-Sep-26.
+**Also:** `getData` does `xml.replace(key, value)` — first occurrence only. Placeholder names inside XML comments were replaced in the comment and never in the real tag: `BillOutstanding.xml` (FROM/TO dates), `SingleVoucher.xml` (master id filter), `StockFYBalance.xml` (FROM/TO dates).
+**Files:** `util/xml.js` (`localYmd`, `$$CURRENT_DATE` in `syncHelperWithDate`), `xmls/BillOutstanding.xml` (`SVCURRENTDATE`), comment wording in the three XMLs.
+**Tested:** filled `BillOutstanding.xml` exactly as `getData` does and sent it to live Tally with its current date forced to 31-Mar-24 → 2,008 bills up to 2026-09-30 incl. today's test bills (was 2,137 up to 2024-03-31).
+**Risks:** `StockFYBalance` and `SingleVoucher` now actually receive their dates / master id — intended, but those syncs behave differently from before.
+
 ## 2026-09-30 — Bill Outstanding TDL exports credit period (raw Tally capture)
 
 **Capture (live, read-only, Yash Ki Company, 2,008 bills):** `BILLCREDITPERIOD` is a "Due Date" value whose text is what the user typed ("15 Days", "120 Days"; blank if none — a typed due date is stored as a day count). Its `JD` is the bill date, not the due date. A party ledger's default credit period is copied onto new bills. `$$IsDr:$ClosingBalance` matched the raw sign (negative = Dr) on 2,008/2,008 bills; a formatted `$ClosingBalance` field loses the sign, so no SignedPending field.

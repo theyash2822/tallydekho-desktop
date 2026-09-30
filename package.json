@@ -45,7 +45,7 @@
         "publish": [
             {
                 "provider": "generic",
-                "url": "https://test.tallydekho.com/tallydekho/"
+                "url": "https://update-feed-not-configured.invalid/tallydekho/"
             }
         ],
         "asar": true,

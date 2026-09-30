@@ -181,6 +181,18 @@ check("the update feed is documented as active infrastructure", () => {
   );
 });
 
+check("update checks skip while the feed is the .invalid placeholder", () => {
+  const helper = fs.readFileSync(path.join(root, "util", "helper.js"), "utf8");
+  const guard = helper.slice(helper.indexOf("async function checkForUpdates")).slice(0, 700);
+  assert.match(guard, /!isUpdateFeedConfigured\(\)[\s\S]{0,120}return null/, "checkForUpdates must bail out without a real feed");
+  assert.match(guard, /try \{[\s\S]{0,80}autoUpdater\.checkForUpdates\(\)/, "update check must be wrapped in try/catch");
+  const main = fs.readFileSync(path.join(root, "main.js"), "utf8");
+  for (const channel of ["updater:check", "updater:download"]) {
+    const handler = main.slice(main.indexOf(`ipcMain.handle("${channel}"`)).slice(0, 500);
+    assert.match(handler, /isUpdateFeedConfigured\(\)/, `${channel} must check the feed is configured`);
+  }
+});
+
 if (failures.length) {
   console.error(`\n${failures.length} check(s) failed`);
   process.exit(1);

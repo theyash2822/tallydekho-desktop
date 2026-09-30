@@ -1,6 +1,5 @@
 import React, { useContext, useEffect, useState } from "react";
 import Card from "../components/Card";
-import Deployer from "./Deployer";
 import { TallyContext } from "../../utils/TallyContext";
 import RemovePairedDeviceModal from "../components/RemovePairedDeviceModal";
 
@@ -183,7 +182,6 @@ export default function Devices() {
         </div>
       </Card>
 
-      {/* <Deployer /> */}
       {isRemoveDeviceModalOpen && (
         <RemovePairedDeviceModal
           device={pairedDevice?.name || 'this device'}

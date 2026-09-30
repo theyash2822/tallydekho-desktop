@@ -36,6 +36,7 @@ const {
   baseURL,
   APP_ENV,
   checkForUpdates,
+  isUpdateFeedConfigured,
   assetPath,
 } = require("./util/helper");
 const validateSchema = require("./util/validateSchema");
@@ -114,7 +115,7 @@ function configureUpdater() {
   //   url: "https://test.tallydekho.com/tallydekho/",
   // });
 
-  log.transports.file.level = "debug";
+  log.transports.file.level = app.isPackaged ? "info" : "debug";
   autoUpdater.logger = log;
 
   autoUpdater.autoDownload = false;
@@ -404,6 +405,9 @@ ipcMain.handle("updater:check", async () => {
   if (!app.isPackaged || APP_ENV !== "production") {
     return { ok: false, error: "Updates are only available on the production Desktop." };
   }
+  if (!isUpdateFeedConfigured()) {
+    return { ok: false, error: "Update feed is not configured yet." };
+  }
   try {
     info("[updater:check] called");
     const r = await autoUpdater.checkForUpdates();
@@ -416,6 +420,9 @@ ipcMain.handle("updater:check", async () => {
 ipcMain.handle("updater:download", async () => {
   if (!app.isPackaged || APP_ENV !== "production") {
     return { ok: false, error: "Updates are only available on the production Desktop." };
+  }
+  if (!isUpdateFeedConfigured()) {
+    return { ok: false, error: "Update feed is not configured yet." };
   }
   try {
     info("[updater:download] called");

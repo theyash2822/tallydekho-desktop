@@ -1,6 +1,6 @@
 node_modules/
 dist_electron/
-build/
+# build/ holds electron-builder resources (icons, licence) — tracked so Windows builds reproduce.
 *.log
 .DS_Store
 renderer/node_modules/

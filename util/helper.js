@@ -255,12 +255,33 @@ async function registerDevice() {
   };
 }
 
+/** False while package.json still carries the `.invalid` placeholder feed (real URL set at go-live). */
+function isUpdateFeedConfigured() {
+  try {
+    const url = require("../package.json").build?.publish?.[0]?.url || "";
+    const host = new URL(url).hostname;
+    return Boolean(host) && !host.endsWith(".invalid");
+  } catch {
+    return false;
+  }
+}
+
 async function checkForUpdates(mainWindow) {
   // The update feed only carries production artifacts; letting a staging build
   // update itself would swap it for the production client mid-test.
   if (APP_ENV !== "production") return null;
+  if (!isUpdateFeedConfigured()) {
+    info("[updater] update feed not configured — skipping check");
+    return null;
+  }
 
-  const update = await autoUpdater.checkForUpdates();
+  let update;
+  try {
+    update = await autoUpdater.checkForUpdates();
+  } catch (e) {
+    error("[updater] check failed:", e?.message || String(e));
+    return null;
+  }
   if (update?.isUpdateAvailable) {
     const savedVersion = store.get("savedVersion");
     const version = update.updateInfo.version;
@@ -385,6 +406,7 @@ module.exports = {
   isDev,
   pollJobStatus,
   checkForUpdates,
+  isUpdateFeedConfigured,
   assetPath,
   getDeviceSecret,
   saveDeviceSecret,

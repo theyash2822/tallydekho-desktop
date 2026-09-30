@@ -32,6 +32,37 @@ function decodeTallyResponse(data) {
   return buf.toString("utf8");
 }
 
+/**
+ * Dr/Cr of an outstanding bill. Tally XML amounts are negative for Dr, but the
+ * current TDL exports PendingAmount unsigned, so the sign is only trusted from
+ * SignedPending. Then the TDL DrCr label, then the ledger's group.
+ */
+function billSideOf(r) {
+  const signed = r.SignedPending ?? r.SIGNEDPENDING;
+  if (signed != null && signed !== "") {
+    const n = parseFloat(String(signed).replace(/,/g, "").replace("(-)", "-"));
+    if (Number.isFinite(n) && Math.abs(n) >= 0.005) return n < 0 ? "Dr" : "Cr";
+  }
+  const label = String(r.DrCr ?? r.DRCR ?? "").trim().toLowerCase();
+  if (label === "dr") return "Dr";
+  if (label === "cr") return "Cr";
+  const group = String(r.LedgerGroup ?? r.LEDGERGROUP ?? "").toLowerCase();
+  if (group.includes("debtor")) return "Dr";
+  if (group.includes("creditor")) return "Cr";
+  return null;
+}
+
+/** Counts only — the full sync state (every company / FY alter id) is too large and too revealing for logs. */
+function summarizeSyncState(res) {
+  const d = res?.data || {};
+  return {
+    status: res?.status,
+    message: res?.message,
+    companies: Object.keys(d.alterIds || {}).length,
+    yearIds: Object.keys(d.yearIds || {}).length,
+  };
+}
+
 /** BILLROW nested objects from TDKBillOutstandingWorking — not parallel field arrays. */
 function rowsFromBillOutstandingEnvelope(envelope) {
   if (!envelope) return [];
@@ -47,8 +78,11 @@ function rowsFromBillOutstandingEnvelope(envelope) {
         DueDate: r.DueDate ?? r.DUEDATE ?? null,
         Amount: r.Amount ?? r.AMOUNT ?? 0,
         PendingAmount: r.PendingAmount ?? r.PENDINGAMOUNT ?? 0,
-        DrCr: r.DrCr ?? r.DRCR ?? null,
-        BillType: r.BillType ?? r.BILLTYPE ?? r.DrCr ?? r.DRCR ?? null,
+        DrCr: billSideOf(r) ?? r.DrCr ?? r.DRCR ?? null,
+        BillType: r.BillType ?? r.BILLTYPE ?? billSideOf(r) ?? r.DrCr ?? r.DRCR ?? null,
+        SignedPending: r.SignedPending ?? r.SIGNEDPENDING ?? null,
+        LedgerGroup: String(r.LedgerGroup ?? r.LEDGERGROUP ?? ""),
+        CreditPeriod: r.CreditPeriod ?? r.CREDITPERIOD ?? null,
         LedgerParent: String(r.LedgerParent ?? r.LEDGERPARENT ?? ""),
         VoucherGuid: r.VoucherGuid ?? r.VOUCHERGUID ?? null,
         AlterId: r.AlterId ?? r.ALTERID ?? 0,
@@ -857,7 +891,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
 
   let syncedData = await initSync(companies, isHardSync);
 
-  info("[sync] data", syncedData);
+  info("[sync] data", summarizeSyncState(syncedData));
 
   if (!syncedData.status) {
     return {
@@ -888,7 +922,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
   }
 
   if (isHardSync) {
-    info("[sync] after hard sync data", syncedData);
+    info("[sync] after hard sync data", summarizeSyncState({ status: true, data: syncedData }));
   }
 
   const { alterIds, yearIds } = syncedData;

@@ -4,6 +4,25 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-09-30 — Dev backend LAN IP → 192.168.29.241
+
+- Mac en0 is now `192.168.29.241`; `DEFAULT_DEV_BACKEND_URL` → `http://192.168.29.241:3001` and `.241` removed from `DEAD_BACKEND_HOSTS` (it was forcing dev back to the unreachable `.243`). Docs + `.env.example` updated.
+- Tested: `http://192.168.29.241:3001/health` 200; `verify-backend-config.js` all pass; `npm test` 29/29.
+- Packaged production builds are unaffected (always `https://api.tallydekho.com`).
+
+---
+
+## 2026-09-29 — Production readiness (update feed guard, logs, bill fields)
+
+- `package.json` publish feed → `https://update-feed-not-configured.invalid/tallydekho/` placeholder; real URL at go-live. `isUpdateFeedConfigured()` makes `checkForUpdates` and the `updater:check` / `updater:download` IPC handlers skip while it's the placeholder; the check is wrapped in try/catch. **Shipped clients still poll `test.tallydekho.com` (baked `app-update.yml`) — keep that server up.**
+- electron-log file level `info` in packaged builds; `[sync] data` logs counts only, not the full per-company / per-FY state.
+- `build/` no longer git-ignored (licence tracked). Windows icons `icon.ico`, `icon2.ico`, `icon.png` are not on this machine — add from the Windows build box / new 1024 icon.
+- Deleted dead `renderer/app/views/devices/Deployer.jsx` (held a Tally password — still in git history, rotate it).
+- `util/xml.js` bill rows: `billSideOf` (SignedPending sign → DrCr label → LedgerGroup), pass-through `SignedPending`, `LedgerGroup`, `CreditPeriod` for when the TDL exports them. TDL unchanged until the raw capture session.
+- Tested: `npm run verify:config` all pass (new check for the feed guard); `node --check` on touched files.
+
+---
+
 ## 2026-09-19 — Snapshot branch `19-09-2026-final-code`
 
 Pushed local `cursor` tip as `19-09-2026-final-code`. No billing-authority

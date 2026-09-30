@@ -4,6 +4,13 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-09-30 — Bill Outstanding TDL exports credit period (raw Tally capture)
+
+**Capture (live, read-only, Yash Ki Company, 2,008 bills):** `BILLCREDITPERIOD` is a "Due Date" value whose text is what the user typed ("15 Days", "120 Days"; blank if none — a typed due date is stored as a day count). Its `JD` is the bill date, not the due date. A party ledger's default credit period is copied onto new bills. `$$IsDr:$ClosingBalance` matched the raw sign (negative = Dr) on 2,008/2,008 bills; a formatted `$ClosingBalance` field loses the sign, so no SignedPending field.
+**Files:** `xmls/TDKBillOutstanding.tdl` — new field `CreditPeriod` = `$BillCreditPeriod` (plain text, no date math in Tally). `util/xml.js` already passes it through; the backend computes due date = bill date + days.
+**Tested:** the same field via an inline read-only report against live Tally — clean output for all bills, Tally stable.
+**Risks:** Tally loads the TDL at startup — restart Tally once after the desktop copies the new file. With two companies open, a request for one company was briefly refused and one run mixed data from both; sync with one company open.
+
 ## 2026-09-30 — Sync Now / Hard Sync disabled after a reboot (startup race)
 
 **Cause:** `main.js` runs `reconcileBinding("startup")` right after `createWindow()`. The backend answers in milliseconds and `emit("pairedDevice", …)` fires before the renderer has mounted its `window:listener`, so the message is dropped. The renderer never pulled pairing itself (init only hydrated `pairingCode`), so `pairedDevice` stayed `null` → `disableSyncButton` true → both buttons disabled. The only other re-emit (offline→online edge in `store:set isOnline`) never fired because `isOnline=true` was persisted from the previous session. Warm restarts usually won the race, cold boots lose it.

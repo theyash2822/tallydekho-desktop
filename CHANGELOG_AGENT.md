@@ -4,6 +4,19 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-09-30 — Multi-company sync: upload per company, one Tally request at a time
+
+- **Upload per company** (`util/xml.js`): each selected company gets its own `/ingest` upload with a `Company-Guid` header on every chunk and `companyGuid` on `/ingest/complete`. Before, all companies went in one upload and the backend filed each 10k chunk under its first record's company.
+- **Tally request queue** (`util/tallyQueue.js`): `getData`, `postToTally` and the TDL probe run one at a time, so parallel master fetches, the 5 s poll and write-backs can't be answered in another company's context.
+- **Company names XML-escaped** in `SVCURRENTCOMPANY` and placeholder values (function replacers, no `$&` expansion).
+- **Open-company check** before sync: only companies open in Tally are synced, under their current Tally name. Hard sync refuses (`company_not_open`) if any selected company is closed, since the backend purges before refetching. `/desktop/init-sync` still gets the full selection (QA fix: it marks companies missing from the list inactive, which would hide a skipped company from web/mobile).
+- **Single sync lock** inside `syncTallyData` (`sync_in_progress`); foreground/auto start also check it. `tally:connected` / `tally:companies` answer from cache during a sync.
+- Renderer keeps `companyNumber` (and refreshes name) on selected companies so the TDL restart can `/LOAD` the company.
+- Tested: `npm test` 32 pass (new `scripts/test-tally-queue.js`). Not run against a live Tally.
+- Risks: master fetch is now sequential (slower first phase); a company open under a different GUID is skipped.
+
+---
+
 ## 2026-09-30 — Bill Outstanding pinned to today's date; placeholders in XML comments
 
 **Cause (live):** Tally computes outstanding bills as of its own "current date" (F2). On the user's Tally it was 31-Mar-24, so Hard Sync saved 2,137 bills as of that date (none after it) → AR/AP for FY 2026-27 empty. Machine date was 30-Sep-26.

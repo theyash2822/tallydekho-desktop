@@ -15,6 +15,7 @@ const {
   getCompanyDestinations,
   getCompanies,
   syncTallyData,
+  isSyncRunning,
   stopTallySyncHandler,
 } = require("./xml.js");
 const getTallyVersionFromRegistry = require("./readTallyFromRegistry.js");
@@ -30,6 +31,7 @@ const { getSelectedCompanies } = require("./companySelection.js");
 const { getDeviceSecret } = require("./deviceCredential.js");
 
 let tallyConnectStatus = false;
+let lastCompanies = [];
 
 /**
  * A device with no stored credential cannot be paired, so background work is
@@ -135,6 +137,10 @@ ipcMain.handle("tally:tdl_select_path", async () => {
 });
 
 ipcMain.handle("tally:connected", async () => {
+  // The renderer polls every 5 s; during a sync, answer from the last check instead of
+  // adding requests to Tally's queue between the sync's own requests.
+  if (isSyncRunning()) return tallyConnectStatus;
+
   const status = await isTallyConnected();
 
   tallyConnectStatus = status;
@@ -153,7 +159,10 @@ ipcMain.handle("tally:companies", async () => {
     return [];
   }
 
+  if (isSyncRunning()) return lastCompanies;
+
   const companies = await getCompanies();
+  lastCompanies = companies;
   return companies;
 });
 
@@ -195,7 +204,7 @@ const registerTallySync = (windowContent) => {
       info("Foreground [sync]");
 
       // Single-flight: reject a second start while one sync (or start sequence) is active.
-      if (store.get("isSyncing") || syncStartInFlight) {
+      if (store.get("isSyncing") || syncStartInFlight || isSyncRunning()) {
         return {
           status: false,
           code: "HARD_SYNC_IN_FLIGHT",
@@ -369,7 +378,7 @@ const startAutoSync = async (windowContent) => {
   info(`Background [online status]: ${isOnline}`);
   info(`Background [sync status before starting]: ${isSyncing}`);
 
-  if (status && isOnline && !isSyncing) {
+  if (status && isOnline && !isSyncing && !isSyncRunning()) {
     windowContent.send("window:listener", {
       key: "isSyncing",
       value: true,
@@ -384,6 +393,9 @@ const startAutoSync = async (windowContent) => {
 
     info(`Background [sync status]: ${syncStatus.status}`);
     info(`Background [sync status data]:`, syncStatus.data);
+
+    // Lost the race to a sync that started meanwhile: its flags are not ours to clear.
+    if (syncStatus.data?.code === "sync_in_progress") return;
 
     store.set("isSyncing", false);
     windowContent.send("window:listener", { key: "isSyncing", value: false });

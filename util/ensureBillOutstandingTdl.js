@@ -17,6 +17,7 @@ const { XMLParser } = require("fast-xml-parser");
 const { info, error } = require("./logger");
 const store = require("./store");
 const getTallyVersionFromRegistry = require("./readTallyFromRegistry");
+const { runTallyExclusive, xmlText } = require("./tallyQueue");
 
 const TDL_FILENAME = "TDKBillOutstanding.tdl";
 const INI_FILENAME = "tally.ini";
@@ -323,7 +324,7 @@ async function probeBillOutstandingLive(companyName) {
     <DESC>
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        <SVCURRENTCOMPANY>${name}</SVCURRENTCOMPANY>
+        <SVCURRENTCOMPANY>${xmlText(name)}</SVCURRENTCOMPANY>
         <SVFROMDATE TYPE="Date">20260401</SVFROMDATE>
         <SVTODATE TYPE="Date">20270331</SVTODATE>
       </STATICVARIABLES>
@@ -332,11 +333,11 @@ async function probeBillOutstandingLive(companyName) {
 </ENVELOPE>`;
 
   try {
-    const response = await axios.post(tallyHttpUrl(), xml, {
+    const response = await runTallyExclusive(() => axios.post(tallyHttpUrl(), xml, {
       headers: { "Content-Type": "text/xml", Accept: "application/xml, text/xml, */*" },
       responseType: "arraybuffer",
       timeout: 20000,
-    });
+    }));
     const text = decodeTallyBody(response.data);
     const snippet = text.slice(0, 400).replace(/\s+/g, " ");
     const hasBillRow = /<BILLROW[\s>]/i.test(text);

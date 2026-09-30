@@ -511,6 +511,8 @@ export default function App() {
       // Preserve date fields needed for OpeningBalanceDiff.xml sync
       startingFrom: company.startingFrom,
       booksFrom: company.booksFrom,
+      // Lets the TDL restart reopen the company (/LOAD) instead of Tally's default one
+      companyNumber: company.companyNumber,
     }));
 
     const ids = data.map((item) => item.id);
@@ -535,7 +537,11 @@ export default function App() {
 
         // Always refresh allYears from latest Tally data so new FYs appear in the Edit Years modal
         const freshData = data.find(d => d.id === company.id);
-        if (freshData) company.allYears = freshData.allYears;
+        if (freshData) {
+          company.allYears = freshData.allYears;
+          company.name = freshData.name;
+          company.companyNumber = freshData.companyNumber;
+        }
 
         // Auto-add ONLY genuinely new FY years:
         // A year is "new" if its begin date is AFTER the end date of all currently selected years

@@ -10,6 +10,7 @@ const createFinancialYears = require("./createFinancialYears");
 const { normalizeEnvelope } = require("./tallyHelper");
 const { axiosInstance } = require("./helper");
 const { ensureBillOutstandingTdl } = require("./ensureBillOutstandingTdl");
+const { runTallyExclusive, xmlText } = require("./tallyQueue");
 
 /** Decode Tally HTTP body — custom reports may return UTF-16 LE with BOM. */
 function decodeTallyResponse(data) {
@@ -112,11 +113,13 @@ async function uploadLargeArray({
   // completeBatchSize = 1000,
   // gzip = false,
   extras = {},
+  companyGuid = null,
   sendMessage,
 }) {
   const gzip = false;
 
   info("[sync] size", {
+    companyGuid,
     records: records.length,
     master: master.length,
     vouchers: vouchers.length,
@@ -151,6 +154,7 @@ async function uploadLargeArray({
     gzip,
     streamName: "records",
     chunkItems,
+    companyGuid,
   });
 
   info("[sync] ingest init [records]", recordsResponse);
@@ -167,6 +171,7 @@ async function uploadLargeArray({
     gzip,
     streamName: "master",
     chunkItems,
+    companyGuid,
   });
 
   info("[sync] ingest init [master]", masterResponse);
@@ -183,6 +188,7 @@ async function uploadLargeArray({
     gzip,
     streamName: "vouchers",
     chunkItems,
+    companyGuid,
   });
 
   info("[sync] ingest init [voucher]", vouchersResponse);
@@ -231,6 +237,7 @@ async function sendChunks({
   gzip,
   streamName,
   chunkItems,
+  companyGuid = null,
 }) {
   function* chunkArray(arr, n) {
     for (let i = 0; i < arr.length; i += n) {
@@ -268,7 +275,8 @@ async function sendChunks({
           streamName,
           chunkIndex++,
           subBuf,
-          gzip
+          gzip,
+          companyGuid
         );
         if (!response.status) {
           return response;
@@ -283,7 +291,8 @@ async function sendChunks({
         streamName,
         chunkIndex++,
         payload,
-        gzip
+        gzip,
+        companyGuid
       );
       if (!response.status) {
         return response;
@@ -294,13 +303,14 @@ async function sendChunks({
   return { status: true };
 }
 
-async function sendOneChunk(client, uploadId, streamName, idx, body, gzip) {
+async function sendOneChunk(client, uploadId, streamName, idx, body, gzip, companyGuid = null) {
   const headers = {
     "Upload-Id": uploadId,
     "Stream-Name": streamName,
     "Chunk-Index": String(idx),
     "Content-Type": "application/x-ndjson",
   };
+  if (companyGuid) headers["Company-Guid"] = companyGuid;
   if (gzip) headers["Content-Encoding"] = "gzip";
 
   // retry 3 times with small backoff
@@ -374,9 +384,11 @@ const getData = async (filePath, replacer = []) => {
 
   let xml = await readFile(xmlPath, "utf8");
 
+  // Function replacers: a string replacement would expand `$&` / `$'` inside company names.
   replacer.forEach((item) => {
     const { key, value } = item;
-    xml = xml.replace(key, value);
+    const text = xmlText(value);
+    xml = xml.replace(key, () => text);
   });
 
   // SAFETY: Force SVCURRENTCOMPANY to always use the real company name.
@@ -384,23 +396,21 @@ const getData = async (filePath, replacer = []) => {
   // (e.g. 'Test Company Data', 'Demo2') from development/testing.
   const companyNameVal = replacer.find(r => r.key === '$$COMPANY_NAME')?.value;
   if (companyNameVal) {
-    xml = xml.replace(
-      /<SVCURRENTCOMPANY>[^<]*<\/SVCURRENTCOMPANY>/g,
-      `<SVCURRENTCOMPANY>${companyNameVal}</SVCURRENTCOMPANY>`
-    );
+    const companyTag = `<SVCURRENTCOMPANY>${xmlText(companyNameVal)}</SVCURRENTCOMPANY>`;
+    xml = xml.replace(/<SVCURRENTCOMPANY>[^<]*<\/SVCURRENTCOMPANY>/g, () => companyTag);
   }
 
   let attempt = 0;
   while (true) {
     try {
-      const response = await axios.post(TALLY_URL, xml, {
+      const response = await runTallyExclusive(() => axios.post(TALLY_URL, xml, {
         headers: {
           "Content-Type": "text/xml",
           Accept: "application/xml, text/xml, */*",
         },
         responseType: "arraybuffer",
         timeout: 15000 * 4,
-      });
+      }));
       const decoded = decodeTallyResponse(response.data);
       return { status: true, data: decoded, message: "" };
     } catch (err) {
@@ -421,13 +431,13 @@ const postToTally = async (xmlBody) => {
   let attempt = 0;
   while (true) {
     try {
-      const response = await axios.post(TALLY_URL, xmlBody, {
+      const response = await runTallyExclusive(() => axios.post(TALLY_URL, xmlBody, {
         headers: {
           "Content-Type": "text/xml",
           Accept: "application/xml, text/xml, */*",
         },
         timeout: 15000,
-      });
+      }));
       const data = typeof response.data === 'string' ? response.data : JSON.stringify(response.data || '');
 
       // Parse Tally XML response properly
@@ -846,7 +856,37 @@ const syncGuidHelper = async ({
   }));
 };
 
+let syncInProgress = false;
+
+/** Foreground, auto, headless and socket-triggered syncs all funnel through here; only one may run. */
 const syncTallyData = async (windowContent, companies, isHardSync) => {
+  if (syncInProgress) {
+    info("[sync] rejected: another sync is still running");
+    return {
+      status: false,
+      data: { code: "sync_in_progress", message: "A sync is already running on this Desktop." },
+    };
+  }
+  syncInProgress = true;
+  try {
+    return await syncTallyDataUnlocked(windowContent, companies, isHardSync);
+  } finally {
+    syncInProgress = false;
+  }
+};
+
+const isSyncRunning = () => syncInProgress;
+
+/** GUID → current name of every company open in Tally, or null when Tally could not be asked. */
+const getOpenCompanyNames = async () => {
+  const response = await getData("Companies.xml");
+  if (!response.status) return null;
+  const node = parser.parse(response.data)?.ENVELOPE?.BODY?.DATA?.COLLECTION?.COMPANY ?? [];
+  const list = Array.isArray(node) ? node : [node].filter(Boolean);
+  return new Map(list.filter((c) => c?.GUID).map((c) => [String(c.GUID), String(c.NAME ?? "")]));
+};
+
+const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
   if (companies.length == 0) {
     return { status: false, data: { code: "no_company_selected" } };
   }
@@ -877,6 +917,32 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
     info("[tdl] ensureBillOutstandingTdl threw (non-fatal):", e?.message);
   }
 
+  // Tally resolves SVCURRENTCOMPANY by name and falls back to another open company when the
+  // name is not loaded (closed, renamed, or dropped by the TDL restart above). Sync only
+  // companies that are open right now, under their current Tally name.
+  // init-sync still gets every selected company: it marks companies missing from the list
+  // inactive, and a company closed in Tally for one sync must not disappear from the apps.
+  const selectedCompanies = companies;
+  const openCompanies = await getOpenCompanyNames();
+  if (openCompanies) {
+    const notOpen = companies.filter((c) => !openCompanies.has(String(c.guid)));
+    if (notOpen.length) {
+      const names = notOpen.map((c) => c.name || c.guid).join(", ");
+      info("[sync] selected companies not open in Tally", notOpen.map((c) => c.guid));
+      // Hard sync purges every company it is given before re-fetching, so never run it partially.
+      if (isHardSync || notOpen.length === companies.length) {
+        return {
+          status: false,
+          data: { code: "company_not_open", message: `Open ${names} in Tally, then sync again.` },
+        };
+      }
+      sendMessage(`Skipping ${names} (not open in Tally)`);
+    }
+    companies = companies
+      .filter((c) => openCompanies.has(String(c.guid)))
+      .map((c) => ({ ...c, name: openCompanies.get(String(c.guid)) || c.name }));
+  }
+
   const startTime = new Date().getTime();
 
   // V2: Start a sync_run record for monitoring/atomicity
@@ -899,7 +965,7 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
   sendProgress(0);
   sendMessage("Initializing");
 
-  let syncedData = await initSync(companies, isHardSync);
+  let syncedData = await initSync(selectedCompanies, isHardSync);
 
   info("[sync] data", summarizeSyncState(syncedData));
 
@@ -1321,23 +1387,26 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
 
   let response;
 
+  // One upload per company: the backend files a whole chunk under one company, so a
+  // chunk must never straddle two companies.
+  const ofCompany = (rows, guid) => rows.filter((r) => r?.COMPANY_GUID === guid);
   try {
-    response = await uploadLargeArray({
-      records,
-      master: masterPromises,
-      vouchers: voucherPromises,
-      gzip: false,
-      extras: {
-        companies: companies.map((c) => ({
-          guid: c.guid,
-          name: c.name,
-          years: c.years,
-          yearIds: c.yearIds,
-        })),
-        isHardSync,
-      },
-      sendMessage,
-    });
+    for (const c of companies) {
+      response = await uploadLargeArray({
+        records: ofCompany(records, c.guid),
+        master: ofCompany(masterPromises, c.guid),
+        vouchers: ofCompany(voucherPromises, c.guid),
+        gzip: false,
+        companyGuid: c.guid,
+        extras: {
+          companyGuid: c.guid,
+          companies: [{ guid: c.guid, name: c.name, years: c.years, yearIds: c.yearIds }],
+          isHardSync,
+        },
+        sendMessage,
+      });
+      if (!response.status) break;
+    }
   } catch (err) {
     const apiMessage = err?.response?.data?.message || err?.message;
     const apiCode = err?.response?.data?.code;
@@ -1510,6 +1579,7 @@ module.exports = {
   getCompanyDestinations,
   getCompanies,
   syncTallyData,
+  isSyncRunning,
   stopTallySyncHandler,
   postToTally,
   fetchAndIngestSingleVouchers,

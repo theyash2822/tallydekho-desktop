@@ -271,6 +271,13 @@ export default function App() {
       } catch (_) {
         updateState("pairingCode", null);
       }
+
+      // The startup binding check may have been pushed before this listener
+      // existed; pull it now or Sync Now / Hard Sync stay disabled as "unpaired".
+      try {
+        const binding = await window.api.reconcilePairing?.();
+        if (binding?.reachable) updateState("pairedDevice", binding.data || null);
+      } catch (_) {}
     };
 
     init();

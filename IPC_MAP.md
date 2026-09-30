@@ -17,6 +17,7 @@ Defined in `preload.js`.
 | api.closeByName(name) | window:closeByName | main.js | Close named window |
 | api.pairingState() | api:pairing_state | ipcRegistry.js | Display-safe pairing snapshot (no claimToken) |
 | api.pairedDevice() | api:paired_device | ipcRegistry.js | Returns paired device info |
+| api.reconcilePairing() | pairing:reconcile | ipcRegistry.js | Re-runs the server binding check once the renderer is listening; re-emits `pairedDevice` / `workspace` and returns `{ reachable, data }` |
 | api.removePairedDevice() | api:remove_paired_device | ipcRegistry.js | Unpairing |
 | api.pingBackend() | backend:ping | main.js | Backend connectivity check |
 | api.sendLogs() | api:send_logs | ipcRegistry.js | Send diagnostic logs |

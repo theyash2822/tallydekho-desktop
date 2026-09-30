@@ -4,6 +4,17 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-09-30 — Sync Now / Hard Sync disabled after a reboot (startup race)
+
+**Cause:** `main.js` runs `reconcileBinding("startup")` right after `createWindow()`. The backend answers in milliseconds and `emit("pairedDevice", …)` fires before the renderer has mounted its `window:listener`, so the message is dropped. The renderer never pulled pairing itself (init only hydrated `pairingCode`), so `pairedDevice` stayed `null` → `disableSyncButton` true → both buttons disabled. The only other re-emit (offline→online edge in `store:set isOnline`) never fired because `isOnline=true` was persisted from the previous session. Warm restarts usually won the race, cold boots lose it.
+**Also:** `before-quit` doesn't run on reboot/power cut, so a persisted `isSyncing=true` made `tally:start_sync` reject with "A sync is already in progress".
+**Fix:**
+- New IPC `pairing:reconcile` (`api.reconcilePairing()`); `App.jsx` init calls it after its listener exists and sets `pairedDevice` from the result.
+- `main.js` interactive startup resets `isSyncing` / `isRestoring` / `isBackingUp` to false (single-instance lock ⇒ nothing else is syncing) and `isOnline` to false so the first successful ping re-runs the pairing check when the network came up late.
+**Tested:** `node --check`; `npm test` 29/29; `verify-backend-config.js` pass; renderer build OK. Backend logs confirm the Windows Desktop gets `pairing-device` 200 with a pairing on startup.
+
+---
+
 ## 2026-09-30 — Dev backend LAN IP → 192.168.29.241
 
 - Mac en0 is now `192.168.29.241`; `DEFAULT_DEV_BACKEND_URL` → `http://192.168.29.241:3001` and `.241` removed from `DEAD_BACKEND_HOSTS` (it was forcing dev back to the unreachable `.243`). Docs + `.env.example` updated.

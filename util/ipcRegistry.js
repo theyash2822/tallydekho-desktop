@@ -585,6 +585,19 @@ ipcMain.handle("api:pairing_state", async () => {
   };
 });
 
+// The startup reconcile can finish before the renderer registers its listener
+// (cold boot), so the renderer re-runs it once it is listening.
+ipcMain.handle("pairing:reconcile", async () => {
+  try {
+    const { reconcileBinding } = require("./pairingRuntime");
+    const result = await reconcileBinding("renderer-ready");
+    return { status: true, reachable: result.reachable, data: result.paired };
+  } catch (err) {
+    error(err?.message, "pairing:reconcile");
+    return { status: false, reachable: false, data: null };
+  }
+});
+
 ipcMain.handle("api:paired_device", async () => {
   try {
     const response = await axiosInstance.get("/desktop/pairing-device");

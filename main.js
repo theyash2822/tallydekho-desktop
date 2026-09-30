@@ -629,6 +629,16 @@ app.whenReady().then(async () => {
 
   info(`App Started`);
 
+  // before-quit never runs on a reboot or power cut, so these flags can survive
+  // from the last session and block Sync Now ("already in progress"). The
+  // single-instance lock guarantees nothing else is syncing right now.
+  // isOnline starts false so the first successful ping is an offline→online
+  // edge that re-runs the pairing check if startup ran before the network was up.
+  store.set("isSyncing", false);
+  store.set("isRestoring", false);
+  store.set("isBackingUp", false);
+  store.set("isOnline", false);
+
   createWindow();
 
   // if (app.isPackaged) {

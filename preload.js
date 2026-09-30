@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld("api", {
   // pushes updates over `window:listener`; the renderer cannot mint or claim.
   pairingState: () => ipcRenderer.invoke("api:pairing_state"),
   pairedDevice: () => ipcRenderer.invoke("api:paired_device"),
+  reconcilePairing: () => ipcRenderer.invoke("pairing:reconcile"),
   removePairedDevice: () => ipcRenderer.invoke("api:remove_paired_device"),
   pingBackend: () => ipcRenderer.invoke("backend:ping"),
   sendLogs: () => ipcRenderer.invoke("api:send_logs"),

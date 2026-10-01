@@ -13,7 +13,7 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 - `tally:start_sync` refuses with `COMPANY_SELECTION_PENDING` while on hold (renderer-supplied companies); the auto first sync after pair waits for the answer.
 - IPC `companySelection:pending` / `companySelection:resolve` (`preload.js` `pendingCompanySelection` / `resolveCompanySelection`, `IPC_MAP.md`). Renderer `PreviousCompaniesModal` ("Use these companies" / "Clear list"), also re-checked at startup.
 - Unchanged: syncing while unpaired stays blocked (`isDevicePaired`); Workspace Reset still clears the list.
-- Tested: `npm test` 40/40 (10 selection tests, 9 new/rewritten); renderer `vite build` ok.
+- Tested: `npm test` 42/42 (12 selection tests new/rewritten); renderer `vite build` ok. QA found the unbound-after-claim leak and the Tally auto-select overwrite; both fixed. Device test still needed.
 
 ---
 

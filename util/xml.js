@@ -9,7 +9,13 @@ const store = require("./store");
 const createFinancialYears = require("./createFinancialYears");
 const { normalizeEnvelope } = require("./tallyHelper");
 const { axiosInstance } = require("./helper");
-const { ensureBillOutstandingTdl } = require("./ensureBillOutstandingTdl");
+const { installTdlFiles } = require("./tdlFiles");
+const {
+  BILL_STATUS,
+  rowsFromBillOutstandingEnvelope,
+  fetchCompanyBillSnapshot,
+  snapshotSummary,
+} = require("./billSnapshot");
 const { runTallyExclusive, xmlText } = require("./tallyQueue");
 
 /** Decode Tally HTTP body — custom reports may return UTF-16 LE with BOM. */
@@ -33,26 +39,6 @@ function decodeTallyResponse(data) {
   return buf.toString("utf8");
 }
 
-/**
- * Dr/Cr of an outstanding bill. Tally XML amounts are negative for Dr, but the
- * current TDL exports PendingAmount unsigned, so the sign is only trusted from
- * SignedPending. Then the TDL DrCr label, then the ledger's group.
- */
-function billSideOf(r) {
-  const signed = r.SignedPending ?? r.SIGNEDPENDING;
-  if (signed != null && signed !== "") {
-    const n = parseFloat(String(signed).replace(/,/g, "").replace("(-)", "-"));
-    if (Number.isFinite(n) && Math.abs(n) >= 0.005) return n < 0 ? "Dr" : "Cr";
-  }
-  const label = String(r.DrCr ?? r.DRCR ?? "").trim().toLowerCase();
-  if (label === "dr") return "Dr";
-  if (label === "cr") return "Cr";
-  const group = String(r.LedgerGroup ?? r.LEDGERGROUP ?? "").toLowerCase();
-  if (group.includes("debtor")) return "Dr";
-  if (group.includes("creditor")) return "Cr";
-  return null;
-}
-
 /** Counts only — the full sync state (every company / FY alter id) is too large and too revealing for logs. */
 function summarizeSyncState(res) {
   const d = res?.data || {};
@@ -62,35 +48,6 @@ function summarizeSyncState(res) {
     companies: Object.keys(d.alterIds || {}).length,
     yearIds: Object.keys(d.yearIds || {}).length,
   };
-}
-
-/** BILLROW nested objects from TDKBillOutstandingWorking — not parallel field arrays. */
-function rowsFromBillOutstandingEnvelope(envelope) {
-  if (!envelope) return [];
-  const raw = envelope.BILLROW ?? envelope.BillRow;
-  if (raw != null) {
-    const arr = Array.isArray(raw) ? raw : [raw];
-    return arr
-      .filter((r) => r && typeof r === "object")
-      .map((r) => ({
-        LedgerName: String(r.LedgerName ?? r.LEDGERNAME ?? ""),
-        BillName: String(r.BillName ?? r.BILLNAME ?? ""),
-        BillDate: r.BillDate ?? r.BILLDATE ?? null,
-        DueDate: r.DueDate ?? r.DUEDATE ?? null,
-        Amount: r.Amount ?? r.AMOUNT ?? 0,
-        PendingAmount: r.PendingAmount ?? r.PENDINGAMOUNT ?? 0,
-        DrCr: billSideOf(r) ?? r.DrCr ?? r.DRCR ?? null,
-        BillType: r.BillType ?? r.BILLTYPE ?? billSideOf(r) ?? r.DrCr ?? r.DRCR ?? null,
-        SignedPending: r.SignedPending ?? r.SIGNEDPENDING ?? null,
-        LedgerGroup: String(r.LedgerGroup ?? r.LEDGERGROUP ?? ""),
-        CreditPeriod: r.CreditPeriod ?? r.CREDITPERIOD ?? null,
-        LedgerParent: String(r.LedgerParent ?? r.LEDGERPARENT ?? ""),
-        VoucherGuid: r.VoucherGuid ?? r.VOUCHERGUID ?? null,
-        AlterId: r.AlterId ?? r.ALTERID ?? 0,
-      }));
-  }
-  // No BILLROW = TDL not loaded or empty — do not fall back to HEADER/BODY junk
-  return [];
 }
 
 const parser = new XMLParser({
@@ -114,6 +71,7 @@ async function uploadLargeArray({
   // gzip = false,
   extras = {},
   companyGuid = null,
+  billSnapshotMode = null,
   sendMessage,
 }) {
   const gzip = false;
@@ -155,6 +113,7 @@ async function uploadLargeArray({
     streamName: "records",
     chunkItems,
     companyGuid,
+    billSnapshotMode,
   });
 
   info("[sync] ingest init [records]", recordsResponse);
@@ -172,6 +131,7 @@ async function uploadLargeArray({
     streamName: "master",
     chunkItems,
     companyGuid,
+    billSnapshotMode,
   });
 
   info("[sync] ingest init [master]", masterResponse);
@@ -189,6 +149,7 @@ async function uploadLargeArray({
     streamName: "vouchers",
     chunkItems,
     companyGuid,
+    billSnapshotMode,
   });
 
   info("[sync] ingest init [voucher]", vouchersResponse);
@@ -238,6 +199,7 @@ async function sendChunks({
   streamName,
   chunkItems,
   companyGuid = null,
+  billSnapshotMode = null,
 }) {
   function* chunkArray(arr, n) {
     for (let i = 0; i < arr.length; i += n) {
@@ -276,7 +238,8 @@ async function sendChunks({
           chunkIndex++,
           subBuf,
           gzip,
-          companyGuid
+          companyGuid,
+          billSnapshotMode
         );
         if (!response.status) {
           return response;
@@ -292,7 +255,8 @@ async function sendChunks({
         chunkIndex++,
         payload,
         gzip,
-        companyGuid
+        companyGuid,
+        billSnapshotMode
       );
       if (!response.status) {
         return response;
@@ -303,7 +267,7 @@ async function sendChunks({
   return { status: true };
 }
 
-async function sendOneChunk(client, uploadId, streamName, idx, body, gzip, companyGuid = null) {
+async function sendOneChunk(client, uploadId, streamName, idx, body, gzip, companyGuid = null, billSnapshotMode = null) {
   const headers = {
     "Upload-Id": uploadId,
     "Stream-Name": streamName,
@@ -311,6 +275,8 @@ async function sendOneChunk(client, uploadId, streamName, idx, body, gzip, compa
     "Content-Type": "application/x-ndjson",
   };
   if (companyGuid) headers["Company-Guid"] = companyGuid;
+  // Staged: bill rows wait on the backend until /ingest/complete confirms the snapshot.
+  if (billSnapshotMode) headers["Bill-Snapshot-Mode"] = billSnapshotMode;
   if (gzip) headers["Content-Encoding"] = "gzip";
 
   // retry 3 times with small backoff
@@ -749,6 +715,21 @@ function localYmd(d = new Date()) {
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}`;
 }
 
+function decorateRows(rows, { xml, companyName, fromDate, toDate, companyGuid, yearId }) {
+  const financialYear = computeFinancialYear(fromDate);
+  return rows.map((item) => ({
+    ...item,
+    COMPANY_NAME:    companyName,
+    XML:             xml,
+    FROM_DATE:       fromDate,
+    TO_DATE:         toDate,
+    COMPANY_GUID:    companyGuid,
+    YEAR_ID:         yearId,
+    _RECORD_TYPE:    XML_RECORD_TYPE[xml] || 'unknown',
+    _FINANCIAL_YEAR: financialYear,
+  }));
+}
+
 const syncHelperWithDate = async ({
   xml,
   companyName,
@@ -787,23 +768,12 @@ const syncHelperWithDate = async ({
 
   const json = parser.parse(response.data);
 
-  const financialYear = computeFinancialYear(fromDate);
   const envelope = json.ENVELOPE || json.Envelope || {};
   const baseRows =
     xml === "BillOutstanding.xml"
       ? rowsFromBillOutstandingEnvelope(envelope)
       : normalizeEnvelope(envelope);
-  const normalizeData = baseRows.map((item) => ({
-    ...item,
-    COMPANY_NAME:    companyName,
-    XML:             xml,
-    FROM_DATE:       fromDate,
-    TO_DATE:         toDate,
-    COMPANY_GUID:    companyGuid,
-    YEAR_ID:         yearId,
-    _RECORD_TYPE:    XML_RECORD_TYPE[xml] || 'unknown',
-    _FINANCIAL_YEAR: financialYear,
-  }));
+  const normalizeData = decorateRows(baseRows, { xml, companyName, fromDate, toDate, companyGuid, yearId });
 
   if (xml == "Voucher.xml") {
     totalVouchers += normalizeData.length;
@@ -896,29 +866,21 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
   const sendProgress = createTallySyncProgressSender(windowContent);
   const sendMessage = tallySyncMessageSender(windowContent);
 
-  // Option B: ensure TDL on disk; if not live-loaded, restart Tally with /TDL+/LOAD (no manual F1)
+  // Keep the TDL file on disk current. Sync never closes or restarts Tally: a TDL that is
+  // not active shows up per company in the bill snapshot and keeps that company's bills.
   try {
-    const companyName = companies[0]?.name || "";
-    const companyNumber = companies[0]?.companyNumber ?? null;
-    const tdlResult = await ensureBillOutstandingTdl({
-      companyName,
-      companyNumber,
-      allowRestart: true,
-    });
-    info("[tdl] ensureBillOutstandingTdl", {
-      status: tdlResult?.status,
-      liveLoaded: tdlResult?.liveLoaded,
-      billRows: tdlResult?.liveBillRows,
-      activated: !!tdlResult?.activateResult?.status,
-      activateArgs: tdlResult?.activateResult?.args || null,
-      message: tdlResult?.message,
+    const { detected, applyResult } = await installTdlFiles();
+    info("[tdl] sync files", {
+      tallyDir: detected?.path || null,
+      installed: applyResult?.status ?? null,
+      message: applyResult?.message || null,
     });
   } catch (e) {
-    info("[tdl] ensureBillOutstandingTdl threw (non-fatal):", e?.message);
+    info("[tdl] sync file install failed (non-fatal):", e?.message);
   }
 
   // Tally resolves SVCURRENTCOMPANY by name and falls back to another open company when the
-  // name is not loaded (closed, renamed, or dropped by the TDL restart above). Sync only
+  // name is not loaded (closed or renamed). Sync only
   // companies that are open right now, under their current Tally name.
   // init-sync still gets every selected company: it marks companies missing from the list
   // inactive, and a company closed in Tally for one sync must not disappear from the apps.
@@ -962,6 +924,8 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
   }
 
   let promises = [];
+  const billSnapshots = {};
+  const billSnapshotProblems = [];
   sendProgress(0);
   sendMessage("Initializing");
 
@@ -1175,35 +1139,44 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
       info('[sync] OpeningBalanceDiff.xml skipped — no booksFrom/startingFrom for', name);
     }
 
-    // Bill outstanding — once per company per sync (needs pre-loaded TDKBillOutstanding.tdl)
+    // Bill outstanding — own health check + snapshot per company; failures keep the old bills.
     if (years.length > 0) {
       const outstandingYear = [...years].sort((a, b) =>
         String(b.end || "").localeCompare(String(a.end || ""))
       )[0];
       const fromDate = String(outstandingYear.begin || "").replace(/-/g, "");
       const toDate = String(outstandingYear.end || "").replace(/-/g, "");
-      try {
-        const billOutstandingResponse = await syncHelperWithDate({
+      const snapshot = await fetchCompanyBillSnapshot({
+        companyName: name,
+        companyGuid,
+        fromDate,
+        toDate,
+        currentDate: localYmd(),
+      });
+      billSnapshots[companyGuid] = snapshotSummary(snapshot);
+      if (snapshot.status === BILL_STATUS.SUCCESS) {
+        promises.push(decorateRows(snapshot.rows, {
           xml: "BillOutstanding.xml",
           companyName: name,
-          alterId: 0,
           fromDate,
           toDate,
           companyGuid,
           yearId: yearIds[companyGuid]?.[outstandingYear.finYear] || null,
-        });
-        promises.push(billOutstandingResponse);
-        info("[sync] BillOutstanding.xml", {
-          company: name,
-          fromDate,
-          toDate,
-          rows: Array.isArray(billOutstandingResponse)
-            ? billOutstandingResponse.length
-            : 0,
-        });
-      } catch (e) {
-        info("[sync] BillOutstanding.xml failed (non-fatal):", e?.message);
+        }));
+      } else {
+        billSnapshotProblems.push(name);
       }
+      info("[sync] bill_snapshot", {
+        company: name,
+        companyGuid,
+        status: snapshot.status,
+        snapshotComplete: snapshot.snapshotComplete,
+        rows: snapshot.rowCount,
+        tdlStatus: snapshot.tdlStatus || null,
+        tdlVersion: snapshot.tdlVersion || null,
+        reason: snapshot.reason || null,
+        durationMs: snapshot.durationMs,
+      });
     }
 
     for (let j = 0; j < years.length; j++) {
@@ -1385,6 +1358,10 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
 
   const records = promises.flat();
 
+  if (billSnapshotProblems.length) {
+    sendMessage(`Bill outstanding kept from last sync for ${billSnapshotProblems.join(", ")} — check Settings → Bill Outstanding TDL`);
+  }
+
   let response;
 
   // One upload per company: the backend files a whole chunk under one company, so a
@@ -1398,10 +1375,12 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
         vouchers: ofCompany(voucherPromises, c.guid),
         gzip: false,
         companyGuid: c.guid,
+        billSnapshotMode: billSnapshots[c.guid] ? "staged" : null,
         extras: {
           companyGuid: c.guid,
           companies: [{ guid: c.guid, name: c.name, years: c.years, yearIds: c.yearIds }],
           isHardSync,
+          ...(billSnapshots[c.guid] ? { billSnapshots: [billSnapshots[c.guid]] } : {}),
         },
         sendMessage,
       });

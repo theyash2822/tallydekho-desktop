@@ -262,6 +262,9 @@ export default function Settings() {
                 value={
                   tdlHealth?.skipped
                     ? "N/A"
+                    : tdlHealth?.tdlStatus === "ACTIVE_OUTDATED" ||
+                      tdlHealth?.tdlStatus === "ACTIVE_LEGACY"
+                    ? "Active (old version)"
                     : tdlHealth?.liveLoaded === true
                     ? `Active ✓${
                         tdlHealth?.liveBillRows != null
@@ -270,6 +273,11 @@ export default function Settings() {
                       }`
                     : tdlHealth?.liveLoaded === false
                     ? "Not loaded"
+                    : tdlHealth?.tdlStatus === "TALLY_UNREACHABLE" ||
+                      tdlHealth?.tdlStatus === "TALLY_TIMEOUT"
+                    ? "Tally not reachable"
+                    : tdlHealth?.tdlStatus
+                    ? "Not confirmed"
                     : "—"
                 }
                 className="ml-auto border rounded-md px-2 py-1 w-40 bg-[#F5F4EF]"
@@ -294,7 +302,7 @@ export default function Settings() {
           )}
 
           {tdlHealth?.status === "ok" &&
-            tdlHealth?.liveLoaded === true &&
+            tdlHealth?.tdlStatus === "ACTIVE" &&
             !tdlHealth?.skipped && (
               <div className="mt-3 text-xs" style={{ color: "#2D7D46" }}>
                 Bill Outstanding is active — no manual TDL load needed. Sync
@@ -302,11 +310,27 @@ export default function Settings() {
               </div>
             )}
 
-          {tdlHealth?.liveLoaded === false && !tdlHealth?.skipped && (
+          {(tdlHealth?.tdlStatus === "ACTIVE_OUTDATED" ||
+            tdlHealth?.tdlStatus === "ACTIVE_LEGACY") &&
+            !tdlHealth?.skipped && (
+              <div className="mt-3 text-xs" style={{ color: "#D97706" }}>
+                An older Bill Outstanding TDL is running. Bills sync while it
+                returns rows; when it returns none, the last synced bills are
+                kept. Click{" "}
+                <span className="font-semibold">Retry setup</span> to upgrade —
+                this restarts Tally.
+              </div>
+            )}
+
+          {tdlHealth?.liveLoaded !== true &&
+            tdlHealth?.tdlStatus &&
+            !tdlHealth?.skipped && (
             <div className="mt-3 text-xs" style={{ color: "#D97706" }}>
-              Files are on disk but Tally has not loaded the report yet. Click{" "}
+              Tally has not confirmed the Bill Outstanding report. Sync keeps the
+              last synced bills until it does. Click{" "}
               <span className="font-semibold">Retry setup</span> — the app will
-              restart Tally with the TDL (no F1 manual load).
+              restart Tally with the TDL (no F1 manual load). Sync never restarts
+              Tally.
             </div>
           )}
 

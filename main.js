@@ -543,14 +543,17 @@ app.whenReady().then(async () => {
   store.set("forceUpdate", false);
   const response = await registerDevice();
 
-  // Option B: path-aware TDL install on boot (no Tally restart — sync/Settings Retry activate if needed)
+  // TDL files on disk + read-only health log. Only Settings → Retry setup restarts Tally.
   try {
-    const { ensureBillOutstandingTdl } = require("./util/ensureBillOutstandingTdl");
-    const tdlResult = await ensureBillOutstandingTdl({ allowRestart: false });
-    info("[tdl] boot ensureBillOutstandingTdl", {
-      status: tdlResult?.status,
-      liveLoaded: tdlResult?.liveLoaded,
-      message: tdlResult?.message,
+    const { installTdlFiles } = require("./util/tdlFiles");
+    const { checkTdlHealth } = require("./util/tdlHealth");
+    const { detected, applyResult } = await installTdlFiles();
+    const health = await checkTdlHealth("");
+    info("[tdl] boot", {
+      tallyDir: detected?.path || null,
+      filesInstalled: applyResult?.status ?? null,
+      tdlStatus: health.status,
+      version: health.version || null,
     });
   } catch (e) {
     info("[tdl] boot ensure failed (non-fatal):", e?.message);

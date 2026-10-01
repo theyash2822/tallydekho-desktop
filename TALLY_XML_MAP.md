@@ -44,7 +44,7 @@ Sent via HTTP POST to Tally Prime at `http://localhost:9000`.
 | UnitFull.xml | Full unit details |
 | GSTDetails.xml | GST details |
 | CompanyGST.xml | Company GST info |
-| BillOutstanding.xml | Outstanding bills |
+| BillOutstanding.xml | Outstanding bills (template; sync builds the same request in `util/billSnapshot.js`, report `TDKBillOutstandingWorking`, after the `TDKBillOutstandingHealth` check — both in `TDKBillOutstanding.tdl` 1.1.0) |
 | CostCategory.xml | Cost categories |
 | CostCentre.xml | Cost centres |
 | CostCentreTransaction.xml | Cost centre transactions |

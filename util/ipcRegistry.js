@@ -102,7 +102,7 @@ ipcMain.handle("tally:tdl_health", async () => {
 ipcMain.handle("tally:tdl_setup", async (_event, optionalDir) => {
   try {
     const { setupTdl } = require("./ensureBillOutstandingTdl");
-    // allowRestart: activate via official /TDL restart if live probe fails (no manual F1)
+    // Retry setup is the only place Tally may be restarted (official /TDL load, no manual F1)
     return await setupTdl(optionalDir || null, { allowRestart: true });
   } catch (e) {
     error(e?.message || String(e), "tally:tdl_setup");

@@ -11,7 +11,48 @@
 ;; - NO Cleared:No / ledger / sundry filters (those emptied or stressed Tally)
 ;; - Simple Type:Bill collection; filter blank bill names only
 ;; - XML shape: ENVELOPE / BILLROW / field tags (matches proven export)
+;;
+;; Version 1.1.0 adds report TDKBillOutstandingHealth. It always prints one
+;; TDKSTATUS line, so the desktop can tell "TDL loaded, zero bills" apart from
+;; "TDL not loaded". Keep TDKBOH Version in step with TDL_VERSION in
+;; util/tdlHealth.js.
 ;; -----------------------------------------------------------------------------
+
+[Report: TDKBillOutstandingHealth]
+    Form          : TDKBOH Form
+    Title         : "TallyDekho Bill Outstanding Health"
+    Keep XML Case : Yes
+
+[Form: TDKBOH Form]
+    Parts   : TDKBOH Body
+    XML Tag : ENVELOPE
+
+[Part: TDKBOH Body]
+    Lines   : TDKBOH Line
+
+[Line: TDKBOH Line]
+    Fields  : TDKBOH Active, TDKBOH Version, TDKBOH Report, TDKBOH Company
+    XML Tag : TDKSTATUS
+
+[Field: TDKBOH Active]
+    Use     : Name Field
+    Set As  : "YES"
+    XML Tag : ACTIVE
+
+[Field: TDKBOH Version]
+    Use     : Name Field
+    Set As  : "1.1.0"
+    XML Tag : VERSION
+
+[Field: TDKBOH Report]
+    Use     : Name Field
+    Set As  : "TDKBillOutstandingWorking"
+    XML Tag : REPORT
+
+[Field: TDKBOH Company]
+    Use     : Name Field
+    Set As  : ##SVCurrentCompany
+    XML Tag : COMPANY
 
 [Report: TDKBillOutstandingWorking]
     Form          : TDKBO Form

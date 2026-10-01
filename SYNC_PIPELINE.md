@@ -32,6 +32,12 @@ Desktop app acts as the bridge between Tally Prime (local) and TallyDekho backen
 7. `GSTDetails.xml` — GST data
 8. (and more — see xml.js for full sequence)
 
+### Step 4b: Bill Outstanding (per company)
+- Sync refreshes the TDL file on disk (`util/tdlFiles.js`) and never closes or restarts Tally.
+- For each open company: `TDKBillOutstandingHealth` check, then `TDKBillOutstandingWorking` (`util/billSnapshot.js`) → `SUCCESS` (rows or zero) or a failure status. Only SUCCESS rows are uploaded.
+- Upload: chunk header `Bill-Snapshot-Mode: staged`; `/ingest/complete` body `billSnapshots: [{ companyGuid, status, snapshotComplete, rowCount, tdlStatus, tdlVersion }]`. Backend replaces bills only on a complete SUCCESS; anything else keeps the last synced bills.
+- Only Settings → Setup / Retry setup (`util/ensureBillOutstandingTdl.js`) may restart Tally to load the TDL.
+
 ### Step 5: Parse + Upload
 - `util/tallyHelper.js` parses each XML response
 - Data normalized (uppercase keys, qty parsing, Dr/Cr handling)

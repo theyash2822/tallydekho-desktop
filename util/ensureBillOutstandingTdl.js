@@ -1,123 +1,96 @@
 /**
- * Bill Outstanding TDL setup + health check + live activation.
+ * Bill Outstanding TDL — Settings health + Settings Setup / Retry Setup.
  *
  * Tally does NOT support loading TDL over HTTP Import (locked FORBIDDEN).
- * Solid path:
- *  1) Copy TDL + write tally.ini with quoted paths (required for "TallyPrime (1)")
- *  2) Probe live export for <BILLROW>
- *  3) If not loaded and allowRestart: restart Tally with /TDL:"path" (official CLI)
- *     so users never need F1 → manual TDL load.
+ *  1) Copy TDL + write tally.ini with quoted paths (tdlFiles.js)
+ *  2) Read-only health report check (tdlHealth.js / billSnapshot.js)
+ *  3) Retry Setup only: restart Tally with /TDL so the add-on loads without F1.
+ *
+ * Sync must never import this module: it is the only code allowed to restart Tally.
  */
 const fs = require("fs");
 const path = require("path");
 const { spawn, execFile } = require("child_process");
 const axios = require("axios");
-const iconv = require("iconv-lite");
-const { XMLParser } = require("fast-xml-parser");
-const { info, error } = require("./logger");
+const { info } = require("./logger");
 const store = require("./store");
-const getTallyVersionFromRegistry = require("./readTallyFromRegistry");
-const { runTallyExclusive, xmlText } = require("./tallyQueue");
+const {
+  TDL_FILENAME,
+  INI_FILENAME,
+  STORE_KEY,
+  looksLikeTallyDir,
+  detectTallyInstallPath,
+  readIniState,
+  applyTdlToDir,
+  setTallyInstallPath,
+} = require("./tdlFiles");
+const { TDL_STATUS, TDL_VERSION, checkTdlHealth } = require("./tdlHealth");
+const { fetchCompanyBillSnapshot } = require("./billSnapshot");
 
-const TDL_FILENAME = "TDKBillOutstanding.tdl";
-const INI_FILENAME = "tally.ini";
-const STORE_KEY = "tallyInstallPath";
-const REPORT_ID = "TDKBillOutstandingWorking";
+const LOADED_STATUSES = new Set([
+  TDL_STATUS.ACTIVE,
+  TDL_STATUS.ACTIVE_OUTDATED,
+  TDL_STATUS.ACTIVE_LEGACY,
+]);
 
-const COMMON_PATHS = [
-  "C:\\Program Files\\TallyPrime",
-  "C:\\Program Files\\TallyPrime (1)",
-  "C:\\Program Files\\TallyPrime (2)",
-  "C:\\Program Files (x86)\\TallyPrime",
-  "C:\\Program Files\\TallyPrime\\TallyPrime",
-  "D:\\Program Files\\TallyPrime",
-  "D:\\TallyPrime",
-];
-
-const parser = new XMLParser({
-  ignoreAttributes: true,
-  attributeNamePrefix: "",
-  textNodeName: "value",
-  parseTagValue: true,
-  trimValues: true,
-});
-
-function sourceTdlPath() {
-  return path.join(__dirname, "..", "xmls", TDL_FILENAME);
+function ymd(d) {
+  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function quoteIniPath(p) {
-  const cleaned = String(p || "").replace(/^"+|"+$/g, "");
-  return `"${cleaned}"`;
+function currentFyRange(now = new Date()) {
+  const startYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+  return { fromDate: `${startYear}0401`, toDate: `${startYear + 1}0331`, currentDate: ymd(now) };
 }
 
-function looksLikeTallyDir(dir) {
-  if (!dir || typeof dir !== "string") return false;
-  try {
-    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return false;
-    const exe = path.join(dir, "tally.exe");
-    const ini = path.join(dir, INI_FILENAME);
-    return fs.existsSync(exe) || fs.existsSync(ini);
-  } catch {
-    return false;
+/**
+ * Read-only live status. With a company we also try the bill report, which is
+ * how a legacy add-on (no health report) is recognised.
+ */
+async function liveTdlStatus(companyName) {
+  if (!companyName) {
+    const health = await checkTdlHealth("");
+    const tdlStatus = health.status === TDL_STATUS.HEALTH_MISSING ? TDL_STATUS.UNKNOWN : health.status;
+    return { checked: true, tdlStatus, version: health.version || null, billRows: null, reason: health.reason };
   }
+  const snap = await fetchCompanyBillSnapshot({ companyName, ...currentFyRange() });
+  return {
+    checked: true,
+    tdlStatus: snap.tdlStatus || TDL_STATUS.UNKNOWN,
+    version: snap.tdlVersion,
+    billRows: snap.status === "SUCCESS" ? snap.rowCount : null,
+    billStatus: snap.status,
+    reason: snap.reason,
+  };
 }
 
-function dirFromExe(exePath) {
-  if (!exePath) return null;
-  try {
-    return path.dirname(exePath);
-  } catch {
-    return null;
+function liveMessage(tdlStatus) {
+  switch (tdlStatus) {
+    case TDL_STATUS.ACTIVE:
+      return { level: "success", status: "ok", message: "Bill Outstanding TDL is installed and active." };
+    case TDL_STATUS.ACTIVE_OUTDATED:
+    case TDL_STATUS.ACTIVE_LEGACY:
+      return {
+        level: "warn",
+        status: "ok",
+        message: "An older Bill Outstanding TDL is active. Click Retry setup to upgrade it.",
+      };
+    case TDL_STATUS.NOT_LOADED:
+      return { level: "danger", status: "blocked", message: "TDL not active in running Tally" };
+    case TDL_STATUS.TALLY_UNREACHABLE:
+    case TDL_STATUS.TALLY_TIMEOUT:
+      return { level: "warn", status: "unknown", message: "Tally is not reachable — open Tally, then Check again." };
+    default:
+      return {
+        level: "warn",
+        status: "unknown",
+        message: "Could not confirm the Bill Outstanding TDL. Click Retry setup to reinstall it.",
+      };
   }
-}
-
-async function detectTallyInstallPath() {
-  const saved = store.get(STORE_KEY);
-  if (looksLikeTallyDir(saved)) {
-    return { path: saved, source: "saved" };
-  }
-
-  try {
-    const infoReg = await getTallyVersionFromRegistry();
-    if (infoReg?.installLocation && looksLikeTallyDir(infoReg.installLocation)) {
-      return { path: infoReg.installLocation.replace(/\\+$/, ""), source: "registry" };
-    }
-    if (infoReg?.exePath) {
-      const d = dirFromExe(infoReg.exePath);
-      if (looksLikeTallyDir(d)) return { path: d, source: "process" };
-    }
-  } catch (e) {
-    info("[tdl] registry/process detect failed:", e?.message);
-  }
-
-  for (const p of COMMON_PATHS) {
-    if (looksLikeTallyDir(p)) return { path: p, source: "common" };
-  }
-
-  return { path: null, source: "none" };
-}
-
-function readIniState(iniPath, destTdl) {
-  if (!fs.existsSync(iniPath)) {
-    return { found: false, userTdlYes: false, tdlListed: false, quotedOk: false, raw: null };
-  }
-  const raw = fs.readFileSync(iniPath, "utf8");
-  const userTdlYes =
-    /User\s*TDL\s*Files\s*=\s*Yes/i.test(raw) || /User\s*TDL\s*=\s*Yes/i.test(raw);
-  const tdlListed =
-    raw.toLowerCase().includes(TDL_FILENAME.toLowerCase()) ||
-    (destTdl && raw.toLowerCase().includes(destTdl.toLowerCase()));
-  const quotedOk = destTdl
-    ? raw.includes(quoteIniPath(destTdl)) || !/[()]/.test(destTdl)
-    : true;
-  return { found: true, userTdlYes, tdlListed, quotedOk, raw };
 }
 
 function buildHealth({ tallyDir, detectSource, applyResult, live = null, activateResult = null }) {
   const missing = [];
-  const platform = process.platform;
-  if (platform !== "win32") {
+  if (process.platform !== "win32") {
     return {
       status: "ok",
       level: "ok",
@@ -131,6 +104,7 @@ function buildHealth({ tallyDir, detectSource, applyResult, live = null, activat
       userTdlYes: false,
       tdlListed: false,
       liveLoaded: null,
+      tdlStatus: null,
       missing: [],
       applyResult: applyResult || null,
       activateResult,
@@ -152,6 +126,7 @@ function buildHealth({ tallyDir, detectSource, applyResult, live = null, activat
       userTdlYes: false,
       tdlListed: false,
       liveLoaded: false,
+      tdlStatus: null,
       missing,
       applyResult: applyResult || null,
       activateResult,
@@ -170,26 +145,26 @@ function buildHealth({ tallyDir, detectSource, applyResult, live = null, activat
   if (ini.found && ini.tdlListed && !ini.quotedOk) {
     missing.push("TDL path needs quotes (spaces/parentheses)");
   }
-  if (live && live.checked && !live.loaded) {
-    missing.push("TDL not active in running Tally");
-  }
 
-  let status = "ok";
-  let level = "success";
-  let message = "Bill Outstanding TDL is installed and active.";
-  let reason = "ready";
+  const tdlStatus = live?.tdlStatus || null;
+  const liveLoaded = tdlStatus == null
+    ? null
+    : LOADED_STATUSES.has(tdlStatus)
+    ? true
+    : tdlStatus === TDL_STATUS.NOT_LOADED
+    ? false
+    : null;
+  if (tdlStatus === TDL_STATUS.NOT_LOADED) missing.push("TDL not active in running Tally");
 
-  if (missing.length > 0) {
+  let { status, level, message } = liveMessage(tdlStatus);
+  let reason = tdlStatus ? tdlStatus.toLowerCase() : "ready";
+
+  const fileProblem = missing.find((m) => m !== "TDL not active in running Tally");
+  if (fileProblem) {
     status = "blocked";
     level = "danger";
-    reason = !ini.found
-      ? "ini_missing"
-      : !tdlPresent
-      ? "tdl_missing"
-      : live && live.checked && !live.loaded
-      ? "not_loaded_live"
-      : "ini_not_linked";
-    message = missing[0];
+    reason = !ini.found ? "ini_missing" : !tdlPresent ? "tdl_missing" : "ini_not_linked";
+    message = fileProblem;
   }
 
   return {
@@ -205,8 +180,11 @@ function buildHealth({ tallyDir, detectSource, applyResult, live = null, activat
     userTdlYes: ini.userTdlYes,
     tdlListed: ini.tdlListed,
     quotedOk: ini.quotedOk,
-    liveLoaded: live?.checked ? !!live.loaded : null,
+    liveLoaded,
     liveBillRows: live?.billRows ?? null,
+    tdlStatus,
+    tdlVersion: live?.version || null,
+    expectedTdlVersion: TDL_VERSION,
     destTdl,
     iniPath,
     missing,
@@ -215,157 +193,9 @@ function buildHealth({ tallyDir, detectSource, applyResult, live = null, activat
   };
 }
 
-/**
- * Apply TDL copy + quoted ini link into tallyDir.
- */
-function applyTdlToDir(tallyDir) {
-  if (process.platform !== "win32") {
-    return { status: true, skipped: true, reason: "not_windows" };
-  }
-  if (!looksLikeTallyDir(tallyDir)) {
-    return { status: false, message: "Selected folder is not a valid Tally install", tallyDir };
-  }
-
-  const srcTdl = sourceTdlPath();
-  const destTdl = path.join(tallyDir, TDL_FILENAME);
-  const iniPath = path.join(tallyDir, INI_FILENAME);
-  const quoted = quoteIniPath(destTdl);
-
-  try {
-    if (!fs.existsSync(srcTdl)) {
-      error(`source TDL missing: ${srcTdl}`, "ensureBillOutstandingTdl");
-      return { status: false, message: "source TDL missing in app package" };
-    }
-
-    fs.copyFileSync(srcTdl, destTdl);
-    info(`[tdl] copied ${TDL_FILENAME} → ${destTdl}`);
-
-    if (!fs.existsSync(iniPath)) {
-      error(`tally.ini not found: ${iniPath}`, "ensureBillOutstandingTdl");
-      return { status: false, message: "tally.ini not found in Tally folder", destTdl, iniPath };
-    }
-
-    let ini = fs.readFileSync(iniPath, "utf8");
-    const original = ini;
-
-    // Enable user TDLs (both key spellings used across Tally versions)
-    if (/User\s*TDL\s*Files\s*=/i.test(ini)) {
-      ini = ini.replace(/User\s*TDL\s*Files\s*=\s*\S*/i, "User TDL Files=Yes");
-    } else {
-      ini = ini.trimEnd() + "\r\nUser TDL Files=Yes\r\n";
-    }
-    // Separate "User TDL=Yes" key (must not match "User TDL Files=")
-    if (/^\s*User\s*TDL\s*=/im.test(ini)) {
-      ini = ini.replace(/^\s*User\s*TDL\s*=\s*\S*/gim, "User TDL=Yes");
-    } else {
-      ini = ini.trimEnd() + "\r\nUser TDL=Yes\r\n";
-    }
-
-    // Drop any existing lines that reference our TDL (quoted or not), then add one clean quoted line
-    ini = ini
-      .split(/\r?\n/)
-      .filter((line) => !/^\s*TDL\s*=/i.test(line) || !line.toLowerCase().includes(TDL_FILENAME.toLowerCase()))
-      .join("\r\n");
-
-    ini = ini.trimEnd() + `\r\nTDL=${quoted}\r\n`;
-
-    if (ini !== original) {
-      fs.writeFileSync(iniPath, ini, "utf8");
-      info(`[tdl] updated ${iniPath} with TDL=${quoted}`);
-    } else {
-      info(`[tdl] tally.ini already has quoted ${TDL_FILENAME}`);
-    }
-
-    store.set(STORE_KEY, tallyDir);
-    return { status: true, destTdl, iniPath, tallyDir, quoted };
-  } catch (e) {
-    error(e?.message || String(e), "ensureBillOutstandingTdl");
-    return {
-      status: false,
-      message: e?.message || String(e),
-      hint: /EPERM|EACCES|access/i.test(e?.message || "")
-        ? "Run TallyDekho as Administrator, then Retry setup."
-        : null,
-      tallyDir,
-    };
-  }
-}
-
-function decodeTallyBody(data) {
-  const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
-  if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) {
-    return iconv.decode(buf, "utf16-le");
-  }
-  if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) {
-    return iconv.decode(buf, "utf16-be");
-  }
-  return buf.toString("utf8");
-}
-
 function tallyHttpUrl() {
   const port = store.get("port") || 9000;
   return `http://localhost:${port}`;
-}
-
-/**
- * Live probe: does running Tally know report TDKBillOutstandingWorking?
- */
-async function probeBillOutstandingLive(companyName) {
-  const name = (companyName || "").trim() || " ";
-  const xml = `<?xml version="1.0" encoding="utf-8"?>
-<ENVELOPE>
-  <HEADER>
-    <VERSION>1</VERSION>
-    <TALLYREQUEST>Export</TALLYREQUEST>
-    <TYPE>Data</TYPE>
-    <ID>${REPORT_ID}</ID>
-  </HEADER>
-  <BODY>
-    <DESC>
-      <STATICVARIABLES>
-        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        <SVCURRENTCOMPANY>${xmlText(name)}</SVCURRENTCOMPANY>
-        <SVFROMDATE TYPE="Date">20260401</SVFROMDATE>
-        <SVTODATE TYPE="Date">20270331</SVTODATE>
-      </STATICVARIABLES>
-    </DESC>
-  </BODY>
-</ENVELOPE>`;
-
-  try {
-    const response = await runTallyExclusive(() => axios.post(tallyHttpUrl(), xml, {
-      headers: { "Content-Type": "text/xml", Accept: "application/xml, text/xml, */*" },
-      responseType: "arraybuffer",
-      timeout: 20000,
-    }));
-    const text = decodeTallyBody(response.data);
-    const snippet = text.slice(0, 400).replace(/\s+/g, " ");
-    const hasBillRow = /<BILLROW[\s>]/i.test(text);
-    const hasLineError = /LINEERROR/i.test(text);
-    const unknown =
-      /unknown|does not exist|could not|not found/i.test(text) && !hasBillRow;
-
-    let loaded = false;
-    if (hasBillRow) loaded = true;
-    else if (hasLineError || unknown) loaded = false;
-    else {
-      // Empty / envelope-only → treat as not loaded (matches prior junk HEADER/BODY case)
-      try {
-        const json = parser.parse(text);
-        const env = json.ENVELOPE || json.Envelope || {};
-        loaded = env.BILLROW != null || env.BillRow != null;
-      } catch {
-        loaded = false;
-      }
-    }
-
-    const billRows = hasBillRow ? (text.match(/<BILLROW[\s>]/gi) || []).length : 0;
-    info("[tdl] live probe", { loaded, billRows, hasLineError, snippet: snippet.slice(0, 180) });
-    return { checked: true, loaded, billRows, hasLineError, snippet };
-  } catch (e) {
-    info("[tdl] live probe failed:", e?.message);
-    return { checked: true, loaded: false, billRows: 0, error: e?.message };
-  }
 }
 
 function execFileAsync(cmd, args) {
@@ -400,12 +230,12 @@ async function waitForTallyPort(timeoutMs = 45000) {
 }
 
 /**
- * Official activation: restart Tally with /TDL so report loads without manual F1.
+ * Settings Setup / Retry Setup only: restart Tally with /TDL so the report loads without manual F1.
  *
  * Tally docs: argv is `/TDL:path` (or `/TDL:filename` if file is in Tally folder).
  * Do NOT embed extra quotes inside the argv — that breaks paths like "TallyPrime (1)".
  * Prefer filename-only since we copy TDKBillOutstanding.tdl into the Tally folder.
- * /LOAD:companyNumber reopens the company so the live probe can see BILLROW.
+ * /LOAD:companyNumber reopens the company after the restart.
  */
 async function activateTdlByRestartingTally(tallyDir, destTdl, opts = {}) {
   if (process.platform !== "win32") {
@@ -423,25 +253,18 @@ async function activateTdlByRestartingTally(tallyDir, destTdl, opts = {}) {
     ? String(opts.companyNumber).trim()
     : null;
 
-  // Filename-only: TDL lives in tallyDir (copied by applyTdlToDir)
   const args = [`/TDL:${TDL_FILENAME}`];
   if (companyNumber) {
     args.unshift(`/LOAD:${companyNumber}`);
   }
 
-  info("[tdl] activating via Tally restart + /TDL", {
-    exe,
-    args,
-    destTdl,
-    companyNumber,
-  });
+  info("[tdl] setup: restarting Tally with /TDL", { exe, args, destTdl, companyNumber });
 
   await execFileAsync("taskkill", ["/IM", "tally.exe", "/F"]);
   await new Promise((r) => setTimeout(r, 2500));
 
   try {
     // cmd `start` is the reliable way to launch a GUI Tally from Electron
-    // start "" /D "dir" tally.exe /LOAD:n /TDL:file.tdl
     const child = spawn(
       process.env.ComSpec || "cmd.exe",
       ["/c", "start", "", "/D", tallyDir, "tally.exe", ...args],
@@ -466,7 +289,7 @@ async function activateTdlByRestartingTally(tallyDir, destTdl, opts = {}) {
     status: true,
     message: companyNumber
       ? "Tally restarted with Bill Outstanding TDL + company loaded"
-      : "Tally restarted with Bill Outstanding TDL — open your company if probe still fails",
+      : "Tally restarted with Bill Outstanding TDL — open your company if the check still fails",
     args,
     companyNumber,
   };
@@ -480,80 +303,23 @@ function selectedCompanyMeta() {
   };
 }
 
-/**
- * @param {{ companyName?: string, companyNumber?: string|number, allowRestart?: boolean }} [opts]
- */
-async function ensureBillOutstandingTdl(opts = {}) {
-  const meta = selectedCompanyMeta();
-  const companyName = opts.companyName || meta.companyName || "";
-  const companyNumber = opts.companyNumber ?? meta.companyNumber;
-  const allowRestart = !!opts.allowRestart;
-
-  const detected = await detectTallyInstallPath();
-  if (!detected.path) {
-    const health = buildHealth({ tallyDir: null, detectSource: detected.source });
-    info("[tdl] ensureBillOutstandingTdl", health);
-    return health;
-  }
-
-  const applyResult = applyTdlToDir(detected.path);
-  const destTdl = path.join(detected.path, TDL_FILENAME);
-
-  let live = await probeBillOutstandingLive(companyName);
-  let activateResult = null;
-
-  if (!live.loaded && allowRestart && applyResult.status) {
-    activateResult = await activateTdlByRestartingTally(detected.path, destTdl, {
-      companyNumber,
-    });
-    if (activateResult.status) {
-      // Retry probe a few times — company load is slow after /LOAD
-      for (let i = 0; i < 4 && !live.loaded; i++) {
-        await new Promise((r) => setTimeout(r, 3000));
-        live = await probeBillOutstandingLive(companyName);
-      }
-    }
-  }
-
-  const health = buildHealth({
-    tallyDir: detected.path,
-    detectSource: detected.source,
-    applyResult,
-    live,
-    activateResult,
-  });
-  info("[tdl] ensureBillOutstandingTdl", {
-    status: health.status,
-    liveLoaded: health.liveLoaded,
-    billRows: health.liveBillRows,
-    allowRestart,
-    activated: !!activateResult?.status,
-    companyNumber: companyNumber || null,
-    activateArgs: activateResult?.args || null,
-  });
-  return health;
-}
-
+/** Settings → health card. Read-only towards Tally (refreshes the files on disk). */
 async function getTdlHealth(opts = {}) {
-  const meta = selectedCompanyMeta();
-  const companyName = opts.companyName || meta.companyName || "";
+  const companyName = opts.companyName || selectedCompanyMeta().companyName || "";
   const detected = await detectTallyInstallPath();
   if (!detected.path) {
     return buildHealth({ tallyDir: null, detectSource: detected.source });
   }
-  // Refresh quoted ini silently when checking health
   const applyResult = applyTdlToDir(detected.path);
-  const live = await probeBillOutstandingLive(companyName);
-  return buildHealth({
-    tallyDir: detected.path,
-    detectSource: detected.source,
-    applyResult,
-    live,
-  });
+  const live = await liveTdlStatus(companyName);
+  info("[tdl] health", { tdlStatus: live.tdlStatus, version: live.version, billRows: live.billRows });
+  return buildHealth({ tallyDir: detected.path, detectSource: detected.source, applyResult, live });
 }
 
+/** Settings → Setup / Retry Setup. The only flow allowed to restart Tally. */
 async function setupTdl(optionalDir, opts = {}) {
   let tallyDir = optionalDir || null;
+  let detectSource = "user";
   if (tallyDir) {
     if (!looksLikeTallyDir(tallyDir)) {
       return {
@@ -568,6 +334,7 @@ async function setupTdl(optionalDir, opts = {}) {
   } else {
     const detected = await detectTallyInstallPath();
     tallyDir = detected.path;
+    detectSource = detected.source;
   }
 
   if (!tallyDir) {
@@ -575,30 +342,52 @@ async function setupTdl(optionalDir, opts = {}) {
   }
 
   const meta = selectedCompanyMeta();
-  return ensureBillOutstandingTdl({
-    companyName: opts.companyName || meta.companyName || "",
-    companyNumber: opts.companyNumber ?? meta.companyNumber,
-    allowRestart: opts.allowRestart !== false,
-  });
-}
+  const companyName = opts.companyName || meta.companyName || "";
+  const companyNumber = opts.companyNumber ?? meta.companyNumber;
+  const allowRestart = opts.allowRestart !== false;
 
-function setTallyInstallPath(dir) {
-  if (looksLikeTallyDir(dir)) {
-    store.set(STORE_KEY, dir);
-    return { status: true, path: dir };
+  const applyResult = applyTdlToDir(tallyDir);
+  const destTdl = path.join(tallyDir, TDL_FILENAME);
+  let live = await liveTdlStatus(companyName);
+  let activateResult = null;
+
+  if (live.tdlStatus === TDL_STATUS.TALLY_TIMEOUT) {
+    // Tally is running but busy — force-closing it could lose an unsaved entry.
+    activateResult = {
+      status: false,
+      message: "Tally is busy and did not answer. Finish or save your work in Tally, then Retry setup.",
+    };
+  } else if (live.tdlStatus !== TDL_STATUS.ACTIVE && allowRestart && applyResult.status) {
+    activateResult = await activateTdlByRestartingTally(tallyDir, destTdl, { companyNumber });
+    if (activateResult.status) {
+      for (let i = 0; i < 4; i++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        if ((await checkTdlHealth(companyName)).status === TDL_STATUS.ACTIVE) break;
+      }
+      live = await liveTdlStatus(companyName);
+    }
   }
-  return { status: false, message: "Invalid Tally folder" };
+
+  const health = buildHealth({ tallyDir, detectSource, applyResult, live, activateResult });
+  info("[tdl] setup", {
+    tdlStatus: health.tdlStatus,
+    version: health.tdlVersion,
+    billRows: health.liveBillRows,
+    allowRestart,
+    restarted: !!activateResult?.status,
+    companyNumber: companyNumber || null,
+  });
+  return health;
 }
 
 module.exports = {
-  ensureBillOutstandingTdl,
   getTdlHealth,
   setupTdl,
   setTallyInstallPath,
   detectTallyInstallPath,
   applyTdlToDir,
-  probeBillOutstandingLive,
   activateTdlByRestartingTally,
+  buildHealth,
   TDL_FILENAME,
   STORE_KEY,
 };

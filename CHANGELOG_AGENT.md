@@ -4,6 +4,19 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-10-01 — Bill Outstanding: sync never restarts Tally; per-company snapshot (branch `tdl`)
+
+- **Cause of the Tally crash:** sync probed the bill report for the first selected company only; a company with no bills returns a bare `<ENVELOPE></ENVELOPE>`, which read as "TDL not loaded", so sync ran `taskkill tally.exe` + restart. Zero bills and failure were also the same `[]`, so stale bills were never cleared.
+- TDL 1.1.0 (`xmls/TDKBillOutstanding.tdl`): new report `TDKBillOutstandingHealth` — always one `TDKSTATUS` line (`ACTIVE=YES`, `VERSION`, `REPORT`, `COMPANY=##SVCurrentCompany`). Bill report unchanged.
+- New `util/tdlFiles.js` (folder detect, copy TDL, tally.ini link — no process control), `util/tdlHealth.js` (read-only health check, HTTP only), `util/billSnapshot.js` (per-company health + bill fetch → `SUCCESS` (rows or 0) / `TDL_NOT_LOADED` / `LEGACY_EMPTY_AMBIGUOUS` / `COMPANY_CONTEXT_MISMATCH` / `TALLY_UNREACHABLE` / `TALLY_TIMEOUT` / `INVALID_RESPONSE` / `PARSE_FAILED`). A bare envelope counts as zero bills only after the health report proved the TDL is loaded; every BILLROW tag must parse.
+- Legacy add-on (no health report): rows → SUCCESS, `ACTIVE_LEGACY`; empty → ambiguous, bills kept; Settings suggests Retry setup.
+- `util/xml.js`: sync only refreshes the TDL files; the restart path is gone. Each company gets its own snapshot (order-independent); only SUCCESS rows are uploaded. Chunks carry `Bill-Snapshot-Mode: staged`; `/ingest/complete` carries `billSnapshots: [{ companyGuid, status, snapshotComplete, rowCount, tdlStatus, tdlVersion }]`. Progress line names companies whose bills were kept.
+- `util/ensureBillOutstandingTdl.js` is Settings-only (health card, Setup / Retry setup) and is the only module that can restart Tally; Retry setup restarts when the live status is not `ACTIVE` at the current version. Boot (`main.js`) installs files + logs a read-only health check.
+- Settings card: "In Tally" shows Active / Active (old version) / Not loaded / Tally not reachable / Not confirmed, with Retry setup hints.
+- Tested: new `scripts/test-bill-snapshot.js` (16, incl. order independence and "no sync path can reach the restart"); `npm test` 70/70; Settings.jsx compiles. Windows device QA pending (TDL 1.1.0 syntax has not run in real Tally yet).
+
+---
+
 ## 2026-10-01 — Remove company asks first and updates mobile/web straight away
 
 - Remove (row button and the multi-select bar) opens `RemoveCompaniesModal` (Cancel / Remove). Remove calls IPC `companies:remove` → `util/companyRemoval.js` → backend `POST /desktop/companies/remove` (15 s timeout); the main process drops the companies from the stored selection only after the backend confirms, then the renderer updates. Server unreachable / error / timeout → the company stays and the modal shows the message with "Try again". Unpaired (no device secret) → local only; the modal says so. Paired but workspace binding not loaded yet → refused ("Connecting to your workspace").

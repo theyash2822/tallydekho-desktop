@@ -5,6 +5,7 @@ import EditYearsModal from "./modals/EditYearsModal";
 import { TallyContext } from "../../utils/TallyContext";
 import YearChip from "../components/YearChip";
 import AlertModal from "../components/AlertModal";
+import RemoveCompaniesModal from "../components/RemoveCompaniesModal";
 
 function StatusChip({ s }) {
   const map = {
@@ -53,11 +54,15 @@ export default function Companies({
   });
 
   const [refreshing, setRefreshing] = useState(false);
+  // { companies, busy, error } while the remove warning is open.
+  const [removeConfirm, setRemoveConfirm] = useState(null);
 
   const {
     state: { companies, selectedCompanies, isSyncing, isTallyOnline, isOnline, pairedDevice },
     updateState,
     fetchCompanies,
+    removeSelectedCompanies,
+    markCompaniesAdded,
   } = useContext(TallyContext);
 
   const handleRefresh = async () => {
@@ -161,6 +166,7 @@ export default function Companies({
   };
 
   const updateSelectedCompanies = (selected) => {
+    markCompaniesAdded();
     updateState("selectedCompanies", (prev) => [...prev, ...selected]);
     setIsAddCompanyModalOpen(false);
   };
@@ -208,25 +214,60 @@ export default function Companies({
     closeEditYearsModal();
   };
 
+  const openRemoveConfirm = (companiesToRemove) => {
+    if (!companiesToRemove.length) return;
+    if (isSyncing) {
+      setAlertModalData({
+        isOpen: true,
+        message: "Wait for the sync to finish before removing a company.",
+      });
+      return;
+    }
+    setRemoveConfirm({ companies: companiesToRemove, busy: false, error: null });
+  };
+
   const removeCompanyHandler = (index) => {
-    updateState("selectedCompanies", (prev) =>
-      prev.filter((_, idx) => index != idx)
-    );
+    openRemoveConfirm(selectedCompanies.filter((_, idx) => idx == index));
   };
 
   const removeMultiHandler = () => {
-    updateState("selectedCompanies", (prev) =>
-      prev.filter((item) => !checkedCompanies[item.id])
-    );
+    openRemoveConfirm(selectedCompanies.filter((item) => checkedCompanies[item.id]));
+  };
 
-    const newCheckedCompanies = {};
+  const closeRemoveConfirm = () => {
+    if (removeConfirm?.busy) return;
+    setRemoveConfirm(null);
+  };
 
-    for (let key in checkedCompanies) {
-      if (!checkedCompanies[key]) {
-        newCheckedCompanies[key] = false;
-      }
+  const confirmRemoveHandler = async () => {
+    if (!removeConfirm || removeConfirm.busy) return;
+    if (isSyncing) {
+      setRemoveConfirm((prev) => prev && { ...prev, error: "Wait for the sync to finish before removing a company." });
+      return;
     }
-    setCheckedCompanies(newCheckedCompanies);
+    const guids = removeConfirm.companies.map((c) => c.guid || c.id);
+    setRemoveConfirm((prev) => prev && { ...prev, busy: true, error: null });
+
+    let result;
+    try {
+      result = await window.api.removeCompanies(guids);
+    } catch (_) {
+      result = { ok: false, message: "Could not remove the company. Try again." };
+    }
+
+    if (!result?.ok) {
+      setRemoveConfirm((prev) => prev && { ...prev, busy: false, error: result?.message });
+      return;
+    }
+
+    const removing = new Set(guids);
+    removeSelectedCompanies(guids);
+    setCheckedCompanies((prev) => {
+      const next = {};
+      for (const key in prev) if (!removing.has(key)) next[key] = prev[key];
+      return next;
+    });
+    setRemoveConfirm(null);
   };
 
   const closeAlertSyncModal = () => {
@@ -474,6 +515,16 @@ export default function Companies({
           years={editYearModalData.years}
           defaultCheckedYears={editYearModalData.checkedYears}
           onAdd={updateYearsHandler}
+        />
+      )}
+      {removeConfirm && (
+        <RemoveCompaniesModal
+          companies={removeConfirm.companies}
+          paired={!!pairedDevice}
+          busy={removeConfirm.busy}
+          errorMessage={removeConfirm.error}
+          onClose={closeRemoveConfirm}
+          onConfirm={confirmRemoveHandler}
         />
       )}
       {alertModalData.isOpen && (

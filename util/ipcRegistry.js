@@ -211,6 +211,13 @@ const registerTallySync = (windowContent) => {
           message: "A sync is already in progress on this Desktop.",
         };
       }
+      if (require("./companyRemoval").isRemovalInFlight()) {
+        return {
+          status: false,
+          code: "COMPANY_REMOVAL_IN_PROGRESS",
+          message: "A company is being removed. Try syncing again in a moment.",
+        };
+      }
       // Renderer-supplied companies: refuse while a kept list is not yet confirmed for this workspace.
       if (require("./companySelection").isSelectionOnHold()) {
         return {
@@ -220,6 +227,7 @@ const registerTallySync = (windowContent) => {
         };
       }
       syncStartInFlight = true;
+      require("./companyRemoval").setSyncStarting(true);
 
       try {
       if (!isDevicePaired()) {
@@ -365,6 +373,7 @@ const registerTallySync = (windowContent) => {
       };
       } finally {
         syncStartInFlight = false;
+        require("./companyRemoval").setSyncStarting(false);
       }
     }
   );
@@ -386,7 +395,8 @@ const startAutoSync = async (windowContent) => {
   info(`Background [online status]: ${isOnline}`);
   info(`Background [sync status before starting]: ${isSyncing}`);
 
-  if (status && isOnline && !isSyncing && !isSyncRunning()) {
+  const removing = require("./companyRemoval").isRemovalInFlight();
+  if (status && isOnline && !isSyncing && !isSyncRunning() && !removing) {
     windowContent.send("window:listener", {
       key: "isSyncing",
       value: true,
@@ -631,6 +641,17 @@ ipcMain.handle("companySelection:resolve", (_event, keep) => {
   const companies = resolvePendingSelection(keep === true);
   info(`[pairing] previous company selection ${keep === true ? "kept" : "cleared"} for this workspace`);
   return { companies };
+});
+
+ipcMain.handle("companies:remove", async (_event, guids) => {
+  const { removeCompanies } = require("./companyRemoval");
+  const result = await removeCompanies(guids);
+  if (result.ok) {
+    info(`[companies] removed ${result.removed.length} company(ies)${result.localOnly ? " locally (unpaired)" : " from workspace"}`);
+  } else {
+    error(`${result.code}: ${result.message}`, "companies:remove");
+  }
+  return result;
 });
 
 ipcMain.handle("api:paired_device", async () => {

@@ -4,6 +4,17 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-10-01 — Remove company asks first and updates mobile/web straight away
+
+- Remove (row button and the multi-select bar) opens `RemoveCompaniesModal` (Cancel / Remove). Remove calls IPC `companies:remove` → `util/companyRemoval.js` → backend `POST /desktop/companies/remove` (15 s timeout); the main process drops the companies from the stored selection only after the backend confirms, then the renderer updates. Server unreachable / error / timeout → the company stays and the modal shows the message with "Try again". Unpaired (no device secret) → local only; the modal says so. Paired but workspace binding not loaded yet → refused ("Connecting to your workspace").
+- Removal and sync exclude each other: removal is refused while `isSyncing` / a sync runs (checked when the warning opens, on confirm, and in main); `tally:start_sync` and the scheduled auto-sync refuse while a removal is in flight (`isRemovalInFlight`) — a sync carrying the company would reactivate it on the server.
+- New pref `selectionClearedByUser` (schema + renderer allowlist), mirrored in a renderer ref: set when Remove empties the list, so the 5 s Tally refresh no longer re-selects the open company; cleared when companies are added again. `removeSelectedCompanies` updates `selectedCompaniesRef` and state together so the refresh can't write the old list back.
+- `preload.js` `removeCompanies`; `companySelection.isDevicePaired` exported.
+- Not changed: removed GUIDs stay in the backend lineage, so removing a synced company and adding a never-synced one in its place can still trip the "GUID changed" check (pre-existing). Live write-back wake-ups don't check the selection (pre-existing).
+- Tested: `npm test` 54/54 (new `scripts/test-company-removal.js`, 12); renderer `vite build` ok. QA YELLOW → sync-during-warning, refresh race, binding-pending, guid||id, sync-starting window fixed; re-QA otherwise clean. Device test still needed.
+
+---
+
 ## 2026-10-01 — Unpair keeps the selected companies; re-pair to another workspace asks first
 
 - Before: every unpair (Desktop button, mobile/web unpair event, revoked binding) emptied the company selection, so a re-pair to the same workspace needed the companies picked again.

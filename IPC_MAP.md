@@ -20,6 +20,7 @@ Defined in `preload.js`.
 | api.reconcilePairing() | pairing:reconcile | ipcRegistry.js | Re-runs the server binding check once the renderer is listening; re-emits `pairedDevice` / `workspace` and returns `{ reachable, data }` |
 | api.pendingCompanySelection() | companySelection:pending | ipcRegistry.js | `{ pending, companies }`: companies selected for a previous workspace, held back after re-pairing to a different one |
 | api.resolveCompanySelection(keep) | companySelection:resolve | ipcRegistry.js | Answer to that prompt: `true` uses the list for this workspace, `false` clears it; returns `{ companies }` |
+| api.removeCompanies(guids) | companies:remove | ipcRegistry.js | Hides the companies in the workspace via `POST /desktop/companies/remove` before the renderer drops them; `{ ok, localOnly, removed, notFound }` or `{ ok: false, code, message }`. Local only while unpaired |
 | api.removePairedDevice() | api:remove_paired_device | ipcRegistry.js | Unpairing (the company selection stays) |
 | api.pingBackend() | backend:ping | main.js | Backend connectivity check |
 | api.sendLogs() | api:send_logs | ipcRegistry.js | Send diagnostic logs |

@@ -257,6 +257,10 @@
     "selectedCompaniesWorkspaceId": {
       "type": "string",
       "default": ""
+    },
+    "selectionClearedByUser": {
+      "type": "boolean",
+      "default": false
     }
   },
   "required": [

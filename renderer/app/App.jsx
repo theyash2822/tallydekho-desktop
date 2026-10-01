@@ -80,6 +80,8 @@ export default function App() {
   }, [previousCompanies]);
 
   const selectedCompaniesRef = useRef([]);
+  // null until read from the store; true once Remove emptied the list on purpose.
+  const selectionClearedByUserRef = useRef(null);
   const isSyncingRef = useRef(false);
   const isInitCompleted = useRef(false);
   const hardSyncContinueOnceRef = useRef(null);
@@ -513,8 +515,32 @@ export default function App() {
     updateTallyStatus();
   };
 
+  // Ref and state change together, so the 5s Tally refresh (which reads the ref)
+  // can't write the old list back over a removal before React re-renders.
+  const removeSelectedCompanies = (guids) => {
+    const drop = new Set(guids);
+    const next = (selectedCompaniesRef.current || []).filter((c) => !drop.has(c.guid || c.id));
+    if (next.length === 0) {
+      selectionClearedByUserRef.current = true;
+      window.api.setPref("selectionClearedByUser", true);
+    }
+    selectedCompaniesRef.current = next;
+    updateState("selectedCompanies", next);
+  };
+
+  const markCompaniesAdded = () => {
+    selectionClearedByUserRef.current = false;
+    window.api.setPref("selectionClearedByUser", false);
+  };
+
   const fetchCompanies = async () => {
     const companies = await window.tally.companies();
+    if (selectionClearedByUserRef.current === null) {
+      const stored = !!(await window.api.getPref("selectionClearedByUser"));
+      if (selectionClearedByUserRef.current === null) selectionClearedByUserRef.current = stored;
+    }
+    // No await from here until the selection is written back.
+    const clearedByUser = selectionClearedByUserRef.current;
     const data = companies.map((company) => ({
       id: company.guid,
       name: company.name,
@@ -590,10 +616,14 @@ export default function App() {
       (isCompanyRemoved && newSelectedCompanies.length == 0) ||
       !isCompanyRemoved
     ) {
-      newSelectedCompanies = data
-        .filter((item) => item.isCurrentCompany)
-        .map((item) => ({ ...item, years: item.years.slice(-2) }));
+      newSelectedCompanies = clearedByUser
+        ? []
+        : data
+            .filter((item) => item.isCurrentCompany)
+            .map((item) => ({ ...item, years: item.years.slice(-2) }));
     }
+
+    if (clearedByUser && newSelectedCompanies.length > 0) markCompaniesAdded();
 
     const prevSynced = (selectedCompaniesRef.current || []).filter((c) => c.isSynced);
     selectedCompaniesRef.current = newSelectedCompanies;
@@ -884,6 +914,8 @@ export default function App() {
           updateState,
           updateTallyStatus,
           fetchCompanies,
+          removeSelectedCompanies,
+          markCompaniesAdded,
           updatePort,
           openAlertModal,
           syncState: deriveSyncState(state),

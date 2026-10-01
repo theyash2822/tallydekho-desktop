@@ -190,6 +190,7 @@ module.exports = {
   getPendingSelection,
   resolvePendingSelection,
   getBoundWorkspaceId,
+  isDevicePaired,
   setBoundWorkspaceId,
   clearWorkspaceBinding,
   __setStoreForTests,

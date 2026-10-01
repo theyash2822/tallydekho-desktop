@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld("api", {
   reconcilePairing: () => ipcRenderer.invoke("pairing:reconcile"),
   pendingCompanySelection: () => ipcRenderer.invoke("companySelection:pending"),
   resolveCompanySelection: (keep) => ipcRenderer.invoke("companySelection:resolve", keep),
+  removeCompanies: (guids) => ipcRenderer.invoke("companies:remove", guids),
   removePairedDevice: () => ipcRenderer.invoke("api:remove_paired_device"),
   pingBackend: () => ipcRenderer.invoke("backend:ping"),
   sendLogs: () => ipcRenderer.invoke("api:send_logs"),

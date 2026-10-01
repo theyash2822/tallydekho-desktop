@@ -16,6 +16,7 @@ const RENDERER_READABLE_PREFS = new Set([
   "lastSync",
   "port",
   "selectedCompanies",
+  "selectionClearedByUser",
   "syncInterval",
   "syncMode",
   "versionLevel",
@@ -28,6 +29,7 @@ const RENDERER_WRITABLE_PREFS = new Set([
   "lastSync",
   "port",
   "selectedCompanies",
+  "selectionClearedByUser",
 ]);
 
 const RENDERER_FORBIDDEN_PREFS = [

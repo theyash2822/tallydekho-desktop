@@ -896,15 +896,20 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
   const sendProgress = createTallySyncProgressSender(windowContent);
   const sendMessage = tallySyncMessageSender(windowContent);
 
-  // Option B: ensure TDL on disk; if not live-loaded, restart Tally with /TDL+/LOAD (no manual F1)
+  // Ensure the TDL is on disk and check it is live. Never restart Tally from a sync: the
+  // restart force-closes Tally and reopens one company, which then fails this sync's
+  // "company not open" check. If the TDL is not live, bills export no rows and the
+  // backend keeps its last bills; Settings → Retry setup does the restart on request.
   try {
-    const companyName = companies[0]?.name || "";
-    const companyNumber = companies[0]?.companyNumber ?? null;
     const tdlResult = await ensureBillOutstandingTdl({
-      companyName,
-      companyNumber,
-      allowRestart: true,
+      companyName: companies[0]?.name || "",
+      companyNames: companies.map((c) => c?.name).filter(Boolean),
+      companyNumber: companies[0]?.companyNumber ?? null,
+      allowRestart: false,
     });
+    if (tdlResult && tdlResult.liveLoaded === false) {
+      sendMessage("Bill outstanding add-on is not active in Tally — open Settings → Retry setup");
+    }
     info("[tdl] ensureBillOutstandingTdl", {
       status: tdlResult?.status,
       liveLoaded: tdlResult?.liveLoaded,

@@ -307,6 +307,25 @@ function tallyHttpUrl() {
   return `http://localhost:${port}`;
 }
 
+function isBareEnvelope(text) {
+  return /^\s*(<\?xml[^>]*\?>)?\s*<ENVELOPE\s*>\s*<\/ENVELOPE\s*>\s*$/i.test(String(text || ""));
+}
+
+/**
+ * Probe each company until one proves the report is live. Checking only the first
+ * selected company misread a company with no bills as "TDL not loaded".
+ */
+async function probeBillOutstandingAny(companyNames) {
+  const names = [...new Set((companyNames || []).map((n) => String(n || "").trim()).filter(Boolean))];
+  if (!names.length) return probeBillOutstandingLive("");
+  let last = null;
+  for (const name of names) {
+    last = await probeBillOutstandingLive(name);
+    if (last.loaded) return last;
+  }
+  return last;
+}
+
 /**
  * Live probe: does running Tally know report TDKBillOutstandingWorking?
  */
@@ -359,9 +378,15 @@ async function probeBillOutstandingLive(companyName) {
       }
     }
 
+    // A company with no outstanding bills answers a bare <ENVELOPE></ENVELOPE>: the report
+    // ran, it just has no rows. An unknown report answers with a LINEERROR / HEADER-BODY
+    // shell instead, so only the bare envelope counts as loaded.
+    const emptyReport = !hasBillRow && !hasLineError && isBareEnvelope(text);
+    if (emptyReport) loaded = true;
+
     const billRows = hasBillRow ? (text.match(/<BILLROW[\s>]/gi) || []).length : 0;
-    info("[tdl] live probe", { loaded, billRows, hasLineError, snippet: snippet.slice(0, 180) });
-    return { checked: true, loaded, billRows, hasLineError, snippet };
+    info("[tdl] live probe", { company: name.trim() || null, loaded, billRows, emptyReport, hasLineError, snippet: snippet.slice(0, 180) });
+    return { checked: true, loaded, billRows, emptyReport, hasLineError, snippet };
   } catch (e) {
     info("[tdl] live probe failed:", e?.message);
     return { checked: true, loaded: false, billRows: 0, error: e?.message };
@@ -473,19 +498,25 @@ async function activateTdlByRestartingTally(tallyDir, destTdl, opts = {}) {
 }
 
 function selectedCompanyMeta() {
-  const c = require("./companySelection").getSelectedCompanies()[0] || {};
+  const selected = require("./companySelection").getSelectedCompanies();
+  const c = selected[0] || {};
   return {
     companyName: c.name || "",
+    companyNames: selected.map((s) => s?.name).filter(Boolean),
     companyNumber: c.companyNumber ?? c.COMPANYNUMBER ?? null,
   };
 }
 
 /**
- * @param {{ companyName?: string, companyNumber?: string|number, allowRestart?: boolean }} [opts]
+ * allowRestart force-closes and relaunches Tally (only one company reopens), so it is
+ * only for the explicit Settings setup/Retry — never from a sync.
+ *
+ * @param {{ companyName?: string, companyNames?: string[], companyNumber?: string|number, allowRestart?: boolean }} [opts]
  */
 async function ensureBillOutstandingTdl(opts = {}) {
   const meta = selectedCompanyMeta();
   const companyName = opts.companyName || meta.companyName || "";
+  const companyNames = opts.companyNames?.length ? opts.companyNames : [companyName, ...meta.companyNames];
   const companyNumber = opts.companyNumber ?? meta.companyNumber;
   const allowRestart = !!opts.allowRestart;
 
@@ -499,7 +530,7 @@ async function ensureBillOutstandingTdl(opts = {}) {
   const applyResult = applyTdlToDir(detected.path);
   const destTdl = path.join(detected.path, TDL_FILENAME);
 
-  let live = await probeBillOutstandingLive(companyName);
+  let live = await probeBillOutstandingAny(companyNames);
   let activateResult = null;
 
   if (!live.loaded && allowRestart && applyResult.status) {
@@ -543,7 +574,7 @@ async function getTdlHealth(opts = {}) {
   }
   // Refresh quoted ini silently when checking health
   const applyResult = applyTdlToDir(detected.path);
-  const live = await probeBillOutstandingLive(companyName);
+  const live = await probeBillOutstandingAny([companyName, ...meta.companyNames]);
   return buildHealth({
     tallyDir: detected.path,
     detectSource: detected.source,
@@ -598,6 +629,8 @@ module.exports = {
   detectTallyInstallPath,
   applyTdlToDir,
   probeBillOutstandingLive,
+  probeBillOutstandingAny,
+  isBareEnvelope,
   activateTdlByRestartingTally,
   TDL_FILENAME,
   STORE_KEY,

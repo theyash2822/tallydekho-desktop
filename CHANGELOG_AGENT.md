@@ -4,15 +4,6 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
-## 2026-10-01 — Sync no longer force-closes Tally (TDL probe false negative)
-
-- **Cause:** every Sync / Hard Sync probed `TDKBillOutstandingWorking` for the first selected company only. Laveena (no outstanding bills) became first after a remove/re-add; Tally answered a bare `<ENVELOPE></ENVELOPE>`, which was read as "TDL not loaded", so the sync ran `taskkill /IM tally.exe /F` and relaunched Tally with `/LOAD:<that company>` only. The other companies were then closed, the next sync stopped with `company_not_open`, and the loop repeated.
-- `util/xml.js`: sync calls `ensureBillOutstandingTdl` with `allowRestart: false` and every selected company name; if the TDL is not live it shows "Bill outstanding add-on is not active in Tally — open Settings → Retry setup" and carries on (bills export no rows, backend keeps its last bills).
-- `util/ensureBillOutstandingTdl.js`: a bare envelope counts as loaded (report ran, no rows); LINEERROR / HEADER-BODY shells stay "not loaded". New `probeBillOutstandingAny` probes the selected companies until one proves the report is live (used by sync, boot and Settings health). Settings → Retry setup still restarts Tally on request.
-- Tested: `npm test` 60/60 (new `scripts/test-tdl-probe.js`, 6); renderer `vite build` ok. Device test still needed.
-
----
-
 ## 2026-10-01 — Remove company asks first and updates mobile/web straight away
 
 - Remove (row button and the multi-select bar) opens `RemoveCompaniesModal` (Cancel / Remove). Remove calls IPC `companies:remove` → `util/companyRemoval.js` → backend `POST /desktop/companies/remove` (15 s timeout); the main process drops the companies from the stored selection only after the backend confirms, then the renderer updates. Server unreachable / error / timeout → the company stays and the modal shows the message with "Try again". Unpaired (no device secret) → local only; the modal says so. Paired but workspace binding not loaded yet → refused ("Connecting to your workspace").

@@ -4,6 +4,13 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-10-01 — Dev backend IP 192.168.29.241 → .240
+
+- The Mac's LAN IP changed, so the desktop showed "internet offline". `DEFAULT_DEV_BACKEND_URL` in `util/backendConfig.js`, `.env.example` and the docs now point at `http://192.168.29.240:3001`. A local `.env` `BACKEND_URL` still overrides it; production builds are unaffected.
+- Tested: `scripts/verify-backend-config.js` passes; `/health` on .240 returns ok.
+
+---
+
 ## 2026-09-30 — Multi-company sync: upload per company, one Tally request at a time
 
 - **Upload per company** (`util/xml.js`): each selected company gets its own `/ingest` upload with a `Company-Guid` header on every chunk and `companyGuid` on `/ingest/complete`. Before, all companies went in one upload and the backend filed each 10k chunk under its first record's company.

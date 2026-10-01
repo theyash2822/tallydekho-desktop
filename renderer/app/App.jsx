@@ -14,6 +14,7 @@ import SyncErrorModal from "./views/components/SyncErrorModal";
 import { CODE_ERROR_MESSAGE } from "./utils/helper";
 import VersionUpdateModal from "./views/components/VersionUpdateModal";
 import ForceUpdateModal from "./views/components/ForceUpdateModal";
+import PreviousCompaniesModal from "./views/components/PreviousCompaniesModal";
 
 export default function App() {
   const [state, setState] = useState({
@@ -70,6 +71,13 @@ export default function App() {
     message: null,
     sendLogs: false,
   });
+  // { companies, workspaceName } while the previous workspace's selection awaits an answer.
+  const [previousCompanies, setPreviousCompanies] = useState(null);
+  const [resolvingPreviousCompanies, setResolvingPreviousCompanies] = useState(false);
+  const previousCompaniesRef = useRef(null);
+  useEffect(() => {
+    previousCompaniesRef.current = previousCompanies;
+  }, [previousCompanies]);
 
   const selectedCompaniesRef = useRef([]);
   const isSyncingRef = useRef(false);
@@ -278,6 +286,11 @@ export default function App() {
         const binding = await window.api.reconcilePairing?.();
         if (binding?.reachable) updateState("pairedDevice", binding.data || null);
       } catch (_) {}
+
+      try {
+        const pending = await window.api.pendingCompanySelection?.();
+        if (pending?.pending) setPreviousCompanies({ companies: pending.companies, workspaceName: null });
+      } catch (_) {}
     };
 
     init();
@@ -347,6 +360,9 @@ export default function App() {
         autoFirstSyncInFlightRef.current = false;
         autoFirstSyncStartedForBindRef.current = null;
         openAlertModal("Workspace connection is no longer active.");
+        return;
+      } else if (key == "companySelectionConfirm") {
+        if (value?.companies?.length) setPreviousCompanies(value);
         return;
       } else if (key == "pairingClaimed" && value) {
         updateState("pairingClaimed", {
@@ -614,6 +630,10 @@ export default function App() {
       pairedDevice?.name ||
       "bound";
     if (autoFirstSyncStartedForBindRef.current === bindKey) return false;
+    if (previousCompaniesRef.current) {
+      updateState("pendingFirstSyncAfterPair", true);
+      return false;
+    }
     autoFirstSyncInFlightRef.current = true;
     try {
       let tallyOk = false;
@@ -666,6 +686,12 @@ export default function App() {
         updateState("isSyncing", false);
         updateState("pendingFirstSyncAfterPair", true);
         await updateTallyStatus();
+        return false;
+      }
+      if (code === "COMPANY_SELECTION_PENDING") {
+        autoFirstSyncStartedForBindRef.current = null;
+        updateState("isSyncing", false);
+        updateState("pendingFirstSyncAfterPair", true);
         return false;
       }
       return true;
@@ -789,6 +815,19 @@ export default function App() {
     });
   };
 
+  const resolvePreviousCompanies = async (keep) => {
+    setResolvingPreviousCompanies(true);
+    try {
+      const result = await window.api.resolveCompanySelection(keep);
+      updateState("selectedCompanies", Array.isArray(result?.companies) ? result.companies : []);
+      setPreviousCompanies(null);
+    } catch (_) {
+      openAlertModal("Could not update the company list. Please try again.");
+    } finally {
+      setResolvingPreviousCompanies(false);
+    }
+  };
+
   const closeVersionUpdateModal = () => {
     updateState("isVersionUpdateModalOpen", false);
   };
@@ -819,6 +858,15 @@ export default function App() {
         <SyncErrorModal
           onClose={closeHardSyncModal}
           onConfirm={confirmHardSyncModal}
+        />
+      )}
+      {previousCompanies && (
+        <PreviousCompaniesModal
+          companies={previousCompanies.companies}
+          workspaceName={previousCompanies.workspaceName || state.workspace?.name}
+          busy={resolvingPreviousCompanies}
+          onKeep={() => resolvePreviousCompanies(true)}
+          onClear={() => resolvePreviousCompanies(false)}
         />
       )}
       {state.isVersionUpdateModalOpen && (

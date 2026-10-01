@@ -11,6 +11,7 @@ const {
   setBoundWorkspaceId,
   clearWorkspaceBinding,
   getSelectedCompanies,
+  getPendingSelection,
 } = require("./companySelection");
 
 let targetWindow = null;
@@ -41,7 +42,11 @@ const api = {
   async claim() {
     const { axiosInstance } = require("./helper");
     const { claimAndAck } = require("./claimPairing");
-    return claimAndAck(axiosInstance);
+    const data = await claimAndAck(axiosInstance);
+    // Bind before `pairingClaimed` is emitted: while unbound, a list kept from
+    // another workspace reads as the current selection and would be synced.
+    await syncWorkspaceBinding(data?.workspace);
+    return data;
   },
   async getPairedDevice() {
     const { axiosInstance } = require("./helper");
@@ -52,21 +57,34 @@ const api = {
 
 /**
  * Resolve the workspace from the server binding and scope local state to it.
- * Dropping a selection owned by a different workspace happens here.
+ * A selection owned by a different workspace is held back here and the
+ * renderer asks the user whether to use it.
  */
-async function syncWorkspaceBinding() {
+async function syncWorkspaceBinding(fallbackWorkspace = null) {
+  let profile = null;
   try {
     const { axiosInstance } = require("./helper");
     const response = await axiosInstance.get("/desktop/me");
-    const profile = response.data?.data || null;
-    const workspace = profile?.workspace || null;
+    profile = response.data?.data || null;
+  } catch (err) {
+    info(`[pairing] workspace binding lookup failed: ${err?.message}`);
+    if (!fallbackWorkspace?.id) return null;
+  }
+  try {
+    const workspace = profile?.workspace?.id ? profile.workspace : fallbackWorkspace;
     if (!workspace?.id) return profile;
 
-    const selectionDropped = setBoundWorkspaceId(workspace.id);
+    const selectionPending = setBoundWorkspaceId(workspace.id);
     emit("workspace", workspace);
-    if (selectionDropped) {
-      info("[pairing] workspace changed — previous company selection dropped");
-      emit("selectedCompanies", getSelectedCompanies());
+    // Reads return [] until the binding is known, so the renderer may hold a
+    // stale empty list; re-send whatever is current now.
+    emit("selectedCompanies", getSelectedCompanies());
+    if (selectionPending) {
+      info("[pairing] workspace changed — previous company selection awaits confirmation");
+      emit("companySelectionConfirm", {
+        companies: getPendingSelection(),
+        workspaceName: workspace.name || null,
+      });
     }
     return profile;
   } catch (err) {
@@ -98,7 +116,7 @@ async function reconcileBinding(reason = "startup") {
   // No server-side binding: this Desktop is genuinely unpaired or was revoked.
   clearWorkspaceBinding();
   emit("pairedDevice", null);
-  emit("selectedCompanies", []);
+  emit("selectedCompanies", getSelectedCompanies());
   await lifecycle.start(reason);
   return { reachable: true, paired: null };
 }
@@ -115,7 +133,7 @@ function initPairingRuntime(window) {
 /** Local teardown after an actual unpair / revoked binding. */
 function handleUnpaired(reason = "unpaired") {
   clearWorkspaceBinding();
-  emit("selectedCompanies", []);
+  emit("selectedCompanies", getSelectedCompanies());
   return lifecycle.start(reason);
 }
 

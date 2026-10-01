@@ -211,6 +211,14 @@ const registerTallySync = (windowContent) => {
           message: "A sync is already in progress on this Desktop.",
         };
       }
+      // Renderer-supplied companies: refuse while a kept list is not yet confirmed for this workspace.
+      if (require("./companySelection").isSelectionOnHold()) {
+        return {
+          status: false,
+          code: "COMPANY_SELECTION_PENDING",
+          message: "Confirm the company list for this workspace first.",
+        };
+      }
       syncStartInFlight = true;
 
       try {
@@ -610,6 +618,21 @@ ipcMain.handle("pairing:reconcile", async () => {
   }
 });
 
+// Companies selected for a previous workspace, held back after re-pairing to a
+// different one until the user answers the prompt.
+ipcMain.handle("companySelection:pending", () => {
+  const { getPendingSelection } = require("./companySelection");
+  const companies = getPendingSelection();
+  return { pending: companies.length > 0, companies };
+});
+
+ipcMain.handle("companySelection:resolve", (_event, keep) => {
+  const { resolvePendingSelection } = require("./companySelection");
+  const companies = resolvePendingSelection(keep === true);
+  info(`[pairing] previous company selection ${keep === true ? "kept" : "cleared"} for this workspace`);
+  return { companies };
+});
+
 ipcMain.handle("api:paired_device", async () => {
   try {
     const response = await axiosInstance.get("/desktop/pairing-device");
@@ -639,8 +662,8 @@ ipcMain.handle("api:remove_paired_device", async () => {
     store.delete("workspace");
   } catch (_) {}
 
-  // Actual unpair: drop the workspace binding and its company selection, then
-  // start a fresh pairing session automatically.
+  // Actual unpair: drop the workspace binding (the company selection stays for
+  // the user to keep or remove), then start a fresh pairing session.
   await require("./pairingRuntime").handleUnpaired("unpair");
 
   return {

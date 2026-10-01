@@ -11,7 +11,12 @@ const {
   clearWorkspaceBinding,
   setBoundWorkspaceId,
   getBoundWorkspaceId,
+  isSelectionPending,
+  getPendingSelection,
+  resolvePendingSelection,
+  isSelectionOnHold,
   __setStoreForTests,
+  __setPairedCheckForTests,
 } = require("../util/companySelection");
 const {
   processCompanyWriteback,
@@ -41,14 +46,46 @@ function memoryStore(initial = {}) {
   };
 }
 
+let devicePaired = false;
+
 beforeEach(() => {
   __setStoreForTests(memoryStore());
+  devicePaired = false;
+  __setPairedCheckForTests(() => devicePaired);
   resetDepsForTests();
 });
 
 afterEach(() => {
   __setStoreForTests(null);
+  __setPairedCheckForTests(null);
   resetDepsForTests();
+});
+
+test("paired again before the workspace is known: kept list is on hold", () => {
+  setBoundWorkspaceId("ws-a");
+  setSelectedCompanies([{ guid: "X" }]);
+  clearWorkspaceBinding();
+  assert.equal(getSelectedCompanies()[0].guid, "X");
+
+  devicePaired = true;
+  assert.equal(isSelectionOnHold(), true);
+  assert.deepEqual(getSelectedCompanies(), []);
+  assert.deepEqual(companyGuidsFromSelection(), []);
+  setSelectedCompanies([]);
+  setSelectedCompanies([{ guid: "AUTO" }]);
+
+  assert.equal(setBoundWorkspaceId("ws-a"), false);
+  assert.equal(isSelectionOnHold(), false);
+  assert.deepEqual(getSelectedCompanies().map((c) => c.guid), ["X"]);
+});
+
+test("paired again, workspace turns out different: on hold becomes the prompt", () => {
+  setBoundWorkspaceId("ws-a");
+  setSelectedCompanies([{ guid: "X" }]);
+  clearWorkspaceBinding();
+  devicePaired = true;
+  assert.equal(setBoundWorkspaceId("ws-b"), true);
+  assert.equal(getPendingSelection()[0].guid, "X");
 });
 
 test("changing cached workspaceId does not keep another workspace's companies", () => {
@@ -56,13 +93,13 @@ test("changing cached workspaceId does not keep another workspace's companies", 
   setSelectedCompanies([{ guid: "X", name: "Acme" }]);
   assert.equal(getSelectedCompanies()[0].guid, "X");
 
-  const dropped = setBoundWorkspaceId("ws-b");
-  assert.equal(dropped, true);
+  const pending = setBoundWorkspaceId("ws-b");
+  assert.equal(pending, true);
   assert.deepEqual(getSelectedCompanies(), []);
   assert.equal(getBoundWorkspaceId(), "ws-b");
 });
 
-test("unpair clears tenant selection so re-pair cannot inherit it", () => {
+test("unpair keeps the company list but drops binding and sync markers", () => {
   const backing = memoryStore({
     lastSync: "2026-01-01T00:00:00.000Z",
     myLastSyncEpoch: 1700000000,
@@ -72,12 +109,99 @@ test("unpair clears tenant selection so re-pair cannot inherit it", () => {
   setSelectedCompanies([{ guid: "X", name: "Acme" }]);
   clearWorkspaceBinding();
   assert.equal(getBoundWorkspaceId(), null);
-  assert.deepEqual(getSelectedCompanies(), []);
+  assert.equal(getSelectedCompanies()[0].guid, "X");
   assert.equal(backing.get("lastSync"), undefined);
   assert.equal(backing.get("myLastSyncEpoch"), undefined);
+});
 
-  setBoundWorkspaceId("ws-b");
+test("re-pair to the same workspace keeps the list without asking", () => {
+  setBoundWorkspaceId("ws-a");
+  setSelectedCompanies([{ guid: "X", name: "Acme" }]);
+  clearWorkspaceBinding();
+  assert.equal(setBoundWorkspaceId("ws-a"), false);
+  assert.equal(isSelectionPending(), false);
+  assert.equal(getSelectedCompanies()[0].guid, "X");
+});
+
+test("editing the list while unpaired keeps its workspace owner", () => {
+  setBoundWorkspaceId("ws-a");
+  setSelectedCompanies([{ guid: "X" }, { guid: "Y" }]);
+  clearWorkspaceBinding();
+  setSelectedCompanies([{ guid: "Y" }]);
+  assert.equal(setBoundWorkspaceId("ws-a"), false);
+  assert.deepEqual(getSelectedCompanies().map((c) => c.guid), ["Y"]);
+});
+
+test("removing every company while unpaired means nothing to ask on re-pair", () => {
+  setBoundWorkspaceId("ws-a");
+  setSelectedCompanies([{ guid: "X" }]);
+  clearWorkspaceBinding();
+  setSelectedCompanies([]);
+  assert.equal(setBoundWorkspaceId("ws-b"), false);
   assert.deepEqual(getSelectedCompanies(), []);
+});
+
+test("re-pair to a different workspace holds the list until the user answers", () => {
+  setBoundWorkspaceId("ws-a");
+  setSelectedCompanies([{ guid: "X", name: "Acme" }]);
+  clearWorkspaceBinding();
+  assert.equal(setBoundWorkspaceId("ws-b"), true);
+  assert.equal(isSelectionPending(), true);
+  assert.deepEqual(getSelectedCompanies(), []);
+  assert.deepEqual(companyGuidsFromSelection(), []);
+  assert.equal(getPendingSelection()[0].guid, "X");
+
+  // Renderer echoes the [] it was given; that must not wipe the pending list.
+  setSelectedCompanies([]);
+  assert.equal(isSelectionPending(), true);
+  assert.equal(getPendingSelection()[0].guid, "X");
+});
+
+test("keeping the previous list hands it to the new workspace", () => {
+  setBoundWorkspaceId("ws-a");
+  setSelectedCompanies([{ guid: "X", name: "Acme" }]);
+  clearWorkspaceBinding();
+  setBoundWorkspaceId("ws-b");
+  const kept = resolvePendingSelection(true);
+  assert.equal(kept[0].guid, "X");
+  assert.equal(isSelectionPending(), false);
+  assert.equal(getSelectedCompanies()[0].guid, "X");
+  assert.deepEqual(companyGuidsFromSelection(), ["X"]);
+});
+
+test("clearing the previous list leaves the new workspace empty", () => {
+  setBoundWorkspaceId("ws-a");
+  setSelectedCompanies([{ guid: "X", name: "Acme" }]);
+  clearWorkspaceBinding();
+  setBoundWorkspaceId("ws-b");
+  assert.deepEqual(resolvePendingSelection(false), []);
+  assert.equal(isSelectionPending(), false);
+  assert.deepEqual(getSelectedCompanies(), []);
+  // Going back to the old workspace does not resurrect it.
+  clearWorkspaceBinding();
+  setBoundWorkspaceId("ws-a");
+  assert.deepEqual(getSelectedCompanies(), []);
+});
+
+test("renderer writes while a previous list is pending do not re-own it", () => {
+  setBoundWorkspaceId("ws-a");
+  setSelectedCompanies([{ guid: "X" }]);
+  clearWorkspaceBinding();
+  setBoundWorkspaceId("ws-b");
+  setSelectedCompanies([{ guid: "X" }, { guid: "Z" }]);
+  assert.equal(isSelectionPending(), true);
+  assert.deepEqual(getSelectedCompanies(), []);
+  assert.deepEqual(getPendingSelection().map((c) => c.guid), ["X"]);
+});
+
+test("re-pairing back to the owning workspace while pending needs no answer", () => {
+  setBoundWorkspaceId("ws-a");
+  setSelectedCompanies([{ guid: "X" }]);
+  clearWorkspaceBinding();
+  setBoundWorkspaceId("ws-b");
+  clearWorkspaceBinding();
+  assert.equal(setBoundWorkspaceId("ws-a"), false);
+  assert.equal(getSelectedCompanies()[0].guid, "X");
 });
 
 test("temporary reconnect keeps selection for the same binding", () => {

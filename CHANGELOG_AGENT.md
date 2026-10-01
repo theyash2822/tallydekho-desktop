@@ -4,6 +4,19 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-10-01 — Unpair keeps the selected companies; re-pair to another workspace asks first
+
+- Before: every unpair (Desktop button, mobile/web unpair event, revoked binding) emptied the company selection, so a re-pair to the same workspace needed the companies picked again.
+- `util/companySelection.js`: `clearWorkspaceBinding` drops the binding, `lastSync`, `myLastSyncEpoch` but keeps the list and its owning workspace. Re-pair to the same workspace keeps the list silently. Re-pair to a different workspace marks it pending (`isSelectionPending`): reads return [] so nothing syncs, the renderer's echo of [] is ignored, and `resolvePendingSelection(keep)` either hands the list to the new workspace or clears it. Every renderer write is ignored while pending (the Tally refresh auto-selects the current company, which is not the user's answer). Editing the list while unpaired keeps the owner; removing all of it clears it.
+- `util/pairingRuntime.js`: unpair / no-binding emit the kept list; a pending list emits `companySelectionConfirm`. The claim now binds the workspace (`/desktop/me`, falling back to the claim's `workspace`) before `pairingClaimed`, otherwise the kept list read as current while unbound and synced into the new workspace.
+- If the binding lookup has not landed after a re-pair (device secret present, no `boundWorkspaceId`, list has an owner), the kept list is on hold too (`isSelectionOnHold`): reads return [], writes are ignored; `syncWorkspaceBinding` always re-emits `selectedCompanies` once bound.
+- `tally:start_sync` refuses with `COMPANY_SELECTION_PENDING` while on hold (renderer-supplied companies); the auto first sync after pair waits for the answer.
+- IPC `companySelection:pending` / `companySelection:resolve` (`preload.js` `pendingCompanySelection` / `resolveCompanySelection`, `IPC_MAP.md`). Renderer `PreviousCompaniesModal` ("Use these companies" / "Clear list"), also re-checked at startup.
+- Unchanged: syncing while unpaired stays blocked (`isDevicePaired`); Workspace Reset still clears the list.
+- Tested: `npm test` 40/40 (10 selection tests, 9 new/rewritten); renderer `vite build` ok.
+
+---
+
 ## 2026-10-01 — Dev backend IP 192.168.29.241 → .240
 
 - The Mac's LAN IP changed, so the desktop showed "internet offline". `DEFAULT_DEV_BACKEND_URL` in `util/backendConfig.js`, `.env.example` and the docs now point at `http://192.168.29.240:3001`. A local `.env` `BACKEND_URL` still overrides it; production builds are unaffected.

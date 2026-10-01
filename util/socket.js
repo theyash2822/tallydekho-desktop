@@ -118,7 +118,7 @@ module.exports = (window, socket) => {
     store.set("isSyncing", false);
     const { clearDeviceSecret } = require("./deviceCredential");
     clearDeviceSecret();
-    // Drops the workspace binding and its company selection, then starts a
+    // Drops the workspace binding (the company selection stays), then starts a
     // fresh pairing session automatically.
     require("./pairingRuntime").handleUnpaired("unpaired-event");
   });

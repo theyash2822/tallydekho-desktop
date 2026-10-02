@@ -4,6 +4,16 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-10-01 — Settings TDL card: "Not active in Tally" instead of "Needs setup" (branch `tdl`)
+
+- Bug: file installed + tally.ini linked + runtime not confirmed showed the badge **Needs setup** (old `statusLabel` fell through on any non-"ok" status) plus a red "Missing: TDL not active in running Tally".
+- New `renderer/app/utils/tdlStatusView.js` — the only mapping from health → UI state (`READY`, `OUTDATED`, `NOT_ACTIVE`, `TALLY_UNREACHABLE`, `NOT_INSTALLED`, `NOT_LINKED`, `FOLDER_NOT_FOUND`, `NOT_REQUIRED`, `CHECKING`, `ERROR`) and its badge / row / message text; `setupResultNote` reports success only when the state is `READY`.
+- `Settings.jsx`: badge, rows, helper message and post-setup note all come from the view model; old `statusLabel` / `statusTone` / `noteAfterSetup` and three hand-written banners removed. Buttons unchanged (Check now = read-only `tdlHealth`; Retry setup / Select Tally folder = `setupTdl`, which may restart Tally then re-checks health).
+- `util/ensureBillOutstandingTdl.js`: `missing` lists disk/ini problems only; `__setDepsForTests` seam (platform, files, detect, apply, live status, health, activate). No flow change.
+- Tested: new `scripts/test-tdl-status-view.js` (8: not-confirmed → Not active in Tally, ACTIVE → Ready, Check now never restarts, Retry setup restarts + re-checks, no restart when already active, failed retry / failed restart never Ready); `npm test` 78/78; JSX compiles.
+
+---
+
 ## 2026-10-01 — Bill Outstanding: sync never restarts Tally; per-company snapshot (branch `tdl`)
 
 - **Cause of the Tally crash:** sync probed the bill report for the first selected company only; a company with no bills returns a bare `<ENVELOPE></ENVELOPE>`, which read as "TDL not loaded", so sync ran `taskkill tally.exe` + restart. Zero bills and failure were also the same `[]`, so stale bills were never cleared.

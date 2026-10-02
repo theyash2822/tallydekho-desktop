@@ -3,35 +3,13 @@ import Card from "../components/Card";
 import Badge from "../components/Badge";
 import { TallyContext } from "../../utils/TallyContext";
 import AppUpdate from "../components/AppUpdate";
+import {
+  tdlViewModel,
+  setupResultNote,
+  healthError,
+} from "../../utils/tdlStatusView";
 
-function statusTone(level) {
-  if (level === "success" || level === "ok") return "success";
-  if (level === "warn") return "warn";
-  if (level === "danger") return "danger";
-  return "default";
-}
-
-function statusLabel(health) {
-  if (!health) return "Checking…";
-  if (health.skipped) return "Not required";
-  if (health.status === "ok" && health.liveLoaded === true) return "Ready";
-  if (health.status === "ok" && health.liveLoaded === false) return "Installed";
-  if (health.status === "ok") return "Ready";
-  return "Needs setup";
-}
-
-function noteAfterSetup(h) {
-  if (h?.status === "ok" && h?.liveLoaded) {
-    if (h?.activateResult?.status) {
-      return "Activated — Tally was restarted with the TDL. Sync when ready (no manual load).";
-    }
-    return "Active in Tally — no manual TDL load needed. Sync when ready.";
-  }
-  if (h?.activateResult && !h.activateResult.status) {
-    return h.activateResult.message || "Could not restart Tally — open Tally, then Retry setup.";
-  }
-  return h?.applyResult?.hint || h?.message || "Setup incomplete — select Tally folder.";
-}
+const TONE_COLOR = { success: "#2D7D46", warn: "#D97706", danger: "#C0392B" };
 
 export default function Settings() {
   const {
@@ -52,30 +30,20 @@ export default function Settings() {
   const [saved, setSaved] = useState(false);
   const [tdlHealth, setTdlHealth] = useState(null);
   const [tdlBusy, setTdlBusy] = useState(false);
-  const [tdlNote, setTdlNote] = useState("");
+  const [tdlNote, setTdlNote] = useState(null);
 
   const refreshTdl = useCallback(async () => {
     if (!window.tally?.tdlHealth) {
-      setTdlHealth({
-        status: "blocked",
-        level: "danger",
-        message: "TDL health API unavailable — restart the app",
-        missing: ["API unavailable"],
-      });
+      setTdlHealth(healthError("TDL health API unavailable — restart the app."));
       return;
     }
     setTdlBusy(true);
-    setTdlNote("");
+    setTdlNote(null);
     try {
       const h = await window.tally.tdlHealth();
       setTdlHealth(h);
     } catch (e) {
-      setTdlHealth({
-        status: "blocked",
-        level: "danger",
-        message: e?.message || "Health check failed",
-        missing: [e?.message || "unknown"],
-      });
+      setTdlHealth(healthError(e?.message || "Health check failed."));
     } finally {
       setTdlBusy(false);
     }
@@ -95,13 +63,13 @@ export default function Settings() {
   const onRetrySetup = async () => {
     if (!window.tally?.tdlSetup || tdlBusy) return;
     setTdlBusy(true);
-    setTdlNote("");
+    setTdlNote(null);
     try {
       const h = await window.tally.tdlSetup();
       setTdlHealth(h);
-      setTdlNote(noteAfterSetup(h));
+      setTdlNote(setupResultNote(h));
     } catch (e) {
-      setTdlNote(e?.message || "Setup failed");
+      setTdlNote({ text: e?.message || "Setup failed.", tone: "danger" });
     } finally {
       setTdlBusy(false);
     }
@@ -110,26 +78,27 @@ export default function Settings() {
   const onSelectFolder = async () => {
     if (!window.tally?.tdlSelectPath || tdlBusy) return;
     setTdlBusy(true);
-    setTdlNote("");
+    setTdlNote(null);
     try {
       const res = await window.tally.tdlSelectPath();
       if (res?.cancelled) {
-        setTdlNote("");
+        setTdlNote(null);
         return;
       }
       if (res?.health) {
         setTdlHealth(res.health);
-        setTdlNote(noteAfterSetup(res.health));
+        setTdlNote(setupResultNote(res.health));
       } else if (res?.message) {
-        setTdlNote(res.message);
+        setTdlNote({ text: res.message, tone: "danger" });
       }
     } catch (e) {
-      setTdlNote(e?.message || "Folder select failed");
+      setTdlNote({ text: e?.message || "Folder select failed.", tone: "danger" });
     } finally {
       setTdlBusy(false);
     }
   };
 
+  const tdlView = tdlViewModel(tdlHealth, { busy: tdlBusy });
   const missingList = tdlHealth?.missing?.length ? tdlHealth.missing : [];
 
   return (
@@ -206,10 +175,7 @@ export default function Settings() {
             <div className="text-sm font-semibold" style={{ color: "#1A1A1A" }}>
               Bill Outstanding TDL
             </div>
-            <Badge
-              label={tdlBusy ? "Checking…" : statusLabel(tdlHealth)}
-              tone={tdlBusy ? "default" : statusTone(tdlHealth?.level || tdlHealth?.status)}
-            />
+            <Badge label={tdlView.badge} tone={tdlView.tone} />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
@@ -227,13 +193,7 @@ export default function Settings() {
               TDL file
               <input
                 readOnly
-                value={
-                  tdlHealth?.skipped
-                    ? "N/A"
-                    : tdlHealth?.tdlPresent
-                    ? "Installed ✓"
-                    : "Missing"
-                }
+                value={tdlView.rows.file}
                 className="ml-auto border rounded-md px-2 py-1 w-40 bg-[#F5F4EF]"
                 style={{ borderColor: "#E9E8E3" }}
               />
@@ -242,15 +202,7 @@ export default function Settings() {
               tally.ini
               <input
                 readOnly
-                value={
-                  tdlHealth?.skipped
-                    ? "N/A"
-                    : !tdlHealth?.iniFound
-                    ? "Not found"
-                    : tdlHealth?.tdlListed && tdlHealth?.userTdlYes
-                    ? "Linked ✓"
-                    : "Not linked"
-                }
+                value={tdlView.rows.ini}
                 className="ml-auto border rounded-md px-2 py-1 w-40 bg-[#F5F4EF]"
                 style={{ borderColor: "#E9E8E3" }}
               />
@@ -259,27 +211,7 @@ export default function Settings() {
               In Tally
               <input
                 readOnly
-                value={
-                  tdlHealth?.skipped
-                    ? "N/A"
-                    : tdlHealth?.tdlStatus === "ACTIVE_OUTDATED" ||
-                      tdlHealth?.tdlStatus === "ACTIVE_LEGACY"
-                    ? "Active (old version)"
-                    : tdlHealth?.liveLoaded === true
-                    ? `Active ✓${
-                        tdlHealth?.liveBillRows != null
-                          ? ` (${tdlHealth.liveBillRows} bills)`
-                          : ""
-                      }`
-                    : tdlHealth?.liveLoaded === false
-                    ? "Not loaded"
-                    : tdlHealth?.tdlStatus === "TALLY_UNREACHABLE" ||
-                      tdlHealth?.tdlStatus === "TALLY_TIMEOUT"
-                    ? "Tally not reachable"
-                    : tdlHealth?.tdlStatus
-                    ? "Not confirmed"
-                    : "—"
-                }
+                value={tdlView.rows.inTally}
                 className="ml-auto border rounded-md px-2 py-1 w-40 bg-[#F5F4EF]"
                 style={{ borderColor: "#E9E8E3" }}
               />
@@ -301,50 +233,21 @@ export default function Settings() {
             </div>
           )}
 
-          {tdlHealth?.status === "ok" &&
-            tdlHealth?.tdlStatus === "ACTIVE" &&
-            !tdlHealth?.skipped && (
-              <div className="mt-3 text-xs" style={{ color: "#2D7D46" }}>
-                Bill Outstanding is active — no manual TDL load needed. Sync
-                when ready.
-              </div>
-            )}
-
-          {(tdlHealth?.tdlStatus === "ACTIVE_OUTDATED" ||
-            tdlHealth?.tdlStatus === "ACTIVE_LEGACY") &&
-            !tdlHealth?.skipped && (
-              <div className="mt-3 text-xs" style={{ color: "#D97706" }}>
-                An older Bill Outstanding TDL is running. Bills sync while it
-                returns rows; when it returns none, the last synced bills are
-                kept. Click{" "}
-                <span className="font-semibold">Retry setup</span> to upgrade —
-                this restarts Tally.
-              </div>
-            )}
-
-          {tdlHealth?.liveLoaded !== true &&
-            tdlHealth?.tdlStatus &&
-            !tdlHealth?.skipped && (
-            <div className="mt-3 text-xs" style={{ color: "#D97706" }}>
-              Tally has not confirmed the Bill Outstanding report. Sync keeps the
-              last synced bills until it does. Click{" "}
-              <span className="font-semibold">Retry setup</span> — the app will
-              restart Tally with the TDL (no F1 manual load). Sync never restarts
-              Tally.
+          {tdlView.message && (
+            <div
+              className="mt-3 text-xs"
+              style={{ color: TONE_COLOR[tdlView.messageTone] }}
+            >
+              {tdlView.message}
             </div>
           )}
 
-          {tdlNote && (
+          {tdlNote && !tdlBusy && (
             <div
               className="mt-2 text-xs"
-              style={{
-                color:
-                  tdlHealth?.status === "ok" && tdlHealth?.liveLoaded
-                    ? "#2D7D46"
-                    : "#D97706",
-              }}
+              style={{ color: TONE_COLOR[tdlNote.tone] }}
             >
-              {tdlNote}
+              {tdlNote.text}
             </div>
           )}
 

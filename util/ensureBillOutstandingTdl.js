@@ -90,7 +90,7 @@ function liveMessage(tdlStatus) {
 
 function buildHealth({ tallyDir, detectSource, applyResult, live = null, activateResult = null }) {
   const missing = [];
-  if (process.platform !== "win32") {
+  if (deps.platform() !== "win32") {
     return {
       status: "ok",
       level: "ok",
@@ -135,8 +135,8 @@ function buildHealth({ tallyDir, detectSource, applyResult, live = null, activat
 
   const destTdl = path.join(tallyDir, TDL_FILENAME);
   const iniPath = path.join(tallyDir, INI_FILENAME);
-  const tdlPresent = fs.existsSync(destTdl);
-  const ini = readIniState(iniPath, destTdl);
+  const tdlPresent = deps.fileExists(destTdl);
+  const ini = deps.readIni(iniPath, destTdl);
 
   if (!tdlPresent) missing.push(`${TDL_FILENAME} missing`);
   if (!ini.found) missing.push(`${INI_FILENAME} missing`);
@@ -154,12 +154,12 @@ function buildHealth({ tallyDir, detectSource, applyResult, live = null, activat
     : tdlStatus === TDL_STATUS.NOT_LOADED
     ? false
     : null;
-  if (tdlStatus === TDL_STATUS.NOT_LOADED) missing.push("TDL not active in running Tally");
 
+  // `missing` lists disk/ini problems only; runtime state is reported via tdlStatus.
   let { status, level, message } = liveMessage(tdlStatus);
   let reason = tdlStatus ? tdlStatus.toLowerCase() : "ready";
 
-  const fileProblem = missing.find((m) => m !== "TDL not active in running Tally");
+  const fileProblem = missing[0];
   if (fileProblem) {
     status = "blocked";
     level = "danger";
@@ -303,15 +303,34 @@ function selectedCompanyMeta() {
   };
 }
 
-/** Settings → health card. Read-only towards Tally (refreshes the files on disk). */
+const defaultDeps = {
+  platform: () => process.platform,
+  fileExists: (p) => fs.existsSync(p),
+  readIni: readIniState,
+  detect: detectTallyInstallPath,
+  apply: applyTdlToDir,
+  liveStatus: liveTdlStatus,
+  checkHealth: checkTdlHealth,
+  activate: activateTdlByRestartingTally,
+  companyMeta: selectedCompanyMeta,
+  wait: (ms) => new Promise((r) => setTimeout(r, ms)),
+};
+let deps = defaultDeps;
+
+/** Tests only: replace Tally/disk access. `null` restores the real implementation. */
+function __setDepsForTests(overrides) {
+  deps = overrides ? { ...defaultDeps, ...overrides } : defaultDeps;
+}
+
+/** Settings → Check now / health card. Never restarts Tally (refreshes the files on disk only). */
 async function getTdlHealth(opts = {}) {
-  const companyName = opts.companyName || selectedCompanyMeta().companyName || "";
-  const detected = await detectTallyInstallPath();
+  const companyName = opts.companyName || deps.companyMeta().companyName || "";
+  const detected = await deps.detect();
   if (!detected.path) {
     return buildHealth({ tallyDir: null, detectSource: detected.source });
   }
-  const applyResult = applyTdlToDir(detected.path);
-  const live = await liveTdlStatus(companyName);
+  const applyResult = deps.apply(detected.path);
+  const live = await deps.liveStatus(companyName);
   info("[tdl] health", { tdlStatus: live.tdlStatus, version: live.version, billRows: live.billRows });
   return buildHealth({ tallyDir: detected.path, detectSource: detected.source, applyResult, live });
 }
@@ -332,7 +351,7 @@ async function setupTdl(optionalDir, opts = {}) {
     }
     store.set(STORE_KEY, tallyDir);
   } else {
-    const detected = await detectTallyInstallPath();
+    const detected = await deps.detect();
     tallyDir = detected.path;
     detectSource = detected.source;
   }
@@ -341,14 +360,14 @@ async function setupTdl(optionalDir, opts = {}) {
     return buildHealth({ tallyDir: null, detectSource: "none" });
   }
 
-  const meta = selectedCompanyMeta();
+  const meta = deps.companyMeta();
   const companyName = opts.companyName || meta.companyName || "";
   const companyNumber = opts.companyNumber ?? meta.companyNumber;
   const allowRestart = opts.allowRestart !== false;
 
-  const applyResult = applyTdlToDir(tallyDir);
+  const applyResult = deps.apply(tallyDir);
   const destTdl = path.join(tallyDir, TDL_FILENAME);
-  let live = await liveTdlStatus(companyName);
+  let live = await deps.liveStatus(companyName);
   let activateResult = null;
 
   if (live.tdlStatus === TDL_STATUS.TALLY_TIMEOUT) {
@@ -358,13 +377,13 @@ async function setupTdl(optionalDir, opts = {}) {
       message: "Tally is busy and did not answer. Finish or save your work in Tally, then Retry setup.",
     };
   } else if (live.tdlStatus !== TDL_STATUS.ACTIVE && allowRestart && applyResult.status) {
-    activateResult = await activateTdlByRestartingTally(tallyDir, destTdl, { companyNumber });
+    activateResult = await deps.activate(tallyDir, destTdl, { companyNumber });
     if (activateResult.status) {
       for (let i = 0; i < 4; i++) {
-        await new Promise((r) => setTimeout(r, 3000));
-        if ((await checkTdlHealth(companyName)).status === TDL_STATUS.ACTIVE) break;
+        await deps.wait(3000);
+        if ((await deps.checkHealth(companyName)).status === TDL_STATUS.ACTIVE) break;
       }
-      live = await liveTdlStatus(companyName);
+      live = await deps.liveStatus(companyName);
     }
   }
 
@@ -390,4 +409,5 @@ module.exports = {
   buildHealth,
   TDL_FILENAME,
   STORE_KEY,
+  __setDepsForTests,
 };

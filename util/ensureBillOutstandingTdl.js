@@ -331,7 +331,12 @@ async function getTdlHealth(opts = {}) {
   }
   const applyResult = deps.apply(detected.path);
   const live = await deps.liveStatus(companyName);
-  info("[tdl] health", { tdlStatus: live.tdlStatus, version: live.version, billRows: live.billRows });
+  info("[tdl] health", {
+    tdlStatus: live.tdlStatus,
+    version: live.version,
+    billRows: live.billRows,
+    reason: live.reason || null,
+  });
   return buildHealth({ tallyDir: detected.path, detectSource: detected.source, applyResult, live });
 }
 
@@ -392,6 +397,7 @@ async function setupTdl(optionalDir, opts = {}) {
     tdlStatus: health.tdlStatus,
     version: health.tdlVersion,
     billRows: health.liveBillRows,
+    reason: live.reason || null,
     allowRestart,
     restarted: !!activateResult?.status,
     companyNumber: companyNumber || null,

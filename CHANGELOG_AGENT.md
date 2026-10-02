@@ -4,6 +4,15 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-10-02 — TDL health check: log Tally's reply; find TDKSTATUS anywhere (branch `tdl`)
+
+- Windows test: after Retry setup restarted Tally, every health check returned `INVALID_RESPONSE` with no detail, so Settings stayed "Not active in Tally" for every company.
+- `util/tdlHealth.js`: when the result is not ACTIVE, logs `[tdl] health reply not active` with status, reason, byte count and the first 400 chars of Tally's reply. TDKSTATUS and its ACTIVE / VERSION / COMPANY tags are now found anywhere in the reply and in any tag case (before: only `ENVELOPE > TDKSTATUS`, exact case).
+- `util/ensureBillOutstandingTdl.js`: `[tdl] health` / `[tdl] setup` logs include `reason`.
+- Tested: `npm test` 79/79 (new case: TDKSTATUS without ENVELOPE / mixed-case tags → ACTIVE).
+
+---
+
 ## 2026-10-01 — Settings TDL card: "Not active in Tally" instead of "Needs setup" (branch `tdl`)
 
 - Bug: file installed + tally.ini linked + runtime not confirmed showed the badge **Needs setup** (old `statusLabel` fell through on any non-"ok" status) plus a red "Missing: TDL not active in running Tally".

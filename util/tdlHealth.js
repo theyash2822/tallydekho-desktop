@@ -9,6 +9,7 @@ const axios = require("axios");
 const iconv = require("iconv-lite");
 const { XMLParser } = require("fast-xml-parser");
 const { runTallyExclusive, xmlText } = require("./tallyQueue");
+const { info } = require("./logger");
 
 /** Must match TDKBOH Version in xmls/TDKBillOutstanding.tdl. */
 const TDL_VERSION = "1.1.0";
@@ -107,6 +108,31 @@ function healthRequestXml(companyName) {
 </ENVELOPE>`;
 }
 
+/** First node named `tag` (case-insensitive) anywhere in the parsed tree; Tally may or may not wrap it in ENVELOPE. */
+function findTag(tree, tag) {
+  if (!tree || typeof tree !== "object") return undefined;
+  for (const [key, value] of Object.entries(tree)) {
+    if (key.toUpperCase() === tag) return Array.isArray(value) ? value[0] : value;
+  }
+  for (const value of Object.values(tree)) {
+    const found = findTag(Array.isArray(value) ? value[0] : value, tag);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
+function pick(node, key) {
+  if (!node || typeof node !== "object") return "";
+  const hit = Object.keys(node).find((k) => k.toUpperCase() === key);
+  const v = hit ? node[hit] : "";
+  return String((v && typeof v === "object" ? v.value : v) ?? "").trim();
+}
+
+/** Short one-line copy of Tally's reply for logs when the health check is not ACTIVE. */
+function responseSample(text, max = 400) {
+  return String(text ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+}
+
 /**
  * Classify the health report response. Pure.
  * @returns {{ status: string, version?: string, company?: string, reason?: string }}
@@ -118,14 +144,13 @@ function classifyHealthResponse(text) {
   if (/<TDKSTATUS[\s>]/i.test(body)) {
     let node;
     try {
-      const env = parser.parse(body)?.ENVELOPE || {};
-      node = Array.isArray(env.TDKSTATUS) ? env.TDKSTATUS[0] : env.TDKSTATUS;
+      node = findTag(parser.parse(body), "TDKSTATUS");
     } catch {
       return { status: TDL_STATUS.INVALID_RESPONSE, reason: "health_parse_failed" };
     }
-    const active = String(node?.ACTIVE ?? "").trim().toUpperCase() === "YES";
-    const version = String(node?.VERSION ?? "").trim();
-    const company = String(node?.COMPANY ?? "").trim();
+    const active = pick(node, "ACTIVE").toUpperCase() === "YES";
+    const version = pick(node, "VERSION");
+    const company = pick(node, "COMPANY");
     if (!active) return { status: TDL_STATUS.INVALID_RESPONSE, reason: "health_not_active", version, company };
     return {
       status: version === TDL_VERSION ? TDL_STATUS.ACTIVE : TDL_STATUS.ACTIVE_OUTDATED,
@@ -146,7 +171,17 @@ async function checkTdlHealth(companyName, { post = postToTally, timeout = 15000
   const started = Date.now();
   try {
     const text = await post(healthRequestXml(companyName), { timeout });
-    return { ...classifyHealthResponse(text), durationMs: Date.now() - started };
+    const result = { ...classifyHealthResponse(text), durationMs: Date.now() - started };
+    if (!isActiveHealth(result.status)) {
+      result.sample = responseSample(text);
+      info("[tdl] health reply not active", {
+        status: result.status,
+        reason: result.reason,
+        bytes: String(text ?? "").length,
+        sample: result.sample,
+      });
+    }
+    return result;
   } catch (err) {
     return {
       status: classifyTransportError(err),

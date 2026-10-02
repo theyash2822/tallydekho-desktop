@@ -202,6 +202,16 @@ test("health classification: blank body and inactive flag are never ACTIVE", () 
   );
 });
 
+test("health: TDKSTATUS is found with or without the ENVELOPE wrapper, any tag case", () => {
+  const line = `<TDKSTATUS><ACTIVE>YES</ACTIVE><VERSION>${TDL_VERSION}</VERSION><COMPANY>Demo</COMPANY></TDKSTATUS>`;
+  assert.equal(classifyHealthResponse(line).status, TDL_STATUS.ACTIVE);
+  assert.equal(classifyHealthResponse(`<RESPONSE>${line}</RESPONSE>`).status, TDL_STATUS.ACTIVE);
+  const lower = `<ENVELOPE><TDKSTATUS><Active> YES </Active><Version>${TDL_VERSION}</Version></TDKSTATUS></ENVELOPE>`;
+  const r = classifyHealthResponse(lower);
+  assert.equal(r.status, TDL_STATUS.ACTIVE);
+  assert.equal(r.version, TDL_VERSION);
+});
+
 test("summary sent to the backend: only SUCCESS is a complete snapshot", () => {
   assert.equal(snapshotSummary({ companyGuid: "g", status: "SUCCESS", snapshotComplete: true, rowCount: 0 }).snapshotComplete, true);
   assert.equal(snapshotSummary({ companyGuid: "g", status: "TDL_NOT_LOADED", snapshotComplete: true, rowCount: 0 }).snapshotComplete, false);

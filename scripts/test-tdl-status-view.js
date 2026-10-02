@@ -103,7 +103,11 @@ test("mapping: disk/ini problems → Needs setup; others map to their own state"
   assert.equal(d(null), S.CHECKING);
   assert.equal(d(view.healthError("boom")), S.ERROR);
   assert.equal(d({ skipped: true }), S.NOT_REQUIRED);
-  assert.equal(d(installedLinked({ tallyDir: null })), S.FOLDER_NOT_FOUND);
+  assert.equal(d(installedLinked({ tallyDir: null, reason: "path_unknown" })), S.FOLDER_NOT_FOUND);
+  const ipcFailure = { status: "blocked", level: "danger", message: "boom", missing: ["boom"] };
+  assert.equal(d(ipcFailure), S.ERROR);
+  assert.equal(view.tdlViewModel(ipcFailure).message, "boom");
+  assert.equal(view.tdlViewModel(installedLinked({ quotedOk: false })).rows.ini, "Needs quotes");
   assert.equal(d(installedLinked({ tdlPresent: false, tdlStatus: "ACTIVE" })), S.NOT_INSTALLED);
   assert.equal(d(installedLinked({ tdlListed: false })), S.NOT_LINKED);
   assert.equal(d(installedLinked({ userTdlYes: false })), S.NOT_LINKED);
@@ -116,7 +120,7 @@ test("mapping: disk/ini problems → Needs setup; others map to their own state"
       ? installedLinked({ tdlPresent: false })
       : s === S.NOT_LINKED
       ? installedLinked({ tdlListed: false })
-      : installedLinked({ tallyDir: null });
+      : installedLinked({ tallyDir: null, reason: "path_unknown" });
     assert.equal(view.tdlViewModel(h).badge, "Needs setup");
   }
   const busy = view.tdlViewModel(installedLinked({ tdlStatus: "ACTIVE" }), { busy: true });

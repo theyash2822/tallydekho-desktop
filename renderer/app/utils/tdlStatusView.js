@@ -112,7 +112,10 @@ export function deriveTdlUiState(health) {
   if (!health) return S.CHECKING;
   if (health.uiError) return S.ERROR;
   if (health.skipped) return S.NOT_REQUIRED;
-  if (!health.tallyDir) return S.FOLDER_NOT_FOUND;
+  if (!health.tallyDir) {
+    // IPC error fallback is `{ status: "blocked", missing: [err] }` without a folder-detect reason.
+    return health.reason === "path_unknown" ? S.FOLDER_NOT_FOUND : S.ERROR;
+  }
   if (!health.tdlPresent) return S.NOT_INSTALLED;
   if (!health.iniFound || !health.tdlListed || !health.userTdlYes || health.quotedOk === false) {
     return S.NOT_LINKED;
@@ -133,7 +136,8 @@ function iniRow(health) {
   if (!health) return "—";
   if (health.skipped) return "N/A";
   if (!health.iniFound) return "Not found";
-  return health.tdlListed && health.userTdlYes ? "Linked ✓" : "Not linked";
+  if (!health.tdlListed || !health.userTdlYes) return "Not linked";
+  return health.quotedOk === false ? "Needs quotes" : "Linked ✓";
 }
 
 /**
@@ -153,7 +157,11 @@ export function tdlViewModel(health, { busy = false } = {}) {
       ini: iniRow(health),
       inTally: busy && state !== S.CHECKING ? VIEW[S.CHECKING].inTally : view.inTally,
     },
-    message: busy ? null : state === S.ERROR ? health.uiError || view.message : view.message,
+    message: busy
+      ? null
+      : state === S.ERROR
+      ? health.uiError || health.missing?.[0] || view.message
+      : view.message,
     messageTone: busy ? null : view.messageTone,
   };
 }

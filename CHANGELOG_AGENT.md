@@ -4,6 +4,21 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-10-03 — TDL 1.1.1: one-row global health, company-verified bill snapshot, fallback bill fetch (branch `tdl`)
+
+- Cause (Windows log): TDL 1.1.0 health report returned `<ENVELOPE></ENVELOPE>` — its line was static, so Tally printed nothing; the desktop then skipped bills entirely.
+- `xmls/TDKBillOutstanding.tdl` 1.1.1: health line uses `Repeat` + `Set : 1`, no company field. Bill report adds a `TDKCONTEXT/COMPANY` line (`Repeat` + `Set : 1`, `##SVCurrentCompany`, printed even with zero bills) and a `Company` tag on every `BILLROW`. Fallback `xmls/TDKBillOutstanding.alt-collection.tdl` (repeats over Company collections) — not installed unless swapped in.
+- `util/tdlHealth.js`: `TDL_VERSION` 1.1.1; request has no `SVCURRENTCOMPANY`; empty envelope / ACTIVE≠YES → new `HEALTH_UNCONFIRMED` (never ACTIVE, never NOT_LOADED); concurrent callers share one in-flight request (`[tdl] health deduped`). `checkTdlHealth({ post })` signature.
+- `util/billSnapshot.js`: company identity from the bill response (`verifyBillCompany`). Decision: ACTIVE + verified rows → SUCCESS; ACTIVE + 0 + matching TDKCONTEXT → SUCCESS (clear); ACTIVE without proven company → `COMPANY_UNVERIFIED`; UNCONFIRMED + matching rows → SUCCESS with `tdlStatus: HEALTH_UNCONFIRMED`; UNCONFIRMED + 0 → `LEGACY_EMPTY_AMBIGUOUS`; legacy (no health report) + pre-1.1.1 rows → SUCCESS `ACTIVE_LEGACY`; any other company named → `COMPANY_CONTEXT_MISMATCH`. Logs `[tdl] bill fallback` / `[tdl] bill fallback result`. Backend contract unchanged.
+- `util/xml.js`: one health check per sync run (`[tdl] sync health`), passed to every company's snapshot.
+- Settings: `UNVERIFIED_SYNCING` state (badge "Not active in Tally", "Bill data is syncing, but add-on health could not be verified…"); `getTdlHealth` dedupes overlapping calls and logs `seq`; Settings skips a check while one is running. No render loop found for the ~25 calls (Settings checks once per open + once per Check now); `seq` will show the pattern on the next test.
+- Retry setup: logs `[tdl] setup: launched` with the running tally.exe path vs expected (`start /D <tallyDir>` sets the working directory for the short `/TDL:` filename). Short filename kept.
+- `util/schema.json`: `tallyInstallPath` (non-empty string) so the saved folder is no longer stripped at boot. `util/backendConfig.js`: no stale warning when BACKEND_URL equals the default dev backend.
+- New `scripts/tdl-probe.js` (Windows QA): prints raw health + per-company bill XML and the desktop's classification. Read-only.
+- Tested: `npm test` 94/94 (bill snapshot suite rewritten: 29); backend `bill-snapshot.test.js` 19/19 (unchanged). Real TallyPrime not yet verified.
+
+---
+
 ## 2026-10-02 — TDL health check: log Tally's reply; find TDKSTATUS anywhere (branch `tdl`)
 
 - Windows test: after Retry setup restarted Tally, every health check returned `INVALID_RESPONSE` with no detail, so Settings stayed "Not active in Tally" for every company.

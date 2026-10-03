@@ -219,6 +219,10 @@
       "type": "string",
       "default": "0.0.0"
     },
+    "tallyInstallPath": {
+      "type": "string",
+      "minLength": 1
+    },
     "forceUpdate": {
       "type": "boolean",
       "default": false

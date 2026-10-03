@@ -16,6 +16,7 @@ const {
   fetchCompanyBillSnapshot,
   snapshotSummary,
 } = require("./billSnapshot");
+const { checkTdlHealth } = require("./tdlHealth");
 const { runTallyExclusive, xmlText } = require("./tallyQueue");
 
 /** Decode Tally HTTP body — custom reports may return UTF-16 LE with BOM. */
@@ -926,6 +927,8 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
   let promises = [];
   const billSnapshots = {};
   const billSnapshotProblems = [];
+  // TDL health is global to the running Tally: one check per sync run, shared by every company.
+  let syncTdlHealth = null;
   sendProgress(0);
   sendMessage("Initializing");
 
@@ -1139,19 +1142,29 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
       info('[sync] OpeningBalanceDiff.xml skipped — no booksFrom/startingFrom for', name);
     }
 
-    // Bill outstanding — own health check + snapshot per company; failures keep the old bills.
+    // Bill outstanding — run-wide health + own snapshot per company; failures keep the old bills.
     if (years.length > 0) {
       const outstandingYear = [...years].sort((a, b) =>
         String(b.end || "").localeCompare(String(a.end || ""))
       )[0];
       const fromDate = String(outstandingYear.begin || "").replace(/-/g, "");
       const toDate = String(outstandingYear.end || "").replace(/-/g, "");
+      if (!syncTdlHealth) {
+        syncTdlHealth = await checkTdlHealth();
+        info("[tdl] sync health", {
+          syncRunId: syncRunId || null,
+          status: syncTdlHealth.status,
+          version: syncTdlHealth.version || null,
+          reason: syncTdlHealth.reason || null,
+        });
+      }
       const snapshot = await fetchCompanyBillSnapshot({
         companyName: name,
         companyGuid,
         fromDate,
         toDate,
         currentDate: localYmd(),
+        health: syncTdlHealth,
       });
       billSnapshots[companyGuid] = snapshotSummary(snapshot);
       if (snapshot.status === BILL_STATUS.SUCCESS) {

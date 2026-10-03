@@ -548,7 +548,7 @@ app.whenReady().then(async () => {
     const { installTdlFiles } = require("./util/tdlFiles");
     const { checkTdlHealth } = require("./util/tdlHealth");
     const { detected, applyResult } = await installTdlFiles();
-    const health = await checkTdlHealth("");
+    const health = await checkTdlHealth();
     info("[tdl] boot", {
       tallyDir: detected?.path || null,
       filesInstalled: applyResult?.status ?? null,

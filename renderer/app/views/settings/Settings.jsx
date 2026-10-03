@@ -1,4 +1,4 @@
-import React, { useCallback, useContext, useEffect, useState } from "react";
+import React, { useCallback, useContext, useEffect, useRef, useState } from "react";
 import Card from "../components/Card";
 import Badge from "../components/Badge";
 import { TallyContext } from "../../utils/TallyContext";
@@ -31,12 +31,15 @@ export default function Settings() {
   const [tdlHealth, setTdlHealth] = useState(null);
   const [tdlBusy, setTdlBusy] = useState(false);
   const [tdlNote, setTdlNote] = useState(null);
+  const tdlCheckRunning = useRef(false);
 
   const refreshTdl = useCallback(async () => {
     if (!window.tally?.tdlHealth) {
       setTdlHealth(healthError("TDL health API unavailable — restart the app."));
       return;
     }
+    if (tdlCheckRunning.current) return;
+    tdlCheckRunning.current = true;
     setTdlBusy(true);
     setTdlNote(null);
     try {
@@ -45,6 +48,7 @@ export default function Settings() {
     } catch (e) {
       setTdlHealth(healthError(e?.message || "Health check failed."));
     } finally {
+      tdlCheckRunning.current = false;
       setTdlBusy(false);
     }
   }, []);

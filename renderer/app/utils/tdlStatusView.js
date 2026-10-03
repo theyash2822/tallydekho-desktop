@@ -7,6 +7,7 @@ export const TDL_UI_STATE = Object.freeze({
   READY: "READY",
   OUTDATED: "OUTDATED",
   NOT_ACTIVE: "NOT_ACTIVE",
+  UNVERIFIED_SYNCING: "UNVERIFIED_SYNCING",
   TALLY_UNREACHABLE: "TALLY_UNREACHABLE",
   NOT_INSTALLED: "NOT_INSTALLED",
   NOT_LINKED: "NOT_LINKED",
@@ -45,6 +46,15 @@ const VIEW = {
       "Tally has not confirmed the Bill Outstanding add-on. Sync will keep the last successfully " +
       "synced bills. Click Retry setup to restart Tally and load the add-on. " +
       "Normal Sync and Hard Sync never restart Tally.",
+    messageTone: "warn",
+  },
+  [S.UNVERIFIED_SYNCING]: {
+    badge: "Not active in Tally",
+    tone: "warn",
+    inTally: "Not confirmed",
+    message:
+      "Bill data is syncing, but add-on health could not be verified. " +
+      "Use Retry setup to update and verify the add-on. Normal Sync and Hard Sync never restart Tally.",
     messageTone: "warn",
   },
   [S.TALLY_UNREACHABLE]: {
@@ -123,6 +133,7 @@ export function deriveTdlUiState(health) {
   if (health.tdlStatus === "ACTIVE") return S.READY;
   if (ACTIVE_OLD.has(health.tdlStatus)) return S.OUTDATED;
   if (UNREACHABLE.has(health.tdlStatus)) return S.TALLY_UNREACHABLE;
+  if (health.tdlStatus === "HEALTH_UNCONFIRMED" && health.liveBillRows > 0) return S.UNVERIFIED_SYNCING;
   return S.NOT_ACTIVE;
 }
 
@@ -185,7 +196,7 @@ export function setupResultNote(health) {
       tone: "warn",
     };
   }
-  if (state === S.NOT_ACTIVE || state === S.TALLY_UNREACHABLE) {
+  if (state === S.NOT_ACTIVE || state === S.UNVERIFIED_SYNCING || state === S.TALLY_UNREACHABLE) {
     return {
       text: "Bill Outstanding setup could not be verified. Tally has not confirmed the add-on. Keep Tally open and try Retry setup again.",
       tone: "danger",

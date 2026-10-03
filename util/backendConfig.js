@@ -131,7 +131,7 @@ function resolveBackendEnvironment(
   let url = env.BACKEND_URL || env.BASE_URL || DEFAULT_DEV_BACKEND_URL;
   try {
     const parsed = new URL(url);
-    if (DEAD_BACKEND_HOSTS.has(parsed.hostname)) {
+    if (DEAD_BACKEND_HOSTS.has(parsed.hostname) && parsed.hostname !== hostOf(DEFAULT_DEV_BACKEND_URL)) {
       warnings.push(
         `BACKEND_URL ${url} is loopback/stale — Windows Desktop cannot reach Mac backend there. ` +
           `Using hardcoded ${DEFAULT_DEV_BACKEND_URL}`

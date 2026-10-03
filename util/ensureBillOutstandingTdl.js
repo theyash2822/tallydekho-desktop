@@ -48,7 +48,7 @@ function currentFyRange(now = new Date()) {
  */
 async function liveTdlStatus(companyName) {
   if (!companyName) {
-    const health = await checkTdlHealth("");
+    const health = await checkTdlHealth();
     const tdlStatus = health.status === TDL_STATUS.HEALTH_MISSING ? TDL_STATUS.UNKNOWN : health.status;
     return { checked: true, tdlStatus, version: health.version || null, billRows: null, reason: health.reason };
   }
@@ -229,6 +229,22 @@ async function waitForTallyPort(timeoutMs = 45000) {
   return false;
 }
 
+/** Full path of the running tally.exe (Windows), or null. Read-only. */
+async function runningTallyExe() {
+  try {
+    const { stdout } = await execFileAsync("powershell.exe", [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      "(Get-Process -Name tally -ErrorAction SilentlyContinue | Select-Object -First 1).Path",
+    ]);
+    const p = String(stdout || "").trim();
+    return p || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Settings Setup / Retry Setup only: restart Tally with /TDL so the report loads without manual F1.
  *
@@ -283,10 +299,18 @@ async function activateTdlByRestartingTally(tallyDir, destTdl, opts = {}) {
     };
   }
 
+  // `start /D <tallyDir>` makes tallyDir the working directory, which is what
+  // resolves the short /TDL:<filename>. Confirm the running exe is from that folder.
+  const runningExe = await runningTallyExe();
+  const exeMatches = runningExe ? path.resolve(runningExe).toLowerCase() === path.resolve(exe).toLowerCase() : null;
+  info("[tdl] setup: launched", { expectedExe: exe, runningExe, cwd: tallyDir, exeMatches });
+
   // Company + TDL load needs more than Gateway HTTP up
   await new Promise((r) => setTimeout(r, companyNumber ? 10000 : 5000));
   return {
     status: true,
+    runningExe,
+    exeMatches,
     message: companyNumber
       ? "Tally restarted with Bill Outstanding TDL + company loaded"
       : "Tally restarted with Bill Outstanding TDL — open your company if the check still fails",
@@ -322,8 +346,27 @@ function __setDepsForTests(overrides) {
   deps = overrides ? { ...defaultDeps, ...overrides } : defaultDeps;
 }
 
-/** Settings → Check now / health card. Never restarts Tally (refreshes the files on disk only). */
+let healthInFlight = null;
+let healthRequestSeq = 0;
+
+/**
+ * Settings → Check now / health card. Never restarts Tally (refreshes the files on disk only).
+ * Overlapping callers (Settings remount, double click) share one Tally round-trip.
+ */
 async function getTdlHealth(opts = {}) {
+  if (healthInFlight) {
+    info("[tdl] health deduped", { caller: "settings" });
+    return healthInFlight;
+  }
+  healthInFlight = runGetTdlHealth(opts);
+  try {
+    return await healthInFlight;
+  } finally {
+    healthInFlight = null;
+  }
+}
+
+async function runGetTdlHealth(opts) {
   const companyName = opts.companyName || deps.companyMeta().companyName || "";
   const detected = await deps.detect();
   if (!detected.path) {
@@ -332,6 +375,7 @@ async function getTdlHealth(opts = {}) {
   const applyResult = deps.apply(detected.path);
   const live = await deps.liveStatus(companyName);
   info("[tdl] health", {
+    seq: ++healthRequestSeq,
     tdlStatus: live.tdlStatus,
     version: live.version,
     billRows: live.billRows,
@@ -386,7 +430,7 @@ async function setupTdl(optionalDir, opts = {}) {
     if (activateResult.status) {
       for (let i = 0; i < 4; i++) {
         await deps.wait(3000);
-        if ((await deps.checkHealth(companyName)).status === TDL_STATUS.ACTIVE) break;
+        if ((await deps.checkHealth()).status === TDL_STATUS.ACTIVE) break;
       }
       live = await deps.liveStatus(companyName);
     }

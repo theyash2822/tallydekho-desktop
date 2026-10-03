@@ -8,11 +8,11 @@
 const axios = require("axios");
 const iconv = require("iconv-lite");
 const { XMLParser } = require("fast-xml-parser");
-const { runTallyExclusive, xmlText } = require("./tallyQueue");
+const { runTallyExclusive } = require("./tallyQueue");
 const { info } = require("./logger");
 
 /** Must match TDKBOH Version in xmls/TDKBillOutstanding.tdl. */
-const TDL_VERSION = "1.1.0";
+const TDL_VERSION = "1.1.1";
 const HEALTH_REPORT_ID = "TDKBillOutstandingHealth";
 
 const TDL_STATUS = Object.freeze({
@@ -22,6 +22,9 @@ const TDL_STATUS = Object.freeze({
   ACTIVE_LEGACY: "ACTIVE_LEGACY",
   // Health report missing; the bill report may or may not exist.
   HEALTH_MISSING: "HEALTH_MISSING",
+  // Health report answered without a usable ACTIVE row (e.g. empty envelope).
+  // Neither "loaded" nor "missing"; Settings never shows Ready for it.
+  HEALTH_UNCONFIRMED: "HEALTH_UNCONFIRMED",
   NOT_LOADED: "NOT_LOADED",
   TALLY_UNREACHABLE: "TALLY_UNREACHABLE",
   TALLY_TIMEOUT: "TALLY_TIMEOUT",
@@ -87,9 +90,8 @@ function normaliseCompany(name) {
   return String(name ?? "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-function healthRequestXml(companyName) {
-  const company = String(companyName || "").trim();
-  const sv = company ? `\n        <SVCURRENTCOMPANY>${xmlText(company)}</SVCURRENTCOMPANY>` : "";
+/** Company-independent: health only answers "is the add-on loaded?". Company identity comes from the bill report. */
+function healthRequestXml() {
   return `<?xml version="1.0" encoding="utf-8"?>
 <ENVELOPE>
   <HEADER>
@@ -101,12 +103,14 @@ function healthRequestXml(companyName) {
   <BODY>
     <DESC>
       <STATICVARIABLES>
-        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>${sv}
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
       </STATICVARIABLES>
     </DESC>
   </BODY>
 </ENVELOPE>`;
 }
+
+const EMPTY_ENVELOPE = /^\s*(<\?xml[^>]*\?>)?\s*(<ENVELOPE\s*\/>|<ENVELOPE\s*>\s*<\/ENVELOPE\s*>)\s*$/i;
 
 /** First node named `tag` (case-insensitive) anywhere in the parsed tree; Tally may or may not wrap it in ENVELOPE. */
 function findTag(tree, tag) {
@@ -150,27 +154,46 @@ function classifyHealthResponse(text) {
     }
     const active = pick(node, "ACTIVE").toUpperCase() === "YES";
     const version = pick(node, "VERSION");
-    const company = pick(node, "COMPANY");
-    if (!active) return { status: TDL_STATUS.INVALID_RESPONSE, reason: "health_not_active", version, company };
+    const report = pick(node, "REPORT");
+    if (!active) return { status: TDL_STATUS.HEALTH_UNCONFIRMED, reason: "health_not_active", version, report };
     return {
       status: version === TDL_VERSION ? TDL_STATUS.ACTIVE : TDL_STATUS.ACTIVE_OUTDATED,
       version,
-      company,
+      report,
     };
   }
 
   if (looksLikeMissingReport(body)) return { status: TDL_STATUS.HEALTH_MISSING, reason: "health_report_missing" };
+  // Known report ID, no row: not proof of either "loaded" or "missing" (TDL 1.1.0 did this).
+  if (EMPTY_ENVELOPE.test(body)) return { status: TDL_STATUS.HEALTH_UNCONFIRMED, reason: "empty_envelope" };
   return { status: TDL_STATUS.INVALID_RESPONSE, reason: "unexpected_shape" };
 }
 
+let inFlight = null;
+
 /**
  * Ask running Tally whether the Bill Outstanding TDL (with health report) is loaded.
- * Read-only: one HTTP export request, nothing else.
+ * Read-only: one HTTP export request, nothing else. Concurrent callers using the
+ * real transport share one in-flight request.
  */
-async function checkTdlHealth(companyName, { post = postToTally, timeout = 15000 } = {}) {
+async function checkTdlHealth({ post, timeout = 15000 } = {}) {
+  if (post) return runHealthCheck(post, timeout);
+  if (inFlight) {
+    info("[tdl] health deduped");
+    return inFlight;
+  }
+  inFlight = runHealthCheck(postToTally, timeout);
+  try {
+    return await inFlight;
+  } finally {
+    inFlight = null;
+  }
+}
+
+async function runHealthCheck(post, timeout) {
   const started = Date.now();
   try {
-    const text = await post(healthRequestXml(companyName), { timeout });
+    const text = await post(healthRequestXml(), { timeout });
     const result = { ...classifyHealthResponse(text), durationMs: Date.now() - started };
     if (!isActiveHealth(result.status)) {
       result.sample = responseSample(text);
@@ -195,12 +218,20 @@ function isActiveHealth(status) {
   return status === TDL_STATUS.ACTIVE || status === TDL_STATUS.ACTIVE_OUTDATED;
 }
 
+/** Health could not confirm the add-on but Tally answered: the bill report may still be tried. */
+function isUnconfirmedHealth(status) {
+  return status === TDL_STATUS.HEALTH_UNCONFIRMED || status === TDL_STATUS.INVALID_RESPONSE;
+}
+
 module.exports = {
   TDL_VERSION,
   HEALTH_REPORT_ID,
   TDL_STATUS,
   checkTdlHealth,
+  healthRequestXml,
   classifyHealthResponse,
+  isUnconfirmedHealth,
+  responseSample,
   classifyTransportError,
   looksLikeMissingReport,
   normaliseCompany,

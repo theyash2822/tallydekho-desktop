@@ -4,6 +4,13 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-10-03 — TEMPORARY probe round 2: company context in a scrolling line (branch `tdl`, diagnosis only)
+
+- Round 1 result (Windows, TallyPrime 7.0, HTTP Export/Data): Fixed/Company/Bill + `Scroll : Vertical` → PRINTS (1 / 2 / 2,008); all three without scroll → EMPTY; identical plain vs company request. `Scroll : Vertical` alone decides export. Unfiltered Company collection lists every open company regardless of SVCURRENTCOMPANY. Tally re-cases field tags (`TYPE` → `Type`).
+- `xmls/TDKBillOutstanding.tdl`: round-1 probes replaced by `TDKProbeContext` (one fixed scrolling line: ACTIVE, VERSION, CURRENTCOMPANY = `##SVCurrentCompany`, COMPANYOBJECT = `$Name:Company:##SVCurrentCompany`) and `TDKProbeContextBills` (same line + bill lines repeated over `TDKBO Bills` in one scrolling part — candidate final syntax). Production reports unchanged (still 1.1.2).
+- `scripts/tdl-layout-probe.js` rewritten: per requested company (plus a nonexistent name) calls both probes with the production bill static variables, prints full raw XML and a requested-vs-returned table.
+- Desktop 95/95. Removal after diagnosis unchanged: marked TDL block, `scripts/tdl-layout-probe.js`, isolation test.
+
 ## 2026-10-03 — TEMPORARY TDL export-layout probe (branch `tdl`, diagnosis only)
 
 - Windows test of 1.1.2: still `<ENVELOPE></ENVELOPE>` for health and no `TDKCONTEXT`; Yash 2,008 BILLROWs with matching Company → SUCCESS; Laveena preserved. Only lines repeated over `TDKBO Bills` inside the `Scroll : Vertical` part print.

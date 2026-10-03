@@ -1,41 +1,33 @@
 #!/usr/bin/env node
 /**
  * TEMPORARY diagnostic — delete together with the TDKProbe* block in
- * xmls/TDKBillOutstanding.tdl once the export rule is known.
+ * xmls/TDKBillOutstanding.tdl once company context is proven.
  *
- * Calls each TDKProbe* report through HTTP Export / Data / SVEXPORTFORMAT XML
- * (the production mechanism) and prints a PRINTS / EMPTY matrix. Read-only;
- * never starts, stops or restarts Tally.
+ * Round 2: for each requested company, calls TDKProbeContext and
+ * TDKProbeContextBills through HTTP Export / Data / SVEXPORTFORMAT XML with the
+ * same static variables as the production bill request, and prints what
+ * ##SVCurrentCompany returned. Read-only; never starts, stops or restarts Tally.
  *
- *   node scripts/tdl-layout-probe.js [--port 9000] [--full] ["Yash Ki Company"]
+ *   node scripts/tdl-layout-probe.js [--port 9000] [--full] "Yash Ki Company" "Laveena" "<closed company>"
  *
- * Without a company name only the plain request (like the production health
- * request) is sent. With a name, each probe is also sent with SVCURRENTCOMPANY
- * and the FY dates, exactly like the production bill request.
+ * A deliberately nonexistent name is always added as the last case.
  */
 const axios = require("axios");
+const { XMLParser } = require("fast-xml-parser");
 const { decodeTallyBody } = require("../util/tdlHealth");
 
 const args = process.argv.slice(2);
 const portIdx = args.indexOf("--port");
 const port = portIdx >= 0 ? Number(args[portIdx + 1]) : 9000;
 const full = args.includes("--full");
-const company = args.filter((a, i) => !a.startsWith("--") && (portIdx < 0 || i !== portIdx + 1))[0] || null;
-
-const PROBES = [
-  { id: "TDKProbeFixedNoScroll", label: "Fixed + no scroll" },
-  { id: "TDKProbeFixedScroll", label: "Fixed + scroll" },
-  { id: "TDKProbeCompanyNoScroll", label: "Company + no scroll" },
-  { id: "TDKProbeCompanyScroll", label: "Company + scroll" },
-  { id: "TDKProbeBillScroll", label: "Bill collection + scroll" },
-  { id: "TDKProbeBillNoScroll", label: "Bill collection + no scroll" },
-];
-const CONTROLS = [
-  { id: "TDKBillOutstandingHealth", label: "CONTROL production health", tag: "TDKSTATUS" },
-  { id: "TDKBillOutstandingWorking", label: "CONTROL production bills", tag: "BILLROW" },
+const NONEXISTENT = "TDK Probe No Such Company";
+const companies = [
+  ...args.filter((a, i) => !a.startsWith("--") && (portIdx < 0 || i !== portIdx + 1)),
+  NONEXISTENT,
 ];
 
-const RAW_LIMIT = 4000;
+const BILL_EXCERPT = 3;
+const parser = new XMLParser({ ignoreAttributes: true, parseTagValue: false, trimValues: true });
 
 function esc(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -52,13 +44,6 @@ function currentFy(now = new Date()) {
 
 function requestXml(id, companyName) {
   const fy = currentFy();
-  const companyVars = companyName
-    ? `
-        <SVCURRENTCOMPANY>${esc(companyName)}</SVCURRENTCOMPANY>
-        <SVCURRENTDATE TYPE="Date">${fy.currentDate}</SVCURRENTDATE>
-        <SVFROMDATE TYPE="Date">${fy.fromDate}</SVFROMDATE>
-        <SVTODATE TYPE="Date">${fy.toDate}</SVTODATE>`
-    : "";
   return `<?xml version="1.0" encoding="utf-8"?>
 <ENVELOPE>
   <HEADER>
@@ -70,70 +55,103 @@ function requestXml(id, companyName) {
   <BODY>
     <DESC>
       <STATICVARIABLES>
-        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>${companyVars}
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVCURRENTCOMPANY>${esc(companyName)}</SVCURRENTCOMPANY>
+        <SVCURRENTDATE TYPE="Date">${fy.currentDate}</SVCURRENTDATE>
+        <SVFROMDATE TYPE="Date">${fy.fromDate}</SVFROMDATE>
+        <SVTODATE TYPE="Date">${fy.toDate}</SVTODATE>
       </STATICVARIABLES>
     </DESC>
   </BODY>
 </ENVELOPE>`;
 }
 
-function classify(text, tag) {
-  const rows = (text.match(new RegExp(`<${tag}[\\s>]`, "gi")) || []).length;
-  if (rows > 0) return { result: "PRINTS", rows };
-  if (/could not find|LINEERROR/i.test(text)) return { result: "REPORT_MISSING", rows: 0 };
-  if (/^\s*(<\?xml[^>]*\?>)?\s*(<ENVELOPE\s*\/>|<ENVELOPE\s*>\s*<\/ENVELOPE\s*>)\s*$/i.test(text)) return { result: "EMPTY", rows: 0 };
-  return { result: "OTHER", rows: 0 };
+/** Case-insensitive child lookup (Tally may re-case field tags). */
+function child(node, tag) {
+  if (!node || typeof node !== "object") return undefined;
+  const key = Object.keys(node).find((k) => k.toUpperCase() === tag);
+  return key === undefined ? undefined : node[key];
 }
 
-function excerpt(text, tag) {
-  if (full || Buffer.byteLength(text, "utf8") <= RAW_LIMIT) return text;
-  const rows = text.match(new RegExp(`<${tag}[\\s>][\\s\\S]*?</${tag}>`, "gi")) || [];
-  if (rows.length <= 3) return `${text.slice(0, RAW_LIMIT)}\n<!-- … truncated, use --full … -->`;
-  const head = text.slice(0, text.indexOf(rows[0]));
-  return `${head}${rows.slice(0, 3).join("\n")}\n<!-- … ${rows.length - 3} more ${tag} (use --full) … -->\n</ENVELOPE>`;
+function text(v) {
+  if (Array.isArray(v)) v = v[0];
+  if (v == null) return null;
+  if (typeof v === "object") return String(v["#text"] ?? "");
+  return String(v);
 }
 
-async function call(probe, companyName) {
-  const tag = probe.tag || "PROBE";
-  const mode = companyName ? `company "${companyName}"` : "plain";
-  console.log(`\n=== ${probe.id}  [${mode}] ===`);
+function summarize(raw) {
+  if (/could not|LINEERROR/i.test(raw)) return { kind: "ERROR" };
+  if (/^\s*(<\?xml[^>]*\?>)?\s*(<ENVELOPE\s*\/>|<ENVELOPE\s*>\s*<\/ENVELOPE\s*>)\s*$/i.test(raw)) return { kind: "EMPTY" };
   try {
-    const res = await axios.post(`http://localhost:${port}`, requestXml(probe.id, companyName), {
+    const env = child(parser.parse(raw), "ENVELOPE") || {};
+    const probe = child(env, "PROBE");
+    const p = Array.isArray(probe) ? probe[0] : probe;
+    const bills = [].concat(child(env, "PROBEBILL") ?? []);
+    return {
+      kind: p ? "PRINTS" : "OTHER",
+      probeLines: Array.isArray(probe) ? probe.length : p ? 1 : 0,
+      currentCompany: p ? text(child(p, "CURRENTCOMPANY")) : null,
+      companyObject: p ? text(child(p, "COMPANYOBJECT")) : null,
+      billRows: bills.length,
+      billCompanies: [...new Set(bills.map((b) => text(child(b, "COMPANY"))))],
+    };
+  } catch (e) {
+    return { kind: "PARSE_FAILED", reason: e?.message };
+  }
+}
+
+function excerpt(raw) {
+  if (full) return raw;
+  const rows = raw.match(/<PROBEBILL[\s>][\s\S]*?<\/PROBEBILL>/gi) || [];
+  if (rows.length <= BILL_EXCERPT) return raw;
+  const head = raw.slice(0, raw.indexOf(rows[0]));
+  return `${head}${rows.slice(0, BILL_EXCERPT).join("\n")}\n<!-- … ${rows.length - BILL_EXCERPT} more PROBEBILL (use --full) … -->\n</ENVELOPE>`;
+}
+
+async function call(id, companyName) {
+  console.log(`\n=== ${id}  requested: "${companyName}" ===`);
+  try {
+    const res = await axios.post(`http://localhost:${port}`, requestXml(id, companyName), {
       headers: { "Content-Type": "text/xml" },
       responseType: "arraybuffer",
       timeout: 60000,
     });
-    const text = decodeTallyBody(res.data);
-    const bytes = Buffer.byteLength(text, "utf8");
-    const out = classify(text, tag);
-    console.log(`request: OK (HTTP ${res.status})  bytes: ${bytes}  result: ${out.result}${out.rows ? ` (${out.rows} ${tag})` : ""}`);
-    console.log(excerpt(text, tag).trim());
-    return out;
+    const raw = decodeTallyBody(res.data);
+    const s = summarize(raw);
+    console.log(`request: OK (HTTP ${res.status})  bytes: ${Buffer.byteLength(raw, "utf8")}  result: ${s.kind}`);
+    console.log(excerpt(raw).trim());
+    return s;
   } catch (e) {
     const reason = e?.code || e?.message;
     console.log(`request: FAILED  ${reason}`);
-    return { result: `HTTP_FAILED (${reason})`, rows: 0 };
+    return { kind: `HTTP_FAILED (${reason})` };
   }
 }
 
-function cell(out) {
-  return out.rows ? `${out.result} (${out.rows})` : out.result;
-}
+const show = (v) => (v == null ? "-" : v === "" ? '""' : v);
 
 (async () => {
-  console.log(`TDL layout probe — http://localhost:${port}  company: ${company ?? "(none)"}`);
-  const modes = company ? [null, company] : [null];
-  const results = [];
-  for (const probe of [...PROBES, ...CONTROLS]) {
-    const row = { label: probe.label, cells: [] };
-    for (const m of modes) row.cells.push(cell(await call(probe, m)));
-    results.push(row);
+  console.log(`TDL company-context probe — http://localhost:${port}`);
+  const rows = [];
+  for (const name of companies) {
+    const ctx = await call("TDKProbeContext", name);
+    const cb = await call("TDKProbeContextBills", name);
+    rows.push({ name, ctx, cb });
   }
 
-  const headers = ["Probe", "Plain request", ...(company ? [`With company "${company}"`] : [])];
-  const widths = headers.map((h, i) => Math.max(h.length, ...results.map((r) => (i === 0 ? r.label : r.cells[i - 1]).length)));
+  const table = rows.map(({ name, ctx, cb }) => [
+    name,
+    ctx.kind === "PRINTS" ? show(ctx.currentCompany) : ctx.kind,
+    ctx.kind === "PRINTS" ? show(ctx.companyObject) : "-",
+    cb.kind === "PRINTS" ? show(cb.currentCompany) : cb.kind,
+    cb.kind === "PRINTS" ? String(cb.billRows) : "-",
+    cb.kind === "PRINTS" ? (cb.billCompanies.map(show).join(", ") || "-") : "-",
+  ]);
+  const headers = ["Requested", "Context: CURRENTCOMPANY", "Context: COMPANYOBJECT", "Bills: CURRENTCOMPANY", "Bill rows", "Bill row COMPANY"];
+  const widths = headers.map((h, i) => Math.max(h.length, ...table.map((r) => r[i].length)));
   const line = (cols) => cols.map((c, i) => c.padEnd(widths[i])).join("   ");
   console.log(`\n${line(headers)}`);
   console.log("-".repeat(widths.reduce((a, w) => a + w + 3, -3)));
-  for (const r of results) console.log(line([r.label, ...r.cells]));
+  for (const r of table) console.log(line(r));
 })();

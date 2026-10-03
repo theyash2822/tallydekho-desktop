@@ -18,6 +18,7 @@ const {
 } = require("./billSnapshot");
 const { checkTdlHealth } = require("./tdlHealth");
 const { runTallyExclusive, xmlText } = require("./tallyQueue");
+const { checkVoucherListResponse, buildVoucherListSummary, voucherListLog } = require("./voucherList");
 
 /** Decode Tally HTTP body — custom reports may return UTF-16 LE with BOM. */
 function decodeTallyResponse(data) {
@@ -159,7 +160,12 @@ async function uploadLargeArray({
     return vouchersResponse;
   }
 
-  info("[sync] ingest complete body", { uploadId, ...extras });
+  const { voucherLists, ...logExtras } = extras;
+  info("[sync] ingest complete body", {
+    uploadId,
+    ...logExtras,
+    ...(voucherLists ? { voucherLists: voucherLists.map(voucherListLog) } : {}),
+  });
   sendMessage("Processing Data");
 
   // Retry complete up to 3x (all data uploaded — just need to confirm)
@@ -827,6 +833,35 @@ const syncGuidHelper = async ({
   }));
 };
 
+/** SimplifiedVoucher.xml for one FY: stub rows for ingest plus the strict check used for deletions. */
+const fetchVoucherList = async ({ companyName, companyGuid, year, yearId }) => {
+  const xml = "SimplifiedVoucher.xml";
+  const response = await getData(xml, [
+    { key: "$$COMPANY_NAME", value: companyName },
+    { key: "$$COLLNAME", value: "Voucher" },
+    { key: "$$FROM_DATE", value: year.begin },
+    { key: "$$TO_DATE", value: year.end },
+  ]);
+  const check = checkVoucherListResponse(response, companyGuid);
+  let rows = [];
+  if (response.status) {
+    try {
+      rows = normalizeEnvelope(parser.parse(response.data).ENVELOPE).map((item) => ({
+        ...item,
+        COMPANY_NAME: companyName,
+        XML: xml,
+        COLLECTION_NAME: "Voucher",
+        COMPANY_GUID: companyGuid,
+        YEAR_ID: yearId,
+      }));
+    } catch (e) {
+      info("[sync] voucher list parse failed", { companyGuid, finYear: year.finYear, message: e?.message });
+      return { rows: [], year, check: { ok: false, reason: "parse_failed" } };
+    }
+  }
+  return { rows, year, check };
+};
+
 let syncInProgress = false;
 
 /** Foreground, auto, headless and socket-triggered syncs all funnel through here; only one may run. */
@@ -927,6 +962,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
   let promises = [];
   const billSnapshots = {};
   const billSnapshotProblems = [];
+  const contextStatuses = {};
   // TDL health is global to the running Tally: one check per sync run, shared by every company.
   let syncTdlHealth = null;
   sendProgress(0);
@@ -1027,6 +1063,8 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
 
   let masterPromises = [];
   let voucherPromises = [];
+  const voucherListChecks = {};
+  const voucherLists = {};
 
   sendProgress(5);
 
@@ -1071,14 +1109,9 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
         const yearId = yearIds[companyGuid][year.finYear];
 
         voucherPromises.push(
-          syncGuidHelper({
-            xml: "SimplifiedVoucher.xml",
-            companyName: name,
-            collectionName: "Voucher",
-            fromDate: year.begin,
-            toDate: year.end,
-            companyGuid,
-            yearId,
+          fetchVoucherList({ companyName: name, companyGuid, year, yearId }).then((r) => {
+            (voucherListChecks[companyGuid] ||= []).push(r);
+            return r.rows;
           })
         );
       }
@@ -1167,6 +1200,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
         health: syncTdlHealth,
       });
       billSnapshots[companyGuid] = snapshotSummary(snapshot);
+      contextStatuses[companyGuid] = snapshot.contextStatus || null;
       if (snapshot.status === BILL_STATUS.SUCCESS) {
         promises.push(decorateRows(snapshot.rows, {
           xml: "BillOutstanding.xml",
@@ -1194,6 +1228,17 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
         durationMs: snapshot.durationMs,
       });
     }
+
+    // Deleted-voucher check: needs this company's verified Context and a clean list for every FY.
+    const listChecks = voucherListChecks[companyGuid] || [];
+    voucherLists[companyGuid] = buildVoucherListSummary({
+      companyGuid,
+      contextStatus: contextStatuses[companyGuid],
+      years: listChecks.length === years.length
+        ? listChecks.map(({ year, check }) => ({ finYear: year.finYear, begin: year.begin, end: year.end, check }))
+        : [],
+    });
+    info("[sync] voucher_list", { company: name, ...voucherListLog(voucherLists[companyGuid]) });
 
     for (let j = 0; j < years.length; j++) {
       if (stopTallySyncCode) {
@@ -1397,6 +1442,9 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
           companies: [{ guid: c.guid, name: c.name, years: c.years, yearIds: c.yearIds }],
           isHardSync,
           ...(billSnapshots[c.guid] ? { billSnapshots: [billSnapshots[c.guid]] } : {}),
+          ...(voucherLists[c.guid] ? { voucherLists: [voucherLists[c.guid]] } : {}),
+          // Its server start time precedes every Tally fetch: the backend's cutoff for deletions.
+          ...(syncRunId ? { syncRunId } : {}),
         },
         sendMessage,
       });

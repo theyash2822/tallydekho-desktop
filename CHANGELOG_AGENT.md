@@ -4,6 +4,13 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-10-03 — Deleted-voucher list sent with sync; diagnostic probes removed (branch `tdl`)
+
+- Probes removed after Windows QA of 1.1.3 passed: `TEMPORARY DIAGNOSTIC PROBES` block in `xmls/TDKBillOutstanding.tdl` (version stays 1.1.3), `scripts/tdl-layout-probe.js`, isolation test (now asserts they are gone).
+- New `util/voucherList.js`: `checkVoucherListResponse` (request ok, clean `<ENVELOPE>`, no LINEERROR / "Could not set SVCurrentCompany", GUID count == ALTERID count, every GUID prefixed `<companyGuid>-`), `buildVoucherListSummary` (complete only with this sync's Context VERIFIED and every FY clean; ≤400k ids), `voucherListLog` (counts only).
+- `util/xml.js`: SimplifiedVoucher per company/FY through `fetchVoucherList` (same stub rows as before + the check); per company after the bill snapshot builds the summary, logs `[sync] voucher_list`, and sends `voucherLists` + `syncRunId` on `/ingest/complete`. The complete-body log no longer prints id lists.
+- Tested: new `scripts/test-voucher-list.js` (7, in `npm test`); desktop 109/109.
+
 ## 2026-10-03 — TDL 1.1.3: separate Context report, Context → Bills per company, verified zero clears (branch `tdl`)
 
 - Probe evidence (Windows, TallyPrime 7.0): round 2 — `##SVCurrentCompany` / `$Name:Company:##SVCurrentCompany` in a fixed scrolling line return the requested company (Yash → Yash, Laveena → Laveena); a real closed company (Radhe Ram) and a nonexistent name both give `LINEERROR Could not set 'SVCurrentCompany'`; a fixed line in the same part as repeated bill lines is dropped.

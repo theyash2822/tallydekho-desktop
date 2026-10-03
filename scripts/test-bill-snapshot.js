@@ -416,11 +416,7 @@ const sectionOf = (tdl, header) => {
   return tdl.slice(start, next < 0 ? undefined : next);
 };
 
-const productionTdl = () => {
-  const tdl = fs.readFileSync(path.join(ROOT, "xmls/TDKBillOutstanding.tdl"), "utf8");
-  const probe = tdl.indexOf(";; ===== TEMPORARY DIAGNOSTIC PROBES — BEGIN");
-  return probe < 0 ? tdl : tdl.slice(0, probe);
-};
+const productionTdl = () => fs.readFileSync(path.join(ROOT, "xmls/TDKBillOutstanding.tdl"), "utf8");
 
 test("TDL 1.1.3: health and context are one fixed scrolling line each; bill report has one scrolling part", () => {
   const tdl = productionTdl();
@@ -477,17 +473,10 @@ test("TDL 1.1.3: health and context are one fixed scrolling line each; bill repo
   }
 });
 
-test("temporary TDKProbe block is isolated and unused by the app", () => {
+test("diagnostic probes are gone from the TDL and scripts", () => {
   const tdl = fs.readFileSync(path.join(ROOT, "xmls/TDKBillOutstanding.tdl"), "utf8");
-  const begin = tdl.indexOf(";; ===== TEMPORARY DIAGNOSTIC PROBES — BEGIN");
-  const end = tdl.indexOf(";; ===== TEMPORARY DIAGNOSTIC PROBES — END");
-  if (begin < 0 && end < 0) return;
-  assert.ok(begin >= 0 && end > begin, "probe block must have BEGIN and END markers");
-  const outside = tdl.slice(0, begin) + tdl.slice(end);
-  assert.doesNotMatch(outside, /TDKProbe/, "probe objects must live inside the marked block");
-  for (const f of ["main.js", "util/xml.js", "util/tdlHealth.js", "util/billSnapshot.js", "util/ensureBillOutstandingTdl.js"]) {
-    assert.doesNotMatch(fs.readFileSync(path.join(ROOT, f), "utf8"), /TDKProbe/, `${f} must not call probe reports`);
-  }
+  assert.doesNotMatch(tdl, /TDKProbe|TEMPORARY DIAGNOSTIC/);
+  assert.equal(fs.existsSync(path.join(ROOT, "scripts/tdl-layout-probe.js")), false);
 });
 
 // ── Lifecycle guard ────────────────────────────────────────────────────────

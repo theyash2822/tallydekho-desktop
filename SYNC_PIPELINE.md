@@ -38,6 +38,11 @@ Desktop app acts as the bridge between Tally Prime (local) and TallyDekho backen
 - Upload: chunk header `Bill-Snapshot-Mode: staged`; `/ingest/complete` body `billSnapshots: [{ companyGuid, status, snapshotComplete, rowCount, tdlStatus, tdlVersion }]`. Backend replaces bills only on a complete SUCCESS; anything else keeps the last synced bills.
 - Only Settings → Setup / Retry setup (`util/ensureBillOutstandingTdl.js`) may restart Tally to load the TDL.
 
+### Step 4c: Vouchers deleted in Tally (per company)
+- `SimplifiedVoucher.xml` (full GUID list per FY, not incremental) is checked by `util/voucherList.js`: clean envelope, no LINEERROR / "Could not set SVCurrentCompany", every GUID prefixed with the company GUID.
+- The list is `complete` only when the company's TDL Context was VERIFIED this sync and every FY passed. `/ingest/complete` body adds `voucherLists: [{ companyGuid, complete, reason, years: [{ finYear, from, to, ids }] }]` (ids = GUID suffix after `<companyGuid>-`) and `syncRunId`.
+- Backend deletes only vouchers absent from a complete list (see td-backend `src/services/voucherDeletion.js`); an incomplete list deletes nothing.
+
 ### Step 5: Parse + Upload
 - `util/tallyHelper.js` parses each XML response
 - Data normalized (uppercase keys, qty parsing, Dr/Cr handling)

@@ -4,6 +4,14 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-10-03 — TEMPORARY TDL export-layout probe (branch `tdl`, diagnosis only)
+
+- Windows test of 1.1.2: still `<ENVELOPE></ENVELOPE>` for health and no `TDKCONTEXT`; Yash 2,008 BILLROWs with matching Company → SUCCESS; Laveena preserved. Only lines repeated over `TDKBO Bills` inside the `Scroll : Vertical` part print.
+- `xmls/TDKBillOutstanding.tdl`: appended a block between `TEMPORARY DIAGNOSTIC PROBES — BEGIN/END` markers with six reports `TDKProbe{Fixed,Bill,Company}{Scroll,NoScroll}` — identical except data source (none / `TDKBO Bills` / `TDKBO LoadedCompanies`) and `Scroll : Vertical`. No Report-level Variable. Production reports, version (1.1.2) and app behavior unchanged.
+- `scripts/tdl-layout-probe.js` (temporary): calls each probe and the two production reports via HTTP Export/Data/XML, plain and with the production bill static variables; prints ID, request OK/FAILED, bytes, raw reply, and a PRINTS/EMPTY matrix.
+- Test: probe objects live only inside the marked block and no app file references `TDKProbe`. Desktop 95/95.
+- Removal after diagnosis: delete the marked TDL block, `scripts/tdl-layout-probe.js`, and the isolation test.
+
 ## 2026-10-03 — TDL 1.1.2: health and company context repeat over Company collections (branch `tdl`)
 
 - Windows test of 1.1.1 on TallyPrime 7.0: after a clean Retry setup (`exeMatches: true`, cwd = install dir) health was still `<ENVELOPE></ENVELOPE>` and Laveena's bill reply had no `TDKCONTEXT`, so `Repeat` + `Set : 1` prints nothing over HTTP export. Safety rules held: Yash `COMPANY_UNVERIFIED` / `TDL_NOT_LOADED`, Laveena `LEGACY_EMPTY_AMBIGUOUS`, nothing cleared.

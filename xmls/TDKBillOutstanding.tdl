@@ -159,3 +159,150 @@
 [System: Formula]
     TDKBO NonBlankBill       : NOT $$IsEmpty:$Name
     TDKBO IsRequestedCompany : $Name = ##SVCurrentCompany
+
+;; ===== TEMPORARY DIAGNOSTIC PROBES — BEGIN (delete through END after diagnosis) =====
+;; Purpose: find why only BILLROW lines print over HTTP Export/Data.
+;; Six reports, identical except for two variables:
+;;   data source : none (fixed line) | TDKBO Bills | TDKBO LoadedCompanies
+;;   layout      : body part with "Scroll : Vertical" | without
+;; No Report-level Variable, no Set, no filters beyond the reused collections.
+;; Read with scripts/tdl-layout-probe.js. Nothing in the desktop app calls these.
+
+[Report: TDKProbeFixedNoScroll]
+    Form          : TDKProbe FixedNoScroll Form
+    Keep XML Case : Yes
+
+[Form: TDKProbe FixedNoScroll Form]
+    Parts   : TDKProbe FixedNoScroll Part
+    XML Tag : ENVELOPE
+
+[Part: TDKProbe FixedNoScroll Part]
+    Lines   : TDKProbe FixedNoScroll Line
+
+[Line: TDKProbe FixedNoScroll Line]
+    Fields  : TDKProbe FixedNoScroll Type, TDKProbe Value
+    XML Tag : PROBE
+
+[Report: TDKProbeFixedScroll]
+    Form          : TDKProbe FixedScroll Form
+    Keep XML Case : Yes
+
+[Form: TDKProbe FixedScroll Form]
+    Parts   : TDKProbe FixedScroll Part
+    XML Tag : ENVELOPE
+
+[Part: TDKProbe FixedScroll Part]
+    Lines   : TDKProbe FixedScroll Line
+    Scroll  : Vertical
+
+[Line: TDKProbe FixedScroll Line]
+    Fields  : TDKProbe FixedScroll Type, TDKProbe Value
+    XML Tag : PROBE
+
+[Report: TDKProbeBillNoScroll]
+    Form          : TDKProbe BillNoScroll Form
+    Keep XML Case : Yes
+
+[Form: TDKProbe BillNoScroll Form]
+    Parts   : TDKProbe BillNoScroll Part
+    XML Tag : ENVELOPE
+
+[Part: TDKProbe BillNoScroll Part]
+    Lines   : TDKProbe BillNoScroll Line
+    Repeat  : TDKProbe BillNoScroll Line : TDKBO Bills
+
+[Line: TDKProbe BillNoScroll Line]
+    Fields  : TDKProbe BillNoScroll Type, TDKProbe Value
+    XML Tag : PROBE
+
+[Report: TDKProbeBillScroll]
+    Form          : TDKProbe BillScroll Form
+    Keep XML Case : Yes
+
+[Form: TDKProbe BillScroll Form]
+    Parts   : TDKProbe BillScroll Part
+    XML Tag : ENVELOPE
+
+[Part: TDKProbe BillScroll Part]
+    Lines   : TDKProbe BillScroll Line
+    Repeat  : TDKProbe BillScroll Line : TDKBO Bills
+    Scroll  : Vertical
+
+[Line: TDKProbe BillScroll Line]
+    Fields  : TDKProbe BillScroll Type, TDKProbe Value
+    XML Tag : PROBE
+
+[Report: TDKProbeCompanyNoScroll]
+    Form          : TDKProbe CompanyNoScroll Form
+    Keep XML Case : Yes
+
+[Form: TDKProbe CompanyNoScroll Form]
+    Parts   : TDKProbe CompanyNoScroll Part
+    XML Tag : ENVELOPE
+
+[Part: TDKProbe CompanyNoScroll Part]
+    Lines   : TDKProbe CompanyNoScroll Line
+    Repeat  : TDKProbe CompanyNoScroll Line : TDKBO LoadedCompanies
+
+[Line: TDKProbe CompanyNoScroll Line]
+    Fields  : TDKProbe CompanyNoScroll Type, TDKProbe Company
+    XML Tag : PROBE
+
+[Report: TDKProbeCompanyScroll]
+    Form          : TDKProbe CompanyScroll Form
+    Keep XML Case : Yes
+
+[Form: TDKProbe CompanyScroll Form]
+    Parts   : TDKProbe CompanyScroll Part
+    XML Tag : ENVELOPE
+
+[Part: TDKProbe CompanyScroll Part]
+    Lines   : TDKProbe CompanyScroll Line
+    Repeat  : TDKProbe CompanyScroll Line : TDKBO LoadedCompanies
+    Scroll  : Vertical
+
+[Line: TDKProbe CompanyScroll Line]
+    Fields  : TDKProbe CompanyScroll Type, TDKProbe Company
+    XML Tag : PROBE
+
+[Field: TDKProbe Value]
+    Use     : Name Field
+    Set As  : "YES"
+    XML Tag : VALUE
+
+[Field: TDKProbe Company]
+    Use     : Name Field
+    Set As  : $Name
+    XML Tag : COMPANY
+
+[Field: TDKProbe FixedNoScroll Type]
+    Use     : Name Field
+    Set As  : "FIXED_NO_SCROLL"
+    XML Tag : TYPE
+
+[Field: TDKProbe FixedScroll Type]
+    Use     : Name Field
+    Set As  : "FIXED_SCROLL"
+    XML Tag : TYPE
+
+[Field: TDKProbe BillNoScroll Type]
+    Use     : Name Field
+    Set As  : "BILL_NO_SCROLL"
+    XML Tag : TYPE
+
+[Field: TDKProbe BillScroll Type]
+    Use     : Name Field
+    Set As  : "BILL_SCROLL"
+    XML Tag : TYPE
+
+[Field: TDKProbe CompanyNoScroll Type]
+    Use     : Name Field
+    Set As  : "COMPANY_NO_SCROLL"
+    XML Tag : TYPE
+
+[Field: TDKProbe CompanyScroll Type]
+    Use     : Name Field
+    Set As  : "COMPANY_SCROLL"
+    XML Tag : TYPE
+
+;; ===== TEMPORARY DIAGNOSTIC PROBES — END =====

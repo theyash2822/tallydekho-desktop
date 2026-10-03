@@ -366,6 +366,19 @@ test("TDL: company-independent health; bill report carries company context; ever
   }
 });
 
+test("temporary TDKProbe block is isolated and unused by the app", () => {
+  const tdl = fs.readFileSync(path.join(ROOT, "xmls/TDKBillOutstanding.tdl"), "utf8");
+  const begin = tdl.indexOf(";; ===== TEMPORARY DIAGNOSTIC PROBES — BEGIN");
+  const end = tdl.indexOf(";; ===== TEMPORARY DIAGNOSTIC PROBES — END");
+  if (begin < 0 && end < 0) return;
+  assert.ok(begin >= 0 && end > begin, "probe block must have BEGIN and END markers");
+  const outside = tdl.slice(0, begin) + tdl.slice(end);
+  assert.doesNotMatch(outside, /TDKProbe/, "probe objects must live inside the marked block");
+  for (const f of ["main.js", "util/xml.js", "util/tdlHealth.js", "util/billSnapshot.js", "util/ensureBillOutstandingTdl.js"]) {
+    assert.doesNotMatch(fs.readFileSync(path.join(ROOT, f), "utf8"), /TDKProbe/, `${f} must not call probe reports`);
+  }
+});
+
 // ── Lifecycle guard ────────────────────────────────────────────────────────
 
 test("no sync path can reach the Tally restart", () => {

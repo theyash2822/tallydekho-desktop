@@ -4,6 +4,14 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-10-03 — TDL 1.1.2: health and company context repeat over Company collections (branch `tdl`)
+
+- Windows test of 1.1.1 on TallyPrime 7.0: after a clean Retry setup (`exeMatches: true`, cwd = install dir) health was still `<ENVELOPE></ENVELOPE>` and Laveena's bill reply had no `TDKCONTEXT`, so `Repeat` + `Set : 1` prints nothing over HTTP export. Safety rules held: Yash `COMPANY_UNVERIFIED` / `TDL_NOT_LOADED`, Laveena `LEGACY_EMPTY_AMBIGUOUS`, nothing cleared.
+- `xmls/TDKBillOutstanding.tdl` 1.1.2: former fallback is now the installed file. Health repeats over `TDKBO LoadedCompanies` (`Type : Company`, one `TDKSTATUS` per loaded company); context repeats over `TDKBO CurrentCompany` (filter `$Name = ##SVCurrentCompany`, prints the company's real `$Name`). No `Set :` lines. `xmls/TDKBillOutstanding.alt-collection.tdl` removed.
+- `util/tdlHealth.js`: `TDL_VERSION` 1.1.2.
+- Tests: TDL file test rewritten for the collection form (all Part/Line/Field/Collection references defined, no `Set :`), health classification accepts multiple `TDKSTATUS` rows. Desktop 94/94.
+- Risks: still unverified on real Tally; no company loaded → no health row → `HEALTH_UNCONFIRMED` (expected). Next: Windows Retry setup + `scripts/tdl-probe.js`.
+
 ## 2026-10-03 — TDL 1.1.1: one-row global health, company-verified bill snapshot, fallback bill fetch (branch `tdl`)
 
 - Cause (Windows log): TDL 1.1.0 health report returned `<ENVELOPE></ENVELOPE>` — its line was static, so Tally printed nothing; the desktop then skipped bills entirely.

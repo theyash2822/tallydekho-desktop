@@ -294,8 +294,13 @@ test("health request is company-independent (no SVCURRENTCOMPANY)", async () => 
 test("health classification", () => {
   const active = classifyHealthResponse(healthXml());
   assert.equal(active.status, TDL_STATUS.ACTIVE);
-  assert.equal(active.version, "1.1.1");
+  assert.equal(active.version, "1.1.2");
   assert.equal(active.report, "TDKBillOutstandingWorking");
+
+  const status = `<TDKSTATUS><ACTIVE>YES</ACTIVE><VERSION>${TDL_VERSION}</VERSION><REPORT>TDKBillOutstandingWorking</REPORT></TDKSTATUS>`;
+  const perCompany = classifyHealthResponse(`<ENVELOPE>${status}${status}</ENVELOPE>`);
+  assert.equal(perCompany.status, TDL_STATUS.ACTIVE, "one TDKSTATUS per loaded company");
+  assert.equal(perCompany.version, TDL_VERSION);
 
   const empty = classifyHealthResponse(EMPTY);
   assert.equal(empty.status, TDL_STATUS.HEALTH_UNCONFIRMED);
@@ -330,22 +335,35 @@ const sectionOf = (tdl, header) => {
   return tdl.slice(start, next < 0 ? undefined : next);
 };
 
-test("TDL 1.1.1: one-row company-independent health; bill report carries company context", () => {
-  for (const file of ["xmls/TDKBillOutstanding.tdl", "xmls/TDKBillOutstanding.alt-collection.tdl"]) {
-    const tdl = fs.readFileSync(path.join(ROOT, file), "utf8");
-    const version = /\[Field: TDKBOH Version\][\s\S]*?Set As\s*:\s*"([^"]+)"/.exec(tdl)?.[1];
-    assert.equal(version, TDL_VERSION, file);
-    assert.match(sectionOf(tdl, "[Part: TDKBOH Body]"), /Repeat\s*:\s*TDKBOH Line/, file);
-    const healthSections = ["[Report: TDKBillOutstandingHealth]", "[Part: TDKBOH Body]", "[Line: TDKBOH Line]"]
-      .map((h) => sectionOf(tdl, h)).join("\n");
-    assert.doesNotMatch(healthSections, /SVCurrentCompany|TDKBOH Company/i, `${file}: health must not depend on company`);
-    assert.match(sectionOf(tdl, "[Form: TDKBO Form]"), /Parts\s*:\s*TDKBO Context,\s*TDKBO Body/, file);
-    assert.match(sectionOf(tdl, "[Line: TDKBO ContextLine]"), /XML Tag\s*:\s*TDKCONTEXT/, file);
-    assert.match(sectionOf(tdl, "[Line: TDKBO Line]"), /TDKBO Company/, file);
+test("TDL: company-independent health; bill report carries company context; every line repeats over a collection", () => {
+  const tdl = fs.readFileSync(path.join(ROOT, "xmls/TDKBillOutstanding.tdl"), "utf8");
+  const version = /\[Field: TDKBOH Version\][\s\S]*?Set As\s*:\s*"([^"]+)"/.exec(tdl)?.[1];
+  assert.equal(version, TDL_VERSION);
+  const healthSections = ["[Report: TDKBillOutstandingHealth]", "[Part: TDKBOH Body]", "[Line: TDKBOH Line]"]
+    .map((h) => sectionOf(tdl, h)).join("\n");
+  assert.doesNotMatch(healthSections, /SVCurrentCompany|TDKBOH Company/i, "health must not depend on company");
+  assert.match(sectionOf(tdl, "[Form: TDKBO Form]"), /Parts\s*:\s*TDKBO Context,\s*TDKBO Body/);
+  assert.match(sectionOf(tdl, "[Line: TDKBO ContextLine]"), /XML Tag\s*:\s*TDKCONTEXT/);
+  assert.match(sectionOf(tdl, "[Line: TDKBO Line]"), /TDKBO Company/);
+
+  // TallyPrime 7.0 prints nothing for static / "Set : 1" lines over HTTP export.
+  assert.match(sectionOf(tdl, "[Part: TDKBOH Body]"), /Repeat\s*:\s*TDKBOH Line\s*:\s*TDKBO LoadedCompanies/);
+  assert.match(sectionOf(tdl, "[Part: TDKBO Context]"), /Repeat\s*:\s*TDKBO ContextLine\s*:\s*TDKBO CurrentCompany/);
+  assert.doesNotMatch(tdl, /^\s*Set\s*:\s*\d/m);
+  assert.match(sectionOf(tdl, "[Collection: TDKBO LoadedCompanies]"), /Type\s*:\s*Company/);
+  const current = sectionOf(tdl, "[Collection: TDKBO CurrentCompany]");
+  assert.match(current, /Type\s*:\s*Company/);
+  assert.match(current, /Filter\s*:\s*TDKBO IsRequestedCompany/);
+  assert.match(tdl, /TDKBO IsRequestedCompany\s*:\s*\$Name\s*=\s*##SVCurrentCompany/);
+
+  const defined = new Set([...tdl.matchAll(/^\[(?:Part|Line|Field|Collection):\s*([^\]]+)\]/gm)].map((m) => m[1].trim()));
+  for (const m of tdl.matchAll(/^\s*(?:Parts|Lines|Fields)\s*:\s*(.+)$/gm)) {
+    for (const name of m[1].split(",").map((s) => s.trim())) assert.ok(defined.has(name), `undefined: ${name}`);
   }
-  const main = fs.readFileSync(path.join(ROOT, "xmls/TDKBillOutstanding.tdl"), "utf8");
-  assert.match(sectionOf(main, "[Part: TDKBOH Body]"), /Set\s*:\s*1/);
-  assert.match(sectionOf(main, "[Part: TDKBO Context]"), /Set\s*:\s*1/);
+  for (const m of tdl.matchAll(/^\s*Repeat\s*:\s*([^:]+?)\s*:\s*(.+?)\s*$/gm)) {
+    assert.ok(defined.has(m[1]), `undefined line: ${m[1]}`);
+    assert.ok(defined.has(m[2]), `undefined collection: ${m[2]}`);
+  }
 });
 
 // ── Lifecycle guard ────────────────────────────────────────────────────────

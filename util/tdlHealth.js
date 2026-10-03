@@ -12,7 +12,7 @@ const { runTallyExclusive } = require("./tallyQueue");
 const { info } = require("./logger");
 
 /** Must match TDKBOH Version in xmls/TDKBillOutstanding.tdl. */
-const TDL_VERSION = "1.1.1";
+const TDL_VERSION = "1.1.2";
 const HEALTH_REPORT_ID = "TDKBillOutstandingHealth";
 
 const TDL_STATUS = Object.freeze({

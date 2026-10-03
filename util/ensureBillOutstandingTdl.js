@@ -43,9 +43,19 @@ function currentFyRange(now = new Date()) {
 }
 
 /**
- * Read-only live status. With a company we also try the bill report, which is
- * how a legacy add-on (no health report) is recognised.
+ * Settings status comes from global health only (READY needs health ACTIVE).
+ * When health has no report at all, the company snapshot tells a legacy add-on
+ * (rows) from no add-on (bill report missing). A company proven by its context
+ * report never turns Settings Ready on its own.
  */
+function settingsTdlStatus(snap) {
+  if (snap.healthStatus !== TDL_STATUS.HEALTH_MISSING) return snap.healthStatus || TDL_STATUS.UNKNOWN;
+  if (snap.status === "SUCCESS" && snap.tdlStatus === TDL_STATUS.ACTIVE_LEGACY) return TDL_STATUS.ACTIVE_LEGACY;
+  if (snap.tdlStatus === TDL_STATUS.NOT_LOADED) return TDL_STATUS.NOT_LOADED;
+  return TDL_STATUS.UNKNOWN;
+}
+
+/** Read-only live status. With a company we also run that company's Context → Bills check. */
 async function liveTdlStatus(companyName) {
   if (!companyName) {
     const health = await checkTdlHealth();
@@ -55,10 +65,11 @@ async function liveTdlStatus(companyName) {
   const snap = await fetchCompanyBillSnapshot({ companyName, ...currentFyRange() });
   return {
     checked: true,
-    tdlStatus: snap.tdlStatus || TDL_STATUS.UNKNOWN,
-    version: snap.tdlVersion,
+    tdlStatus: settingsTdlStatus(snap),
+    version: snap.healthVersion,
     billRows: snap.status === "SUCCESS" ? snap.rowCount : null,
     billStatus: snap.status,
+    contextStatus: snap.contextStatus,
     reason: snap.reason,
   };
 }
@@ -379,6 +390,8 @@ async function runGetTdlHealth(opts) {
     tdlStatus: live.tdlStatus,
     version: live.version,
     billRows: live.billRows,
+    billStatus: live.billStatus || null,
+    contextStatus: live.contextStatus || null,
     reason: live.reason || null,
   });
   return buildHealth({ tallyDir: detected.path, detectSource: detected.source, applyResult, live });
@@ -457,6 +470,7 @@ module.exports = {
   applyTdlToDir,
   activateTdlByRestartingTally,
   buildHealth,
+  settingsTdlStatus,
   TDL_FILENAME,
   STORE_KEY,
   __setDepsForTests,

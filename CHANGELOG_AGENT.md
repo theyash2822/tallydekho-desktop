@@ -4,6 +4,18 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-10-03 — TDL 1.1.3: separate Context report, Context → Bills per company, verified zero clears (branch `tdl`)
+
+- Probe evidence (Windows, TallyPrime 7.0): round 2 — `##SVCurrentCompany` / `$Name:Company:##SVCurrentCompany` in a fixed scrolling line return the requested company (Yash → Yash, Laveena → Laveena); a real closed company (Radhe Ram) and a nonexistent name both give `LINEERROR Could not set 'SVCurrentCompany'`; a fixed line in the same part as repeated bill lines is dropped.
+- `xmls/TDKBillOutstanding.tdl` 1.1.3: Health = one fixed `TDKSTATUS` line (ACTIVE/VERSION/REPORT) in a `Scroll : Vertical` part, no company. New `TDKBillOutstandingContext` = one fixed `TDKCONTEXT` line (ACTIVE, VERSION, COMPANY = `$Name:Company:##SVCurrentCompany`) in a scrolling part. Bill report: single scrolling part, dead context part and Company collections removed. Probe block still present (removed after Windows QA).
+- `util/tdlHealth.js`: `TDL_VERSION` 1.1.3; `CONTEXT_STATUS`, `contextRequestXml`, `classifyContextResponse` (VERIFIED / OUTDATED / MISMATCH / BLANK / COMPANY_NOT_OPEN / REPORT_MISSING / EMPTY / INVALID / ERROR), `looksLikeCompanyNotOpen` (checked before generic LINEERROR).
+- `util/tallyQueue.js`: `runCompanyExclusive` — separate chain so one company's Context → Bills cannot interleave with another unit (sync vs Settings); per-request `runTallyExclusive` unchanged.
+- `util/billSnapshot.js`: `fetchCompanyBillSnapshot` runs Context then Bills inside `runCompanyExclusive`; bills skipped unless context VERIFIED / REPORT_MISSING / OUTDATED. `decideBillSnapshot({ health, context, bill, requestedCompany })`: VERIFIED + rows all matching → SUCCESS replace; VERIFIED + 0 → SUCCESS clear (authority CONTEXT, even with unconfirmed health); any row mismatch → `COMPANY_CONTEXT_MISMATCH`, row without company → `COMPANY_UNVERIFIED` (whole snapshot rejected); context mismatch / blank / empty / error → preserve; new `COMPANY_NOT_OPEN`; legacy (no context report) rows with matching company → SUCCESS `ACTIVE_LEGACY`, 0 → `LEGACY_EMPTY_AMBIGUOUS`. Legacy rows without a Company tag are no longer accepted. `tdlStatus` = global health state (`ACTIVE_LEGACY` only when the health report is missing too); result adds `healthStatus`, `contextStatus`, `contextCompany`, `authority`. Backend summary keys unchanged.
+- `util/ensureBillOutstandingTdl.js`: `settingsTdlStatus` — Settings status from global health only (Ready needs health ACTIVE); health log adds `billStatus` / `contextStatus`. `util/xml.js`: `[sync] bill_snapshot` log adds `contextStatus`, `contextCompany`, `authority`.
+- `scripts/tdl-probe.js`: prints raw Health, then per company raw Context + Bills, decision, and a summary table.
+- Tests rewritten for the decision table, request order, lock, Settings separation and 1.1.3 file shape. Desktop 102/102.
+- Lifecycle unchanged: Sync / Hard Sync / Check now never restart Tally; only Retry setup.
+
 ## 2026-10-03 — TEMPORARY probe round 2: company context in a scrolling line (branch `tdl`, diagnosis only)
 
 - Round 1 result (Windows, TallyPrime 7.0, HTTP Export/Data): Fixed/Company/Bill + `Scroll : Vertical` → PRINTS (1 / 2 / 2,008); all three without scroll → EMPTY; identical plain vs company request. `Scroll : Vertical` alone decides export. Unfiltered Company collection lists every open company regardless of SVCURRENTCOMPANY. Tally re-cases field tags (`TYPE` → `Type`).

@@ -8,12 +8,33 @@
 const axios = require("axios");
 const iconv = require("iconv-lite");
 const { XMLParser } = require("fast-xml-parser");
-const { runTallyExclusive } = require("./tallyQueue");
+const { runTallyExclusive, xmlText } = require("./tallyQueue");
 const { info } = require("./logger");
 
-/** Must match TDKBOH Version in xmls/TDKBillOutstanding.tdl. */
-const TDL_VERSION = "1.1.2";
+/** Must match TDKBOH Version and TDKBOC Version in xmls/TDKBillOutstanding.tdl. */
+const TDL_VERSION = "1.1.3";
 const HEALTH_REPORT_ID = "TDKBillOutstandingHealth";
+const CONTEXT_REPORT_ID = "TDKBillOutstandingContext";
+
+/**
+ * Per-company context check (TDKBillOutstandingContext). VERIFIED is the only
+ * result that proves add-on, version and company together for that company.
+ */
+const CONTEXT_STATUS = Object.freeze({
+  VERIFIED: "VERIFIED",
+  // ACTIVE + requested company, but another add-on version answered.
+  OUTDATED: "OUTDATED",
+  MISMATCH: "MISMATCH",
+  // TDKCONTEXT present without ACTIVE=YES or without a company name.
+  BLANK: "BLANK",
+  // Tally refused SVCURRENTCOMPANY: the company is closed or does not exist.
+  COMPANY_NOT_OPEN: "COMPANY_NOT_OPEN",
+  // Add-on without the context report (pre-1.1.3).
+  REPORT_MISSING: "REPORT_MISSING",
+  EMPTY: "EMPTY",
+  INVALID: "INVALID",
+  ERROR: "ERROR",
+});
 
 const TDL_STATUS = Object.freeze({
   ACTIVE: "ACTIVE",
@@ -78,7 +99,12 @@ function classifyTransportError(err) {
   return TDL_STATUS.TALLY_UNREACHABLE;
 }
 
-/** Tally's answer to an export for a report ID it does not know. */
+/** Tally's answer when SVCURRENTCOMPANY names a company that is not open (verified on TallyPrime 7.0). */
+function looksLikeCompanyNotOpen(text) {
+  return /could not set\s*(?:&apos;|')?\s*SVCurrentCompany/i.test(String(text ?? ""));
+}
+
+/** Tally's answer to an export for a report ID it does not know. Check looksLikeCompanyNotOpen first. */
 function looksLikeMissingReport(text) {
   return (
     /LINEERROR/i.test(text) ||
@@ -90,7 +116,7 @@ function normaliseCompany(name) {
   return String(name ?? "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-/** Company-independent: health only answers "is the add-on loaded?". Company identity comes from the bill report. */
+/** Company-independent: health only answers "is the add-on loaded?". Company identity comes from the context report. */
 function healthRequestXml() {
   return `<?xml version="1.0" encoding="utf-8"?>
 <ENVELOPE>
@@ -169,6 +195,65 @@ function classifyHealthResponse(text) {
   return { status: TDL_STATUS.INVALID_RESPONSE, reason: "unexpected_shape" };
 }
 
+/** Same static variables as the bill request, so both run in the same company and period. */
+function contextRequestXml({ companyName, fromDate, toDate, currentDate }) {
+  return `<?xml version="1.0" encoding="utf-8"?>
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Data</TYPE>
+    <ID>${CONTEXT_REPORT_ID}</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVCURRENTCOMPANY>${xmlText(companyName)}</SVCURRENTCOMPANY>
+        <SVCURRENTDATE TYPE="Date">${xmlText(currentDate)}</SVCURRENTDATE>
+        <SVFROMDATE TYPE="Date">${xmlText(fromDate)}</SVFROMDATE>
+        <SVTODATE TYPE="Date">${xmlText(toDate)}</SVTODATE>
+      </STATICVARIABLES>
+    </DESC>
+  </BODY>
+</ENVELOPE>`;
+}
+
+/**
+ * Classify the context report response for `requestedCompany`. Pure.
+ * @returns {{ status: string, active?: boolean, version?: string, company?: string, reason?: string }}
+ */
+function classifyContextResponse(text, requestedCompany) {
+  const body = String(text ?? "");
+  if (!body.trim()) return { status: CONTEXT_STATUS.INVALID, reason: "empty_body" };
+  if (looksLikeCompanyNotOpen(body)) return { status: CONTEXT_STATUS.COMPANY_NOT_OPEN, reason: "company_not_open" };
+
+  if (/<TDKCONTEXT[\s>]/i.test(body)) {
+    let node;
+    try {
+      node = findTag(parser.parse(body), "TDKCONTEXT");
+    } catch {
+      return { status: CONTEXT_STATUS.INVALID, reason: "context_parse_failed" };
+    }
+    const active = pick(node, "ACTIVE").toUpperCase() === "YES";
+    const version = pick(node, "VERSION");
+    const company = pick(node, "COMPANY");
+    const seen = { active, version, company };
+    if (!active) return { status: CONTEXT_STATUS.BLANK, reason: "context_not_active", ...seen };
+    if (!company) return { status: CONTEXT_STATUS.BLANK, reason: "context_company_blank", ...seen };
+    const want = normaliseCompany(requestedCompany);
+    if (!want || normaliseCompany(company) !== want) {
+      return { status: CONTEXT_STATUS.MISMATCH, reason: "context_other_company", ...seen };
+    }
+    if (version !== TDL_VERSION) return { status: CONTEXT_STATUS.OUTDATED, reason: "context_version_mismatch", ...seen };
+    return { status: CONTEXT_STATUS.VERIFIED, ...seen };
+  }
+
+  if (looksLikeMissingReport(body)) return { status: CONTEXT_STATUS.REPORT_MISSING, reason: "context_report_missing" };
+  if (EMPTY_ENVELOPE.test(body)) return { status: CONTEXT_STATUS.EMPTY, reason: "empty_envelope" };
+  return { status: CONTEXT_STATUS.INVALID, reason: "unexpected_shape" };
+}
+
 let inFlight = null;
 
 /**
@@ -226,10 +311,15 @@ function isUnconfirmedHealth(status) {
 module.exports = {
   TDL_VERSION,
   HEALTH_REPORT_ID,
+  CONTEXT_REPORT_ID,
   TDL_STATUS,
+  CONTEXT_STATUS,
   checkTdlHealth,
   healthRequestXml,
+  contextRequestXml,
   classifyHealthResponse,
+  classifyContextResponse,
+  looksLikeCompanyNotOpen,
   isUnconfirmedHealth,
   responseSample,
   classifyTransportError,

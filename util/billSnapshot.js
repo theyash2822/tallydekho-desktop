@@ -1,20 +1,26 @@
 /**
  * Per-company Bill Outstanding snapshot from Tally.
  *
- * Health is global (one check per sync run, company-independent); each company
- * then gets its own bill fetch, so one company's result never depends on
- * another's. Company identity comes from the bill response itself: a
- * TDKCONTEXT line (present even with zero bills) and a Company tag per row.
- * The backend replaces a company's bills only when status is SUCCESS and
- * snapshotComplete is true; every other status keeps the previous bills.
+ * Global health runs once per sync (Settings "Ready" comes from it). Each
+ * company then gets, as one serialized unit, a Context request
+ * (TDKBillOutstandingContext: ACTIVE, VERSION, COMPANY) and a Bill request.
+ * A VERIFIED context proves add-on, version and company for that company, so
+ * its bill answer is authoritative — including zero bills — even when global
+ * health is unconfirmed. The backend replaces a company's bills only when
+ * status is SUCCESS and snapshotComplete is true; every other status keeps the
+ * previous bills.
  */
 const { XMLParser } = require("fast-xml-parser");
-const { xmlText } = require("./tallyQueue");
+const { xmlText, runCompanyExclusive } = require("./tallyQueue");
 const { info } = require("./logger");
 const {
   TDL_STATUS,
+  CONTEXT_STATUS,
   checkTdlHealth,
+  contextRequestXml,
+  classifyContextResponse,
   classifyTransportError,
+  looksLikeCompanyNotOpen,
   looksLikeMissingReport,
   normaliseCompany,
   isActiveHealth,
@@ -27,12 +33,14 @@ const BILL_REPORT_ID = "TDKBillOutstandingWorking";
 const BILL_STATUS = Object.freeze({
   SUCCESS: "SUCCESS",
   TDL_NOT_LOADED: "TDL_NOT_LOADED",
-  // Legacy add-on (no health report) returned no rows: zero bills and a missing
-  // report look the same, so nothing can be concluded.
+  // Add-on without the context report returned no rows: zero bills and "not
+  // answered for this company" look the same, so nothing can be concluded.
   LEGACY_EMPTY_AMBIGUOUS: "LEGACY_EMPTY_AMBIGUOUS",
   COMPANY_CONTEXT_MISMATCH: "COMPANY_CONTEXT_MISMATCH",
-  // Response did not prove which company it came from (no matching TDKCONTEXT / row Company).
+  // Context or rows did not prove the company (blank / empty / unreadable context, row without Company).
   COMPANY_UNVERIFIED: "COMPANY_UNVERIFIED",
+  // Tally refused SVCURRENTCOMPANY ("Could not set 'SVCurrentCompany'").
+  COMPANY_NOT_OPEN: "COMPANY_NOT_OPEN",
   TALLY_UNREACHABLE: "TALLY_UNREACHABLE",
   TALLY_TIMEOUT: "TALLY_TIMEOUT",
   INVALID_RESPONSE: "INVALID_RESPONSE",
@@ -119,13 +127,15 @@ function billRequestXml({ companyName, fromDate, toDate, currentDate }) {
 
 const EMPTY_ENVELOPE = /^\s*(<\?xml[^>]*\?>)?\s*(<ENVELOPE\s*\/>|<ENVELOPE\s*>\s*<\/ENVELOPE\s*>)\s*$/i;
 
-function firstNode(value) {
-  return Array.isArray(value) ? value[0] : value;
-}
-
 function textOf(value) {
   const v = value && typeof value === "object" ? value.value : value;
   return v == null ? "" : String(v).trim();
+}
+
+/** Case-insensitive field of a parsed BILLROW (Tally may re-case field tags). */
+function fieldOf(row, name) {
+  const key = Object.keys(row).find((k) => k.toUpperCase() === name);
+  return key === undefined ? undefined : row[key];
 }
 
 function rawRowsOf(envelope) {
@@ -136,17 +146,15 @@ function rawRowsOf(envelope) {
 
 /**
  * Classify the bill report response. Pure.
- * kind: ROWS | EMPTY | REPORT_MISSING | PARSE_FAILED | INVALID
- * contextCompany: TDKCONTEXT/COMPANY (null when absent); rowCompanies: Company tag per row ("" when absent).
+ * kind: ROWS | EMPTY | COMPANY_NOT_OPEN | REPORT_MISSING | PARSE_FAILED | INVALID
+ * rowCompanies: Company tag per row ("" when absent).
  */
 function classifyBillResponse(text) {
   const body = String(text ?? "");
   if (!body.trim()) return { kind: "INVALID", reason: "empty_body" };
 
   const tagCount = (body.match(/<BILLROW[\s>]/gi) || []).length;
-  const hasContext = /<TDKCONTEXT[\s>]/i.test(body);
-
-  if (tagCount > 0 || hasContext) {
+  if (tagCount > 0) {
     let envelope;
     try {
       const json = parser.parse(body);
@@ -154,51 +162,37 @@ function classifyBillResponse(text) {
     } catch (e) {
       return { kind: "PARSE_FAILED", reason: e?.message || "parse_error", tagCount };
     }
-    const ctx = firstNode(envelope.TDKCONTEXT ?? envelope.TdkContext);
-    const contextCompany = ctx ? textOf(ctx.COMPANY ?? ctx.Company) || null : null;
-    if (tagCount === 0) return { kind: "EMPTY", contextCompany, rowCompanies: [] };
-
     const raw = rawRowsOf(envelope);
     const rows = rowsFromBillOutstandingEnvelope(envelope);
     if (rows.length !== tagCount || raw.length !== tagCount) {
       return { kind: "PARSE_FAILED", reason: "row_count_mismatch", tagCount, parsed: rows.length };
     }
-    const rowCompanies = raw.map((r) => textOf(r.Company ?? r.COMPANY));
-    return { kind: "ROWS", rows, contextCompany, rowCompanies };
+    return { kind: "ROWS", rows, rowCompanies: raw.map((r) => textOf(fieldOf(r, "COMPANY"))) };
   }
 
+  if (looksLikeCompanyNotOpen(body)) return { kind: "COMPANY_NOT_OPEN" };
   if (looksLikeMissingReport(body)) return { kind: "REPORT_MISSING" };
-  // Bare envelope: zero bills only if the company can still be proven (it cannot here — no TDKCONTEXT).
-  if (EMPTY_ENVELOPE.test(body)) return { kind: "EMPTY", contextCompany: null, rowCompanies: [] };
+  if (EMPTY_ENVELOPE.test(body)) return { kind: "EMPTY", rowCompanies: [] };
   return { kind: "INVALID", reason: "unexpected_shape" };
 }
 
 /**
- * Does the bill response prove it came from `requestedCompany`? Pure.
- * mismatch: TDKCONTEXT or any row names another company.
- * verified: no mismatch and (TDKCONTEXT matches, or every row carries the matching company).
- * noCompanyInfo: pre-1.1.1 add-on shape (no TDKCONTEXT, no row Company tags).
+ * Every row must name `requestedCompany`. Pure.
+ * mismatch: some row names another company. unverified: some row has no company.
  */
-function verifyBillCompany(requestedCompany, bill) {
+function verifyRowCompanies(requestedCompany, rowCompanies) {
   const want = normaliseCompany(requestedCompany);
-  const ctx = bill.contextCompany ? normaliseCompany(bill.contextCompany) : "";
-  const rowCos = (bill.rowCompanies || []).map(normaliseCompany);
-  const mismatch = (!!ctx && ctx !== want) || rowCos.some((c) => c && c !== want);
-  const contextMatch = !!want && ctx === want;
-  const rowsMatch = !!want && rowCos.length > 0 && rowCos.every((c) => c === want);
-  return {
-    mismatch,
-    contextMatch,
-    verified: !mismatch && (contextMatch || rowsMatch),
-    noCompanyInfo: !ctx && rowCos.every((c) => !c),
-  };
+  const cos = (rowCompanies || []).map(normaliseCompany);
+  const mismatch = cos.some((c) => c && c !== want);
+  const unverified = !want || cos.some((c) => !c);
+  return { mismatch, unverified, ok: cos.length > 0 && !mismatch && !unverified };
 }
 
 function failure(status, extra = {}) {
   return { status, snapshotComplete: false, rows: [], rowCount: 0, ...extra };
 }
 
-/** ACTIVE | UNCONFIRMED | LEGACY | DOWN — how far the health result lets the bill report be trusted. */
+/** ACTIVE | UNCONFIRMED | LEGACY | DOWN — global health only decides whether Tally is worth asking. */
 function healthClass(status) {
   if (isActiveHealth(status)) return "ACTIVE";
   if (isUnconfirmedHealth(status)) return "UNCONFIRMED";
@@ -206,91 +200,106 @@ function healthClass(status) {
   return "DOWN";
 }
 
+function transportFailure(errorStatus, extra) {
+  return failure(errorStatus === TDL_STATUS.TALLY_TIMEOUT ? BILL_STATUS.TALLY_TIMEOUT : BILL_STATUS.TALLY_UNREACHABLE, extra);
+}
+
+/** Bill outcome that is not ROWS/EMPTY → failure (shared by modern and legacy paths). */
+function billFailure(bill, tdlStatus) {
+  switch (bill.kind) {
+    case "COMPANY_NOT_OPEN":
+      return failure(BILL_STATUS.COMPANY_NOT_OPEN, { tdlStatus, reason: "company_not_open" });
+    case "REPORT_MISSING":
+      return failure(BILL_STATUS.TDL_NOT_LOADED, { tdlStatus: TDL_STATUS.NOT_LOADED, reason: "bill_report_missing" });
+    case "PARSE_FAILED":
+      return failure(BILL_STATUS.PARSE_FAILED, { tdlStatus, reason: bill.reason });
+    case "ERROR":
+      return transportFailure(bill.errorStatus, { tdlStatus, reason: bill.reason });
+    default:
+      return failure(BILL_STATUS.INVALID_RESPONSE, { tdlStatus, reason: bill.reason || "unexpected_bill_response" });
+  }
+}
+
+function rowsResult(bill, requestedCompany, tdlStatus, authority) {
+  const id = verifyRowCompanies(requestedCompany, bill.rowCompanies);
+  if (id.mismatch) {
+    return failure(BILL_STATUS.COMPANY_CONTEXT_MISMATCH, { tdlStatus, reason: "row_from_another_company" });
+  }
+  if (!id.ok) return failure(BILL_STATUS.COMPANY_UNVERIFIED, { tdlStatus, reason: "row_without_company" });
+  return { status: BILL_STATUS.SUCCESS, snapshotComplete: true, rows: bill.rows, rowCount: bill.rows.length, tdlStatus, authority };
+}
+
 /**
- * Decide the snapshot result from the health check, the bill response and the
- * requested company. Pure. Only SUCCESS (snapshotComplete) lets the backend
- * replace/clear bills; everything else preserves the previous snapshot.
+ * Decide one company's snapshot. Pure. Only SUCCESS (snapshotComplete) lets the
+ * backend replace/clear bills; everything else preserves the previous snapshot.
  *
- * | Health      | Bills                         | Result                                   |
- * |-------------|-------------------------------|------------------------------------------|
- * | ACTIVE      | >0, company verified          | SUCCESS (replace)                        |
- * | ACTIVE      | 0, TDKCONTEXT matches         | SUCCESS (clear)                          |
- * | ACTIVE      | 0 / rows, company not proven  | COMPANY_UNVERIFIED                       |
- * | UNCONFIRMED | >0, company verified          | SUCCESS, tdlStatus HEALTH_UNCONFIRMED    |
- * | UNCONFIRMED | 0                             | LEGACY_EMPTY_AMBIGUOUS                   |
- * | LEGACY      | >0, verified or no company tags (pre-1.1.1 add-on) | SUCCESS, ACTIVE_LEGACY |
- * | LEGACY      | 0                             | LEGACY_EMPTY_AMBIGUOUS                   |
- * | any         | another company named         | COMPANY_CONTEXT_MISMATCH                 |
- * | DOWN        | not fetched                   | TALLY_TIMEOUT / TALLY_UNREACHABLE / ...  |
+ * | Context                       | Bills                          | Result                        |
+ * |-------------------------------|--------------------------------|-------------------------------|
+ * | VERIFIED (YES + version + co) | >0, every row Company matches  | SUCCESS (replace)             |
+ * | VERIFIED                      | 0                              | SUCCESS (clear, verified zero)|
+ * | VERIFIED                      | any row other / no company     | MISMATCH / UNVERIFIED         |
+ * | MISMATCH                      | not fetched                    | COMPANY_CONTEXT_MISMATCH      |
+ * | BLANK / EMPTY / INVALID       | not fetched                    | COMPANY_UNVERIFIED            |
+ * | COMPANY_NOT_OPEN              | not fetched                    | COMPANY_NOT_OPEN              |
+ * | ERROR (transport)             | not fetched                    | TALLY_TIMEOUT / UNREACHABLE   |
+ * | REPORT_MISSING / OUTDATED     | >0, every row Company matches  | SUCCESS (legacy, replace)     |
+ * | REPORT_MISSING / OUTDATED     | 0                              | LEGACY_EMPTY_AMBIGUOUS        |
+ * | any                           | not open / parse / transport   | matching failure              |
+ *
+ * tdlStatus carries the global health state (Settings), never the context
+ * result: a VERIFIED context with unconfirmed health is SUCCESS with
+ * tdlStatus HEALTH_UNCONFIRMED and authority CONTEXT.
  */
-function decideBillSnapshot(health, bill, requestedCompany = "") {
+function decideBillSnapshot({ health, context, bill, requestedCompany = "" }) {
   const cls = healthClass(health.status);
   if (cls === "DOWN") {
     return failure(health.status === TDL_STATUS.TALLY_TIMEOUT ? BILL_STATUS.TALLY_TIMEOUT
       : health.status === TDL_STATUS.TALLY_UNREACHABLE ? BILL_STATUS.TALLY_UNREACHABLE
       : BILL_STATUS.UNKNOWN, { tdlStatus: health.status, reason: health.reason });
   }
+  const healthTdl = cls === "UNCONFIRMED" ? TDL_STATUS.HEALTH_UNCONFIRMED : health.status;
 
-  const tdlStatus = cls === "ACTIVE" ? health.status
-    : cls === "UNCONFIRMED" ? TDL_STATUS.HEALTH_UNCONFIRMED
-    : TDL_STATUS.ACTIVE_LEGACY;
-  const unprovenTdl = cls === "LEGACY" ? TDL_STATUS.UNKNOWN : tdlStatus;
-  const contextCompany = bill.contextCompany ?? null;
-
-  switch (bill.kind) {
-    case "ROWS":
-    case "EMPTY": {
-      const id = verifyBillCompany(requestedCompany, bill);
-      if (id.mismatch) {
-        return failure(BILL_STATUS.COMPANY_CONTEXT_MISMATCH, {
-          tdlStatus: unprovenTdl,
-          contextCompany,
-          reason: "tally_answered_for_another_company",
-        });
+  switch (context.status) {
+    case CONTEXT_STATUS.VERIFIED: {
+      if (bill.kind === "ROWS") return rowsResult(bill, requestedCompany, healthTdl, "CONTEXT");
+      if (bill.kind === "EMPTY") {
+        return { status: BILL_STATUS.SUCCESS, snapshotComplete: true, rows: [], rowCount: 0, tdlStatus: healthTdl, authority: "CONTEXT" };
       }
-      if (bill.kind === "ROWS") {
-        const legacyShape = cls === "LEGACY" && id.noCompanyInfo;
-        if (id.verified || legacyShape) {
-          return {
-            status: BILL_STATUS.SUCCESS,
-            snapshotComplete: true,
-            rows: bill.rows,
-            rowCount: bill.rows.length,
-            tdlStatus,
-            contextCompany,
-          };
-        }
-        return failure(BILL_STATUS.COMPANY_UNVERIFIED, {
-          tdlStatus: unprovenTdl,
-          contextCompany,
-          reason: "rows_without_matching_company",
-        });
-      }
-      if (cls !== "ACTIVE") {
-        return failure(BILL_STATUS.LEGACY_EMPTY_AMBIGUOUS, {
-          tdlStatus: cls === "UNCONFIRMED" ? TDL_STATUS.HEALTH_UNCONFIRMED : TDL_STATUS.UNKNOWN,
-          contextCompany,
-        });
-      }
-      if (id.contextMatch) {
-        return { status: BILL_STATUS.SUCCESS, snapshotComplete: true, rows: [], rowCount: 0, tdlStatus, contextCompany };
-      }
-      return failure(BILL_STATUS.COMPANY_UNVERIFIED, {
-        tdlStatus,
-        contextCompany,
-        reason: "zero_bills_without_company_context",
-      });
+      return billFailure(bill, healthTdl);
     }
-    case "REPORT_MISSING":
-      return failure(BILL_STATUS.TDL_NOT_LOADED, { tdlStatus: TDL_STATUS.NOT_LOADED });
-    case "PARSE_FAILED":
-      return failure(BILL_STATUS.PARSE_FAILED, { tdlStatus: unprovenTdl, reason: bill.reason });
-    case "ERROR":
-      return failure(bill.errorStatus === TDL_STATUS.TALLY_TIMEOUT
-        ? BILL_STATUS.TALLY_TIMEOUT
-        : BILL_STATUS.TALLY_UNREACHABLE, { tdlStatus: unprovenTdl, reason: bill.reason });
+    case CONTEXT_STATUS.MISMATCH:
+      return failure(BILL_STATUS.COMPANY_CONTEXT_MISMATCH, { tdlStatus: healthTdl, reason: context.reason });
+    case CONTEXT_STATUS.COMPANY_NOT_OPEN:
+      return failure(BILL_STATUS.COMPANY_NOT_OPEN, { tdlStatus: healthTdl, reason: "company_not_open" });
+    case CONTEXT_STATUS.ERROR:
+      return transportFailure(context.errorStatus, { tdlStatus: healthTdl, reason: context.reason });
+    case CONTEXT_STATUS.REPORT_MISSING:
+    case CONTEXT_STATUS.OUTDATED: {
+      // No health report at all + rows → pre-1.1.0 add-on; otherwise keep the health state.
+      const legacyTdl = cls === "LEGACY" ? TDL_STATUS.ACTIVE_LEGACY : healthTdl;
+      if (bill.kind === "ROWS") return rowsResult(bill, requestedCompany, legacyTdl, "ROWS");
+      if (bill.kind === "EMPTY") {
+        return failure(BILL_STATUS.LEGACY_EMPTY_AMBIGUOUS, { tdlStatus: healthTdl, reason: "zero_bills_without_context" });
+      }
+      return billFailure(bill, healthTdl);
+    }
     default:
-      return failure(BILL_STATUS.INVALID_RESPONSE, { tdlStatus: unprovenTdl, reason: bill.reason });
+      return failure(BILL_STATUS.COMPANY_UNVERIFIED, { tdlStatus: healthTdl, reason: context.reason || "context_unverified" });
+  }
+}
+
+/** Context results after which the bill request is worth sending. */
+const FETCH_BILLS_AFTER = new Set([CONTEXT_STATUS.VERIFIED, CONTEXT_STATUS.REPORT_MISSING, CONTEXT_STATUS.OUTDATED]);
+
+async function fetchContext(request, companyName, post, timeout) {
+  try {
+    return classifyContextResponse(await post(request, { timeout }), companyName);
+  } catch (err) {
+    return {
+      status: CONTEXT_STATUS.ERROR,
+      errorStatus: classifyTransportError(err),
+      reason: err?.code || err?.message || "request_failed",
+    };
   }
 }
 
@@ -312,10 +321,11 @@ async function fetchBillResponse(request, post, { timeout, attempts }) {
 }
 
 /**
- * Bill fetch for one company, using the sync run's single health result
- * (`health`; checked here only when the caller has none). Never throws, never
- * restarts Tally.
- * @returns {Promise<{ companyGuid, companyName, status, snapshotComplete, rows, rowCount, tdlStatus, tdlVersion, contextCompany?, reason?, durationMs }>}
+ * One company: Context → Bills → decision, serialized against every other
+ * company unit. Uses the sync run's single health result (`health`; checked
+ * here only when the caller has none). Never throws, never restarts Tally.
+ * @returns {Promise<{ companyGuid, companyName, status, snapshotComplete, rows, rowCount, tdlStatus, tdlVersion,
+ *   healthStatus, healthVersion, contextStatus, contextCompany, contextVersion, authority?, reason?, durationMs }>}
  */
 async function fetchCompanyBillSnapshot({
   companyName,
@@ -325,36 +335,36 @@ async function fetchCompanyBillSnapshot({
   currentDate,
   health: runHealth = null,
   post,
+  contextTimeout = 15000,
   billTimeout = 60000,
   billAttempts = 2,
 }) {
   const started = Date.now();
   const base = { companyGuid, companyName };
+  const send = post || postToTally;
+  const period = { companyName, fromDate, toDate, currentDate };
   let result;
   let health = runHealth;
+  let context = { status: null };
   try {
     if (!health) health = await checkTdlHealth(post ? { post } : {});
-    const cls = healthClass(health.status);
-    if (cls === "DOWN") {
-      result = decideBillSnapshot(health, { kind: "SKIPPED" }, companyName);
+    if (healthClass(health.status) === "DOWN") {
+      result = decideBillSnapshot({ health, context: { status: null }, bill: { kind: "SKIPPED" }, requestedCompany: companyName });
     } else {
-      if (cls !== "ACTIVE") {
-        info("[tdl] bill fallback", { company: companyName, healthStatus: health.status, reason: health.reason || null });
-      }
-      const bill = await fetchBillResponse(
-        billRequestXml({ companyName, fromDate, toDate, currentDate }),
-        post || postToTally,
-        { timeout: billTimeout, attempts: billAttempts }
-      );
-      result = decideBillSnapshot(health, bill, companyName);
-      if (cls !== "ACTIVE") {
-        info("[tdl] bill fallback result", {
+      result = await runCompanyExclusive(async () => {
+        context = await fetchContext(contextRequestXml(period), companyName, send, contextTimeout);
+        info("[tdl] context", {
           company: companyName,
-          status: result.status,
-          rows: result.rowCount,
-          contextCompany: result.contextCompany ?? null,
+          status: context.status,
+          version: context.version || null,
+          contextCompany: context.company || null,
+          reason: context.reason || null,
         });
-      }
+        const bill = FETCH_BILLS_AFTER.has(context.status)
+          ? await fetchBillResponse(billRequestXml(period), send, { timeout: billTimeout, attempts: billAttempts })
+          : { kind: "SKIPPED" };
+        return decideBillSnapshot({ health, context, bill, requestedCompany: companyName });
+      });
     }
   } catch (err) {
     result = failure(BILL_STATUS.UNKNOWN, { tdlStatus: TDL_STATUS.UNKNOWN, reason: err?.message });
@@ -362,7 +372,12 @@ async function fetchCompanyBillSnapshot({
   return {
     ...base,
     ...result,
-    tdlVersion: health?.version || null,
+    tdlVersion: context.version || health?.version || null,
+    healthStatus: health?.status || null,
+    healthVersion: health?.version || null,
+    contextStatus: context.status,
+    contextCompany: context.company || null,
+    contextVersion: context.version || null,
     durationMs: Date.now() - started,
   };
 }
@@ -385,7 +400,7 @@ module.exports = {
   billSideOf,
   rowsFromBillOutstandingEnvelope,
   classifyBillResponse,
-  verifyBillCompany,
+  verifyRowCompanies,
   decideBillSnapshot,
   fetchCompanyBillSnapshot,
   snapshotSummary,

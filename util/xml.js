@@ -1142,7 +1142,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
       info('[sync] OpeningBalanceDiff.xml skipped — no booksFrom/startingFrom for', name);
     }
 
-    // Bill outstanding — run-wide health + own snapshot per company; failures keep the old bills.
+    // Bill outstanding — run-wide health, then this company's Context → Bills (serialized); failures keep the old bills.
     if (years.length > 0) {
       const outstandingYear = [...years].sort((a, b) =>
         String(b.end || "").localeCompare(String(a.end || ""))
@@ -1187,6 +1187,9 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
         rows: snapshot.rowCount,
         tdlStatus: snapshot.tdlStatus || null,
         tdlVersion: snapshot.tdlVersion || null,
+        contextStatus: snapshot.contextStatus || null,
+        contextCompany: snapshot.contextCompany || null,
+        authority: snapshot.authority || null,
         reason: snapshot.reason || null,
         durationMs: snapshot.durationMs,
       });

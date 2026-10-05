@@ -50,6 +50,10 @@ const {
   handleResume,
 } = require("./util/pairingRuntime");
 const { reconcilePendingWriteback } = require("./util/writeback");
+const {
+  createRendererRecovery,
+  statusPageUrl,
+} = require("./util/rendererRecovery");
 
 // Note: ipcRegistry already required above via destructuring — do NOT require again
 // require("./util/ipcRegistry"); // REMOVED: double-require crashes Electron (duplicate IPC handlers)
@@ -57,6 +61,7 @@ require("./util/backup");
 require("./util/closeSoftware");
 
 let mainWindow;
+let rendererRecovery = null;
 let allowQuit = false;
 let quittingByWatcherOrSignal = false;
 
@@ -170,6 +175,11 @@ function applyNavigationPolicy(window) {
   });
 }
 
+function loadRenderer(window) {
+  if (isDev) return window.loadURL("http://localhost:5173");
+  return window.loadFile(path.join(__dirname, "renderer/dist/index.html"));
+}
+
 async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 800,
@@ -216,21 +226,30 @@ async function createWindow() {
     mainWindow = null;
   });
 
+  const win = mainWindow;
+  rendererRecovery = createRendererRecovery({
+    load: () => {
+      if (!win.isDestroyed()) loadRenderer(win);
+    },
+    showStatus: (status) => {
+      if (win.isDestroyed()) return;
+      win.loadURL(statusPageUrl(status));
+      win.show();
+    },
+    log: (event, detail) => info(`[renderer] ${event}`, detail),
+  });
+
   mainWindow.webContents.on(
     "did-fail-load",
-    (_e, ec, desc, _url, isMainFrame) => {
-      console.error("did-fail-load", ec, desc);
-      if (isMainFrame && mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.loadURL(
-          `data:text/html;charset=utf-8,` +
-            encodeURIComponent(
-              `<h3>Failed to load renderer</h3><pre>${ec} ${desc}</pre>`
-            )
-        );
-        mainWindow.show();
-      }
+    (_e, code, desc, url, isMainFrame) => {
+      if (isMainFrame) error("[renderer] did-fail-load", { code, desc });
+      rendererRecovery?.onFailLoad({ code, desc, url, isMainFrame });
     }
   );
+
+  mainWindow.webContents.on("did-finish-load", () => {
+    rendererRecovery?.onLoaded(mainWindow?.webContents.getURL());
+  });
 
   // store.clear();
 
@@ -278,13 +297,8 @@ async function createWindow() {
     });
   }
 
-  if (isDev) {
-    mainWindow.loadURL("http://localhost:5173");
-  } else {
-    mainWindow.loadFile(path.join(__dirname, "renderer/dist/index.html"));
-
-    checkForUpdates(mainWindow);
-  }
+  loadRenderer(mainWindow);
+  if (!isDev) checkForUpdates(mainWindow);
 
   // Block devtools shortcuts
   // mainWindow.webContents.on("before-input-event", (event, input) => {
@@ -319,6 +333,32 @@ ipcMain.handle("window:minimize", async () => {
 ipcMain.handle("window:close", () => {
   allowQuit = true;
   mainWindow?.close();
+});
+
+// Buttons on the renderer status page (util/rendererRecovery.js).
+ipcMain.handle("renderer:recover", async (event, action) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) return false;
+  if (action === "reload") {
+    if (!rendererRecovery?.retryNow("button")) loadRenderer(mainWindow);
+    return true;
+  }
+  if (action === "quit") {
+    // The page that shows the "sync running" confirmation is down, so ask natively.
+    if (store.get("isSyncing")) {
+      const { response } = await dialog.showMessageBox(mainWindow, {
+        type: "warning",
+        buttons: ["Keep running", "Quit"],
+        defaultId: 0,
+        cancelId: 0,
+        message: "A sync is running. Quit TallyDekho anyway?",
+      });
+      if (response !== 1) return false;
+    }
+    allowQuit = true;
+    mainWindow.close();
+    return true;
+  }
+  return false;
 });
 
 ipcMain.handle("dialog:openFile", async (_event, options) => {
@@ -691,11 +731,16 @@ app.whenReady().then(async () => {
   // pairing session against wall-clock time and refresh presence immediately.
   powerMonitor.on("resume", () => {
     info("[power] resume");
+    rendererRecovery?.retryNow("power-resume");
     sendHeartbeat();
     handleResume("power-resume");
     reconcileBinding("power-resume").then((result) => {
       if (result.paired) reconcilePendingWriteback("power-resume");
     });
+  });
+
+  powerMonitor.on("unlock-screen", () => {
+    rendererRecovery?.retryNow("unlock-screen");
   });
 
   // Clear on quit

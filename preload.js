@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("api", {
   minimize: () => ipcRenderer.invoke("window:minimize"),
   close: () => ipcRenderer.invoke("window:close"),
+  recoverRenderer: (action) => ipcRenderer.invoke("renderer:recover", action),
   pickFiles: (options) => ipcRenderer.invoke("dialog:openFile", options ?? {}),
   openExternal: () => ipcRenderer.invoke("openExternal"),
   getPref: (key) => ipcRenderer.invoke("store:get", key),

@@ -4,6 +4,13 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-10-05 — Main window recovers when its page fails to load (branch `tdl`)
+
+- Problem: a failed load (e.g. `-331 ERR_NETWORK_IO_SUSPENDED` after Windows slept mid-load) replaced the window with a raw "Failed to load renderer" page that never recovered and wasn't logged to file.
+- `util/rendererRecovery.js` (new): main-frame failures (not -3 aborts, sub-frames or the status page) retry after 2s / 5s / 10s with a "Reconnecting…" page, then show a TallyDekho page with Reload / Quit and the error code. Wake and screen unlock retry immediately. Chromium's error-page finish is not counted as recovery (found in a real Electron run — it caused endless retries).
+- `main.js`: `loadRenderer()`, recovery wiring, `renderer:recover` IPC (sender-checked; Quit confirms natively if a sync is running), resume / unlock-screen hooks; failures now go to `info.log` with a timestamp. `preload.js`: `api.recoverRenderer`.
+- Tested: `npm test` 119/119 (new `scripts/test-renderer-recovery.js`); real Electron run: fail → 2 retries → failed page → Reload button → real page loaded. Only the window's page reloads; sync / backup untouched.
+
 ## 2026-10-05 — Deleted-voucher check also covers years Tally dropped (branch `tdl`)
 
 - Found in a real sync: Tally ends a company's period at its last voucher, so deleting every voucher of a year removed that year from `years` and its stale vouchers were never checked (Laveena 2026-27).

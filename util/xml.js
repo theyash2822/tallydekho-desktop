@@ -16,11 +16,13 @@ const {
   fetchCompanyBillSnapshot,
   snapshotSummary,
 } = require("./billSnapshot");
-const { checkTdlHealth } = require("./tdlHealth");
+const { checkTdlHealth, looksLikeCompanyNotOpen } = require("./tdlHealth");
+const { planChunks } = require("./uploadChunks");
 const { runTallyExclusive, xmlText } = require("./tallyQueue");
 const {
   checkVoucherListResponse,
   buildVoucherListSummary,
+  buildVoucherWatermarks,
   trailingCheckYears,
   voucherListLog,
 } = require("./voucherList");
@@ -213,66 +215,22 @@ async function sendChunks({
   companyGuid = null,
   billSnapshotMode = null,
 }) {
-  function* chunkArray(arr, n) {
-    for (let i = 0; i < arr.length; i += n) {
-      yield arr.slice(i, i + n);
-    }
-  }
-
   let chunkIndex = 0;
-  // let totalChunksPlanned = Math.ceil(items.length / chunkItems);
 
-  for (const batch of chunkArray(items, chunkItems)) {
-    // NDJSON
-    const lines = batch.map((x) => JSON.stringify(x));
-    const ndjson = lines.join("\n") + "\n";
-    let payload = Buffer.from(ndjson, "utf8");
-
-    // Size guard — if one NDJSON batch exceeds the negotiated max, split again
-    if (payload.length > maxChunkBytes) {
-      // split by lines to keep within size; do a quick binary split
-      let start = 0;
-      while (start < lines.length) {
-        let end = start;
-        let accum = 0;
-        while (end < lines.length) {
-          const len = Buffer.byteLength(lines[end], "utf8") + 1; // + newline
-          if (accum + len > maxChunkBytes && end > start) break;
-          accum += len;
-          end++;
-        }
-        const subNdjson = lines.slice(start, end).join("\n") + "\n";
-        const subBuf = Buffer.from(subNdjson, "utf8");
-        const response = await sendOneChunk(
-          client,
-          uploadId,
-          streamName,
-          chunkIndex++,
-          subBuf,
-          gzip,
-          companyGuid,
-          billSnapshotMode
-        );
-        if (!response.status) {
-          return response;
-        }
-        start = end;
-      }
-    } else {
-      // const body = gzip ? zlib.gzipSync(payload) : payload;
-      const response = await sendOneChunk(
-        client,
-        uploadId,
-        streamName,
-        chunkIndex++,
-        payload,
-        gzip,
-        companyGuid,
-        billSnapshotMode
-      );
-      if (!response.status) {
-        return response;
-      }
+  for (const lines of planChunks(items, { maxItems: chunkItems, maxBytes: maxChunkBytes })) {
+    const payload = Buffer.from(lines.join("\n") + "\n", "utf8");
+    const response = await sendOneChunk(
+      client,
+      uploadId,
+      streamName,
+      chunkIndex++,
+      payload,
+      gzip,
+      companyGuid,
+      billSnapshotMode
+    );
+    if (!response.status) {
+      return response;
     }
   }
 
@@ -316,6 +274,8 @@ const initSync = async (companies, isHardSync = false) => {
     response = await axiosInstance.post("/desktop/init-sync", {
       companies,
       isHardSync: !!isHardSync,
+      // We send voucherWatermarks and fetch opening balances / stock items in full.
+      watermarkSync: true,
     });
     response = response.data;
   } catch (err) {
@@ -742,6 +702,15 @@ function decorateRows(rows, { xml, companyName, fromDate, toDate, companyGuid, y
   }));
 }
 
+const TALLY_GUID_RE = /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-[0-9a-f]+/gi;
+const hasForeignTallyGuid = (text, companyGuid) => {
+  const own = String(companyGuid).toLowerCase();
+  for (const m of text.matchAll(TALLY_GUID_RE)) {
+    if (m[1].toLowerCase() !== own) return true;
+  }
+  return false;
+};
+
 const syncHelperWithDate = async ({
   xml,
   companyName,
@@ -750,6 +719,7 @@ const syncHelperWithDate = async ({
   toDate,
   companyGuid,
   yearId,
+  onFail,
 }) => {
   const response = await getData(xml, [
     {
@@ -774,8 +744,12 @@ const syncHelperWithDate = async ({
     },
   ]);
 
-  if (!response.status) {
-    return [];
+  // An empty result is indistinguishable from "nothing changed"; callers that move
+  // the sync watermark need to know the request itself failed.
+  const text = String(response.data ?? "");
+  if (!response.status || /<LINEERROR>/i.test(text) || looksLikeCompanyNotOpen(text)) {
+    onFail?.(xml);
+    if (!response.status) return [];
   }
 
   const json = parser.parse(response.data);
@@ -785,6 +759,11 @@ const syncHelperWithDate = async ({
     xml === "BillOutstanding.xml"
       ? rowsFromBillOutstandingEnvelope(envelope)
       : normalizeEnvelope(envelope);
+  // Tally GUIDs are `<companyGuid>-<hex>`; one from another company means Tally answered for
+  // a different open company. Rows without any GUID (envelope/header rows) are ignored.
+  if (onFail && companyGuid && baseRows.some((r) => hasForeignTallyGuid(JSON.stringify(r), companyGuid))) {
+    onFail(xml);
+  }
   const normalizeData = decorateRows(baseRows, { xml, companyName, fromDate, toDate, companyGuid, yearId });
 
   if (xml == "Voucher.xml") {
@@ -1071,6 +1050,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
   const voucherListChecks = {};
   const voucherListExpected = {};
   const voucherLists = {};
+  const failedVoucherYears = {};
 
   sendProgress(5);
 
@@ -1140,6 +1120,22 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
 
   masterPromises = masterPromises.flat();
   voucherPromises = voucherPromises.flat();
+
+  // Tally's AlterId only grows — unless its data was restored from a backup. If the highest
+  // AlterId Tally lists is below what we already hold, re-fetch every FY for this company.
+  for (const c of companies) {
+    const held = Object.values(alterIds[c.guid]?.voucher || {}).map(Number).filter(Number.isFinite);
+    const listed = (voucherListChecks[c.guid] || [])
+      .map((r) => r.check?.ok ? r.check.maxAlterId : null)
+      .filter((n) => Number.isFinite(n));
+    if (!held.length || !listed.length) continue;
+    if (Math.max(...listed) < Math.max(...held)) {
+      info("[sync] Tally AlterIds went backwards (restored data?) — full voucher fetch", {
+        company: c.name, listed: Math.max(...listed), held: Math.max(...held),
+      });
+      for (const fy of Object.keys(alterIds[c.guid].voucher)) alterIds[c.guid].voucher[fy] = 0;
+    }
+  }
 
   info(
     `[sync] Master : ${masterPromises.length} and Voucher: ${voucherPromises.length}`
@@ -1268,6 +1264,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
       const yearId = yearIds[companyGuid][year.finYear];
 
       const voucherAlterId = alterIds[company.guid].voucher[year.finYear];
+      const markFailed = () => (failedVoucherYears[companyGuid] ||= new Set()).add(year.finYear);
 
       info(`[sync] Year Function`, { year, voucherAlterId });
 
@@ -1317,10 +1314,11 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
       });
       promises.push(stockFYOpeningResponse);
 
+      // Always full: FY-dated stock values change without the item's AlterId moving.
       const stockresponse = await syncHelperWithDate({
         xml: "StockItemFull.xml",
         companyName: name,
-        alterId: voucherAlterId == 0 ? 0 : masterAlterId,
+        alterId: 0,
         fromDate: year.begin,
         toDate: year.end,
         companyGuid,
@@ -1336,6 +1334,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
         toDate: year.end,
         companyGuid,
         yearId,
+        onFail: markFailed,
       });
       promises.push(stockTransactionResponse);
 
@@ -1348,6 +1347,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
         toDate: year.end,
         companyGuid,
         yearId,
+        onFail: markFailed,
       });
       promises.push(voucherResponse);
 
@@ -1359,6 +1359,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
         toDate: year.end,
         companyGuid,
         yearId,
+        onFail: markFailed,
       });
 
       promises.push(ledgerTransactionResponse);
@@ -1372,6 +1373,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
         toDate: year.end,
         companyGuid,
         yearId,
+        onFail: markFailed,
       });
       promises.push(voucherInventoryResponse);
 
@@ -1384,13 +1386,15 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
         toDate: year.end,
         companyGuid,
         yearId,
+        onFail: markFailed,
       });
       promises.push(gstDetailsResponse);
 
       const ledgerOpeningBalanceResponse = await syncHelperWithDate({
         xml: "LedgerOpeningBalance.xml",
         companyName: name,
-        alterId: voucherAlterId,
+        // Always full: a back-dated voucher changes opening balances without the ledger's AlterId moving.
+        alterId: 0,
         fromDate: year.begin,
         toDate: year.end,
         companyGuid,
@@ -1447,8 +1451,17 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
   const ofCompany = (rows, guid) => rows.filter((r) => r?.COMPANY_GUID === guid);
   try {
     for (const c of companies) {
+      const companyRecords = ofCompany(records, c.guid);
+      const sentOf = (xml) => companyRecords.reduce((n, r) => n + (r?.XML === xml ? 1 : 0), 0);
+      const voucherWatermarks = buildVoucherWatermarks({
+        companyGuid: c.guid,
+        years: (voucherListChecks[c.guid] || []).map(({ year, check, trailing }) => ({ finYear: year.finYear, trailing: !!trailing, check })),
+        failedYears: failedVoucherYears[c.guid],
+        sent: { "AllVoucher.xml": sentOf("AllVoucher.xml"), "StockTransaction.xml": sentOf("StockTransaction.xml") },
+      });
+      info("[sync] voucher_watermarks", { company: c.name, years: voucherWatermarks.years, sent: voucherWatermarks.sent });
       response = await uploadLargeArray({
-        records: ofCompany(records, c.guid),
+        records: companyRecords,
         master: ofCompany(masterPromises, c.guid),
         vouchers: ofCompany(voucherPromises, c.guid),
         gzip: false,
@@ -1460,6 +1473,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
           isHardSync,
           ...(billSnapshots[c.guid] ? { billSnapshots: [billSnapshots[c.guid]] } : {}),
           ...(voucherLists[c.guid] ? { voucherLists: [voucherLists[c.guid]] } : {}),
+          voucherWatermarks: [voucherWatermarks],
           // Its server start time precedes every Tally fetch: the backend's cutoff for deletions.
           ...(syncRunId ? { syncRunId } : {}),
         },

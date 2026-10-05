@@ -8,6 +8,7 @@ const {
   MAX_LIST_IDS,
   checkVoucherListResponse,
   buildVoucherListSummary,
+  buildVoucherWatermarks,
   trailingCheckYears,
   voucherListLog,
 } = require("../util/voucherList");
@@ -24,12 +25,55 @@ const year = (finYear, check) => ({ finYear, begin: `${finYear.slice(0, 4)}0401`
 
 test("clean list → ok with GUID suffixes", () => {
   const r = checkVoucherListResponse(ok(list([`${CO}-00000001`, `${CO}-0000000a`])), CO);
-  assert.deepEqual(r, { ok: true, ids: ["00000001", "0000000a"] });
+  assert.deepEqual(r, { ok: true, ids: ["00000001", "0000000a"], maxAlterId: 2 });
 });
 
 test("empty envelope is a real zero, with or without xml declaration and whitespace", () => {
-  assert.deepEqual(checkVoucherListResponse(ok("<ENVELOPE></ENVELOPE>"), CO), { ok: true, ids: [] });
-  assert.deepEqual(checkVoucherListResponse(ok("\uFEFF<?xml version='1.0'?>\r\n<ENVELOPE>\r\n</ENVELOPE>\r\n"), CO), { ok: true, ids: [] });
+  assert.deepEqual(checkVoucherListResponse(ok("<ENVELOPE></ENVELOPE>"), CO), { ok: true, ids: [], maxAlterId: 0 });
+  assert.deepEqual(checkVoucherListResponse(ok("\uFEFF<?xml version='1.0'?>\r\n<ENVELOPE>\r\n</ENVELOPE>\r\n"), CO), { ok: true, ids: [], maxAlterId: 0 });
+});
+
+test("max AlterId is the highest listed value, or null if any value is not a plain number", () => {
+  const xml = (ids) => `<ENVELOPE>${ids.map((a, i) => `<GUID>${CO}-${i + 1}</GUID><ALTERID>${a}</ALTERID>`).join("")}</ENVELOPE>`;
+  assert.equal(checkVoucherListResponse(ok(xml(["9567", "9777", " 9600 "])), CO).maxAlterId, 9777);
+  assert.equal(checkVoucherListResponse(ok(xml(["9,777"])), CO).maxAlterId, 9777);
+  assert.equal(checkVoucherListResponse(ok(xml(["12", "abc"])), CO).maxAlterId, null);
+  assert.equal(checkVoucherListResponse(ok(xml(["12", ""])), CO).maxAlterId, null);
+});
+
+test("watermarks: only clean, fully-fetched real years; never trailing or failed ones", () => {
+  const sent = { "AllVoucher.xml": 3, "StockTransaction.xml": 1 };
+  const w = buildVoucherWatermarks({
+    companyGuid: CO,
+    years: [
+      { finYear: "2025-2026", check: { ok: true, ids: [], maxAlterId: 9565 } },
+      { finYear: "2026-2027", check: { ok: true, ids: [], maxAlterId: 9777 } },
+      { finYear: "2024-2025", check: { ok: false, reason: "tally_error" } },
+      { finYear: "2023-2024", check: { ok: true, ids: [], maxAlterId: null } },
+      { finYear: "2027-2028", trailing: true, check: { ok: true, ids: [], maxAlterId: 0 } },
+    ],
+    failedYears: new Set(["2025-2026"]),
+    sent,
+  });
+  assert.deepEqual(w, { companyGuid: CO, years: [{ finYear: "2026-2027", alterId: 9777 }], sent });
+  assert.deepEqual(buildVoucherWatermarks({ companyGuid: CO, years: undefined, sent }).years, []);
+});
+
+test("sync wiring: failures tracked on delta collections, full fetch for opening balances and stock items", () => {
+  const src = fs.readFileSync(path.join(__dirname, "../util/xml.js"), "utf8");
+  for (const x of ["StockTransaction", "AllVoucher", "LedgerTransaction", "VoucherInventoryDetail", "GSTDetails"]) {
+    assert.match(src, new RegExp(`xml: "${x}\\.xml",\\s*companyName: name,\\s*alterId: voucherAlterId,[\\s\\S]{0,120}onFail: markFailed,`), x);
+  }
+  assert.match(src, /xml: "LedgerOpeningBalance\.xml",\s*companyName: name,\s*\/\/[^\n]*\n\s*alterId: 0,/);
+  assert.match(src, /xml: "StockItemFull\.xml",\s*companyName: name,\s*alterId: 0,/);
+  assert.match(src, /if \(!response\.status \|\| \/<LINEERROR>\/i\.test\(text\) \|\| looksLikeCompanyNotOpen\(text\)\) \{\s*onFail\?\.\(xml\);/);
+  assert.match(src, /if \(onFail && companyGuid && baseRows\.some\(\(r\) => hasForeignTallyGuid\(JSON\.stringify\(r\), companyGuid\)\)\) \{\s*onFail\(xml\);/);
+  assert.match(src, /watermarkSync: true,/);
+  assert.match(src, /if \(Math\.max\(\.\.\.listed\) < Math\.max\(\.\.\.held\)\) \{[\s\S]{0,300}alterIds\[c\.guid\]\.voucher\[fy\] = 0;/);
+  assert.ok(src.indexOf("Math.max(...listed) < Math.max(...held)") < src.indexOf("const voucherAlterId = alterIds[company.guid].voucher[year.finYear];"),
+    "AlterId rollback check must run before delta fetches read their start points");
+  assert.match(src, /voucherWatermarks: \[voucherWatermarks\],/);
+  assert.match(src, /sent: \{ "AllVoucher\.xml": sentOf\("AllVoucher\.xml"\), "StockTransaction\.xml": sentOf\("StockTransaction\.xml"\) \}/);
 });
 
 test("anything that is not a clean answer for this company is rejected", () => {

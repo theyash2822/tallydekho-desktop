@@ -4,6 +4,15 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-10-05 — Normal sync downloads only what changed (branch `tdl`)
+
+- **Before:** every manual/auto sync re-downloaded the entire current FY (backend date-format bug gave a start point of 0).
+- `util/voucherList.js`: `maxListedAlterId`, `buildVoucherWatermarks` — per FY the highest AlterId in the voucher list, only for years whose list check was clean and whose delta requests all succeeded (trailing years skipped).
+- `util/xml.js`: init-sync sends `watermarkSync: true`; uploads carry `voucherWatermarks` + sent AllVoucher/StockTransaction counts. Delta requests mark their FY failed on request failure, `LINEERROR`, company-not-open text, or a row with another company's GUID. If Tally's highest listed AlterId is below what the backend holds (Tally restored from backup) all voucher start points reset to 0. LedgerOpeningBalance and StockItemFull always fetched in full (opening balances change without the ledger's AlterId changing).
+- `util/uploadChunks.js` (`planChunks`): upload chunks cut only between vouchers for StockTransaction/LedgerTransaction. The backend replaces those rows per voucher in each chunk, so a voucher split across two chunks lost its first part (old bug, self-healing only while the whole FY was re-sent every sync).
+- Tested: `scripts/test-voucher-list.js`, `scripts/test-upload-chunks.js`; `npm test` 127/127.
+- Needs the matching backend. First sync after updating is a one-time full fetch; afterwards only changed vouchers.
+
 ## 2026-10-05 — Main window recovers when its page fails to load (branch `tdl`)
 
 - Problem: a failed load (e.g. `-331 ERR_NETWORK_IO_SUSPENDED` after Windows slept mid-load) replaced the window with a raw "Failed to load renderer" page that never recovered and wasn't logged to file.

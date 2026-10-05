@@ -16,7 +16,20 @@ const isoDate = (d) => {
   return /^\d{8}$/.test(s) ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : null;
 };
 
-/** @returns {{ ok: true, ids: string[] } | { ok: false, reason: string }} */
+/** Highest AlterId in the list, or null if any value isn't a plain number. */
+function maxListedAlterId(body) {
+  let max = 0;
+  for (const m of body.matchAll(/<ALTERID>([^<]*)<\/ALTERID>/gi)) {
+    const s = m[1].trim().replace(/,/g, "");
+    if (!/^\d+$/.test(s)) return null;
+    const n = Number(s);
+    if (!Number.isSafeInteger(n)) return null;
+    if (n > max) max = n;
+  }
+  return max;
+}
+
+/** @returns {{ ok: true, ids: string[], maxAlterId: number|null } | { ok: false, reason: string }} */
 function checkVoucherListResponse(response, companyGuid) {
   if (!response?.status) return { ok: false, reason: "request_failed" };
   const text = String(response.data ?? "");
@@ -37,7 +50,22 @@ function checkVoucherListResponse(response, companyGuid) {
     if (!/^[A-Za-z0-9]+$/.test(id)) return { ok: false, reason: "foreign_voucher" };
     ids.push(id);
   }
-  return { ok: true, ids };
+  return { ok: true, ids, maxAlterId: maxListedAlterId(body) };
+}
+
+/**
+ * Per-FY watermarks for the backend: the highest AlterId Tally listed for the FY before
+ * the per-FY fetches ran. Only FYs whose list was clean and whose delta collections all
+ * answered are included; `sent` lets the backend confirm every voucher row was saved.
+ */
+function buildVoucherWatermarks({ companyGuid, years, failedYears, sent }) {
+  const out = [];
+  for (const y of years || []) {
+    if (y.trailing || !y.check?.ok || y.check.maxAlterId == null) continue;
+    if (failedYears?.has(y.finYear)) continue;
+    out.push({ finYear: y.finYear, alterId: y.check.maxAlterId });
+  }
+  return { companyGuid, years: out, sent };
 }
 
 /**
@@ -107,6 +135,7 @@ module.exports = {
   MAX_LIST_IDS,
   checkVoucherListResponse,
   buildVoucherListSummary,
+  buildVoucherWatermarks,
   trailingCheckYears,
   voucherListLog,
 };

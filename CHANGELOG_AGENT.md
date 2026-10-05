@@ -4,6 +4,11 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-10-05 — Dev backend moved to the Mac's new LAN IP (branch `tdl`)
+
+- Mac DHCP address changed `192.168.29.240` → `.242`; `.240` / `.241` no longer answer. `util/backendConfig.js` dev default is now `http://192.168.29.242:3001`; `.241` joins the stale-host list, so a Windows `.env` still saying `.240` / `.241` falls back to `.242` with a warning. `.env.example` updated.
+- Tested: resolution for `.240`, `.241` and no `BACKEND_URL` → `.242`; desktop 109/109.
+
 ## 2026-10-03 — Deleted-voucher list sent with sync; diagnostic probes removed (branch `tdl`)
 
 - Probes removed after Windows QA of 1.1.3 passed: `TEMPORARY DIAGNOSTIC PROBES` block in `xmls/TDKBillOutstanding.tdl` (version stays 1.1.3), `scripts/tdl-layout-probe.js`, isolation test (now asserts they are gone).

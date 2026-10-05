@@ -20,7 +20,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const DEFAULT_DEV_BACKEND_URL = "http://192.168.29.240:3001";
+const DEFAULT_DEV_BACKEND_URL = "http://192.168.29.242:3001";
 const PROD_BACKEND_URL = "https://api.tallydekho.com";
 const STAGING_BACKEND_URL = "https://staging-api.tallydekho.com";
 
@@ -29,6 +29,7 @@ const APP_ENVS = ["production", "staging", "development"];
 /** Known-dead / invalid hosts for Windows Desktop → Mac backend. */
 const DEAD_BACKEND_HOSTS = new Set([
   "192.168.29.240",
+  "192.168.29.241",
   "192.168.29.180",
   "127.0.0.1",
   "localhost",

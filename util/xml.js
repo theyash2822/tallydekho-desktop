@@ -18,7 +18,12 @@ const {
 } = require("./billSnapshot");
 const { checkTdlHealth } = require("./tdlHealth");
 const { runTallyExclusive, xmlText } = require("./tallyQueue");
-const { checkVoucherListResponse, buildVoucherListSummary, voucherListLog } = require("./voucherList");
+const {
+  checkVoucherListResponse,
+  buildVoucherListSummary,
+  trailingCheckYears,
+  voucherListLog,
+} = require("./voucherList");
 
 /** Decode Tally HTTP body — custom reports may return UTF-16 LE with BOM. */
 function decodeTallyResponse(data) {
@@ -1064,6 +1069,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
   let masterPromises = [];
   let voucherPromises = [];
   const voucherListChecks = {};
+  const voucherListExpected = {};
   const voucherLists = {};
 
   sendProgress(5);
@@ -1112,6 +1118,17 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
           fetchVoucherList({ companyName: name, companyGuid, year, yearId }).then((r) => {
             (voucherListChecks[companyGuid] ||= []).push(r);
             return r.rows;
+          })
+        );
+      }
+
+      const trailing = trailingCheckYears(years);
+      voucherListExpected[companyGuid] = years.length + trailing.length;
+      for (const year of trailing) {
+        voucherPromises.push(
+          fetchVoucherList({ companyName: name, companyGuid, year, yearId: null }).then((r) => {
+            (voucherListChecks[companyGuid] ||= []).push({ ...r, trailing: true });
+            return [];
           })
         );
       }
@@ -1234,8 +1251,8 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
     voucherLists[companyGuid] = buildVoucherListSummary({
       companyGuid,
       contextStatus: contextStatuses[companyGuid],
-      years: listChecks.length === years.length
-        ? listChecks.map(({ year, check }) => ({ finYear: year.finYear, begin: year.begin, end: year.end, check }))
+      years: listChecks.length > 0 && listChecks.length === voucherListExpected[companyGuid]
+        ? listChecks.map(({ year, check, trailing }) => ({ finYear: year.finYear, begin: year.begin, end: year.end, trailing: !!trailing, check }))
         : [],
     });
     info("[sync] voucher_list", { company: name, ...voucherListLog(voucherLists[companyGuid]) });

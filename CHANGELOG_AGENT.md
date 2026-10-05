@@ -4,6 +4,13 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-10-05 — Deleted-voucher check also covers years Tally dropped (branch `tdl`)
+
+- Found in a real sync: Tally ends a company's period at its last voucher, so deleting every voucher of a year removed that year from `years` and its stale vouchers were never checked (Laveena 2026-27).
+- `util/voucherList.js`: `trailingCheckYears(years)` — FY spans after the last synced year through the FY after today's (max 10). A trailing year Tally didn't answer cleanly is skipped, never treated as empty; no checked years → incomplete.
+- `util/xml.js`: SimplifiedVoucher fetched for trailing years as a check only (rows discarded); the summary waits for all real + trailing checks.
+- Tested: `npm test` 111/111; rolled-back backend run with Laveena's real data deletes exactly the one stale 2026-27 voucher. Risk: a few extra small Tally requests per company.
+
 ## 2026-10-05 — Dev backend moved to the Mac's new LAN IP (branch `tdl`)
 
 - Mac DHCP address changed `192.168.29.240` → `.242`; `.240` / `.241` no longer answer. `util/backendConfig.js` dev default is now `http://192.168.29.242:3001`; `.241` joins the stale-host list, so a Windows `.env` still saying `.240` / `.241` falls back to `.242` with a warning. `.env.example` updated.

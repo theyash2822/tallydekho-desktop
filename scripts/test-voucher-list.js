@@ -8,6 +8,7 @@ const {
   MAX_LIST_IDS,
   checkVoucherListResponse,
   buildVoucherListSummary,
+  trailingCheckYears,
   voucherListLog,
 } = require("../util/voucherList");
 const { CONTEXT_STATUS } = require("../util/tdlHealth");
@@ -83,6 +84,40 @@ test("summary is incomplete for every unsafe case", () => {
   assert.equal(s(CONTEXT_STATUS.VERIFIED, [year("2026-2027", huge)]).reason, "too_many_vouchers");
 });
 
+test("trailing check years cover FYs after the last synced one, through the FY after today's", () => {
+  const today = new Date(Date.UTC(2026, 9, 5));
+  assert.deepEqual(trailingCheckYears([year("2023-2024", null)], today).map((y) => [y.finYear, y.begin, y.end]), [
+    ["2024-2025", "20240401", "20250331"],
+    ["2025-2026", "20250401", "20260331"],
+    ["2026-2027", "20260401", "20270331"],
+    ["2027-2028", "20270401", "20280331"],
+  ]);
+  assert.deepEqual(trailingCheckYears([year("2025-2026", null), year("2026-2027", null)], today).map((y) => y.finYear), ["2027-2028"]);
+  assert.deepEqual(trailingCheckYears([], today), []);
+  assert.deepEqual(trailingCheckYears([{ finYear: "x", begin: "bad", end: "bad" }], today), []);
+});
+
+test("a trailing year Tally did not answer cleanly is skipped, not treated as empty", () => {
+  const s = buildVoucherListSummary({
+    companyGuid: CO,
+    contextStatus: CONTEXT_STATUS.VERIFIED,
+    years: [
+      year("2023-2024", { ok: true, ids: ["1"] }),
+      { ...year("2026-2027", { ok: true, ids: [] }), trailing: true },
+      { ...year("2027-2028", { ok: false, reason: "tally_error" }), trailing: true },
+    ],
+  });
+  assert.equal(s.complete, true);
+  assert.deepEqual(s.years.map((y) => [y.finYear, y.ids.length]), [["2023-2024", 1], ["2026-2027", 0]]);
+  const realFails = buildVoucherListSummary({
+    companyGuid: CO,
+    contextStatus: CONTEXT_STATUS.VERIFIED,
+    years: [year("2023-2024", { ok: false, reason: "tally_error" }), { ...year("2026-2027", { ok: true, ids: [] }), trailing: true }],
+  });
+  assert.equal(realFails.complete, false);
+  assert.equal(realFails.reason, "2023-2024:tally_error");
+});
+
 test("log view carries counts, never ids", () => {
   const summary = buildVoucherListSummary({
     companyGuid: CO,
@@ -99,7 +134,9 @@ test("sync sends the list per company and never logs raw ids", () => {
   assert.match(src, /fetchVoucherList\(\{ companyName: name, companyGuid, year, yearId \}\)/);
   assert.match(src, /voucherLists: \[voucherLists\[c\.guid\]\]/);
   assert.match(src, /\.\.\.\(syncRunId \? \{ syncRunId \} : \{\}\)/);
-  assert.match(src, /listChecks\.length === years\.length/);
+  assert.match(src, /listChecks\.length === voucherListExpected\[companyGuid\]/);
+  assert.match(src, /trailingCheckYears\(years\)/);
+  assert.match(src, /\{ \.\.\.r, trailing: true \}\);\s*return \[\];/, "trailing years are never ingested");
   assert.match(src, /voucherLists\.map\(voucherListLog\)/);
   assert.doesNotMatch(src, /info\("\[sync\] ingest complete body", \{ uploadId, \.\.\.extras \}\)/);
 });

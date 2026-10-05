@@ -41,6 +41,7 @@ Desktop app acts as the bridge between Tally Prime (local) and TallyDekho backen
 ### Step 4c: Vouchers deleted in Tally (per company)
 - `SimplifiedVoucher.xml` (full GUID list per FY, not incremental) is checked by `util/voucherList.js`: clean envelope, no LINEERROR / "Could not set SVCurrentCompany", every GUID prefixed with the company GUID.
 - The list is `complete` only when the company's TDL Context was VERIFIED this sync and every FY passed. `/ingest/complete` body adds `voucherLists: [{ companyGuid, complete, reason, years: [{ finYear, from, to, ids }] }]` (ids = GUID suffix after `<companyGuid>-`) and `syncRunId`.
+- Tally ends the company period at the last voucher, so years emptied by deletions drop out of `years`. FYs after the last synced year through the FY after today's are also fetched as check-only (never ingested); one that fails is left out rather than sent as empty.
 - Backend deletes only vouchers absent from a complete list (see td-backend `src/services/voucherDeletion.js`); an incomplete list deletes nothing.
 
 ### Step 5: Parse + Upload

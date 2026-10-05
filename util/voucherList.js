@@ -42,7 +42,7 @@ function checkVoucherListResponse(response, companyGuid) {
 
 /**
  * @param {{ companyGuid: string, contextStatus?: string|null,
- *   years: Array<{ finYear: string, begin: string, end: string, check: ReturnType<typeof checkVoucherListResponse> }> }} input
+ *   years: Array<{ finYear: string, begin: string, end: string, trailing?: boolean, check: ReturnType<typeof checkVoucherListResponse> }> }} input
  */
 function buildVoucherListSummary({ companyGuid, contextStatus, years }) {
   const incomplete = (reason) => ({ companyGuid, complete: false, reason });
@@ -54,6 +54,8 @@ function buildVoucherListSummary({ companyGuid, contextStatus, years }) {
   const out = [];
   let total = 0;
   for (const y of years) {
+    // A trailing (check-only) year that Tally did not answer cleanly is left unchecked, never treated as empty.
+    if (y.trailing && !y.check?.ok) continue;
     if (!y.check?.ok) return incomplete(`${y.finYear}:${y.check?.reason || "not_checked"}`);
     const from = isoDate(y.begin);
     const to = isoDate(y.end);
@@ -61,8 +63,33 @@ function buildVoucherListSummary({ companyGuid, contextStatus, years }) {
     total += y.check.ids.length;
     out.push({ finYear: y.finYear, from, to, ids: y.check.ids });
   }
+  if (!out.length) return incomplete("no_years");
   if (total > MAX_LIST_IDS) return incomplete("too_many_vouchers");
   return { companyGuid, complete: true, reason: null, years: out };
+}
+
+const ymd = (dt) => dt.toISOString().slice(0, 10).replace(/-/g, "");
+const utc = (s) => new Date(Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8)));
+
+/**
+ * Tally ends a company's period at its last voucher, so a year whose vouchers were all
+ * deleted drops out of `years` and its stale vouchers would never be checked. Returns the
+ * FY spans after the last synced year, through the FY after the one containing `today`;
+ * they are fetched for the deletion check only, never ingested.
+ */
+function trailingCheckYears(years, today = new Date()) {
+  const last = [...(years || [])].sort((a, b) => String(a.end).localeCompare(String(b.end))).pop();
+  if (!last || !/^\d{8}$/.test(String(last.begin)) || !/^\d{8}$/.test(String(last.end))) return [];
+  const limit = new Date(Date.UTC(today.getUTCFullYear() + 1, today.getUTCMonth(), today.getUTCDate()));
+  const out = [];
+  let begin = utc(String(last.begin));
+  for (let i = 0; i < 10; i++) {
+    begin = new Date(Date.UTC(begin.getUTCFullYear() + 1, begin.getUTCMonth(), begin.getUTCDate()));
+    if (begin > limit) break;
+    const end = new Date(Date.UTC(begin.getUTCFullYear() + 1, begin.getUTCMonth(), begin.getUTCDate() - 1));
+    out.push({ finYear: `${begin.getUTCFullYear()}-${begin.getUTCFullYear() + 1}`, begin: ymd(begin), end: ymd(end) });
+  }
+  return out;
 }
 
 /** Counts only — never log the id lists. */
@@ -80,5 +107,6 @@ module.exports = {
   MAX_LIST_IDS,
   checkVoucherListResponse,
   buildVoucherListSummary,
+  trailingCheckYears,
   voucherListLog,
 };

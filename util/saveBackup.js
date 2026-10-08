@@ -105,7 +105,23 @@ function createZip({
   });
 }
 
-async function startBackup(windowContent) {
+/**
+ * Every backup trigger (button, scheduled task, headless) is admitted by the job
+ * coordinator first, so a backup never overlaps a sync, restore or another backup.
+ */
+async function startBackup(windowContent, { trigger = "manual" } = {}) {
+  const { coordinator } = require("./jobCoordinator");
+  const run = await coordinator.run("backup", { trigger }, () => runBackup(windowContent));
+  if (!run.accepted) {
+    info(`[backup] not started: ${run.code}`);
+    return { status: false, data: null, code: run.code, message: run.message };
+  }
+  return run.result && "status" in run.result
+    ? run.result
+    : { status: false, data: null, message: run.result?.message || "Backup failed" };
+}
+
+async function runBackup(windowContent) {
   const companies = getSelectedCompanies();
   const backupFolder = store.get("backup.dir");
   const newActivity = store.get("backupAndRestoreActivity") || [];

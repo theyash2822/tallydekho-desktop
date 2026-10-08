@@ -6,7 +6,6 @@ const iconv = require("iconv-lite");
 
 const { error, info } = require("./logger");
 const store = require("./store");
-const createFinancialYears = require("./createFinancialYears");
 const { normalizeEnvelope } = require("./tallyHelper");
 const { axiosInstance } = require("./helper");
 const { installTdlFiles } = require("./tdlFiles");
@@ -19,6 +18,8 @@ const {
 const { checkTdlHealth, looksLikeCompanyNotOpen } = require("./tdlHealth");
 const { planChunks } = require("./uploadChunks");
 const { runTallyExclusive, xmlText } = require("./tallyQueue");
+const { coordinator } = require("./jobCoordinator");
+const { toDiscoveredCompany, buildDiscovery } = require("./companyDiscovery");
 const {
   checkVoucherListResponse,
   buildVoucherListSummary,
@@ -59,6 +60,24 @@ function summarizeSyncState(res) {
   };
 }
 
+/** Stop reason of the job this code runs in (cancel request or failed source read). */
+const jobStopCode = () => coordinator.current()?.stopCode() || null;
+const jobCancelled = () => !!coordinator.current()?.isCancelled();
+const jobSignal = () => coordinator.current()?.signal;
+const CANCELLED_RESULT = () => ({
+  status: false,
+  code: "cancelled",
+  cancelled: true,
+  global: true,
+  message: "Sync stopped before upload finished.",
+});
+const AUTH_CODES = new Set(["DEVICE_NOT_PAIRED", "BINDING_REVOKED", "UNAUTHORIZED", "DEVICE_REVOKED"]);
+/** Failures that make every remaining company fail the same way. */
+const isGlobalUploadFailure = (err) => {
+  const httpStatus = err?.response?.status;
+  return !err?.response || httpStatus === 401 || httpStatus === 403 || AUTH_CODES.has(err?.response?.data?.code);
+};
+
 const parser = new XMLParser({
   //   ignoreAttributes: false,
   //   attributeNamePrefix: "@_",
@@ -92,17 +111,26 @@ async function uploadLargeArray({
     vouchers: vouchers.length,
   });
 
+  if (jobCancelled()) return CANCELLED_RESULT();
   sendMessage("Uploading Data");
 
   // Retry init up to 3x with backoff (backend may be briefly unavailable)
   let initRes;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      initRes = (await axiosInstance.post("/ingest/init", {}, { timeout: 15_000 })).data;
+      initRes = (await axiosInstance.post("/ingest/init", {}, { timeout: 15_000, signal: jobSignal() })).data;
       break;
     } catch (err) {
+      if (jobCancelled()) return CANCELLED_RESULT();
       info("[sync] init attempt failed", { attempt, message: err?.message });
-      if (attempt === 3) return { status: false, message: "Backend unreachable. Sync paused — retry when backend is available." };
+      if (attempt === 3) {
+        return {
+          status: false,
+          global: isGlobalUploadFailure(err),
+          code: err?.response?.data?.code,
+          message: err?.response?.data?.message || "Backend unreachable. Sync paused — retry when backend is available.",
+        };
+      }
       await new Promise(r => setTimeout(r, 1000 * attempt));
     }
   }
@@ -173,6 +201,9 @@ async function uploadLargeArray({
     ...logExtras,
     ...(voucherLists ? { voucherLists: voucherLists.map(voucherListLog) } : {}),
   });
+  // Last point where Stop is honoured: once /ingest/complete is sent the server may commit,
+  // so that request is never aborted.
+  if (jobCancelled()) return CANCELLED_RESULT();
   sendMessage("Processing Data");
 
   // Retry complete up to 3x (all data uploaded — just need to confirm)
@@ -186,6 +217,8 @@ async function uploadLargeArray({
       if (attempt === 3) {
         return {
           status: false,
+          global: isGlobalUploadFailure(err),
+          code: err?.response?.data?.code,
           message: err?.response?.data?.message || "Could not complete sync. Will retry on next sync.",
           data: err?.response?.data?.data,
         };
@@ -218,6 +251,7 @@ async function sendChunks({
   let chunkIndex = 0;
 
   for (const lines of planChunks(items, { maxItems: chunkItems, maxBytes: maxChunkBytes })) {
+    if (jobCancelled()) return CANCELLED_RESULT();
     const payload = Buffer.from(lines.join("\n") + "\n", "utf8");
     const response = await sendOneChunk(
       client,
@@ -253,13 +287,19 @@ async function sendOneChunk(client, uploadId, streamName, idx, body, gzip, compa
   let attempt = 0;
   while (true) {
     try {
-      await client.post("/ingest/chunk", body, { headers });
+      await client.post("/ingest/chunk", body, { headers, signal: jobSignal() });
       info(`[sync] Chunks`, { attempt, idx });
 
       return { status: true };
     } catch (e) {
+      if (jobCancelled()) return CANCELLED_RESULT();
       if (++attempt >= 3) {
-        return { status: false, message: e?.response?.data?.message };
+        return {
+          status: false,
+          global: isGlobalUploadFailure(e),
+          code: e?.response?.data?.code,
+          message: e?.response?.data?.message || e?.message,
+        };
       }
       await new Promise((r) => setTimeout(r, 500 * attempt));
     }
@@ -313,7 +353,6 @@ const tallyUrl = () => {
 };
 
 let totalVouchers = 0;
-let stopTallySyncCode = null;
 
 const getData = async (filePath, replacer = []) => {
   const TALLY_URL = tallyUrl();
@@ -338,8 +377,12 @@ const getData = async (filePath, replacer = []) => {
     xml = xml.replace(/<SVCURRENTCOMPANY>[^<]*<\/SVCURRENTCOMPANY>/g, () => companyTag);
   }
 
+  // A failure marks only the job this request belongs to; a status probe or company
+  // discovery running outside any job can never stop a sync.
+  const job = coordinator.current();
   let attempt = 0;
   while (true) {
+    if (job?.isCancelled()) return { status: false, data: null, message: "cancelled", cancelled: true };
     try {
       const response = await runTallyExclusive(() => axios.post(TALLY_URL, xml, {
         headers: {
@@ -348,13 +391,15 @@ const getData = async (filePath, replacer = []) => {
         },
         responseType: "arraybuffer",
         timeout: 15000 * 4,
+        signal: job?.signal,
       }));
       const decoded = decodeTallyResponse(response.data);
       return { status: true, data: decoded, message: "" };
     } catch (err) {
+      if (job?.isCancelled()) return { status: false, data: null, message: "cancelled", cancelled: true };
       error(err?.message, filePath);
       if (++attempt >= 3 || filePath == "TallyDestination.xml") {
-        stopTallySyncCode = "tally_timeout";
+        job?.recordSourceFailure("tally_timeout");
         return { status: false, data: null, message: err?.message };
       }
       await new Promise((r) => setTimeout(r, 500 * attempt));
@@ -478,72 +523,61 @@ const getCompanyDestinations = async () => {
   return destMap;
 };
 
-const getCompanies = async () => {
+// A full SimplifiedLedger export per company used to run on every 5-second poll.
+// Counts are display-only, so they refresh in the background at most this often.
+const LEDGER_COUNT_TTL_MS = 10 * 60 * 1000;
+const ledgerCountCache = new Map();
+let ledgerRefreshRunning = false;
+
+const refreshLedgerCounts = async (companies) => {
+  if (ledgerRefreshRunning) return;
+  ledgerRefreshRunning = true;
+  try {
+    for (const c of companies) {
+      if (coordinator.isActive(["sync", "hard_sync", "restore", "tally_restart"])) return;
+      const cached = ledgerCountCache.get(c.guid);
+      if (cached && Date.now() - cached.at < LEDGER_COUNT_TTL_MS) continue;
+      const response = await getData("SimplifiedLedger.xml", [{ key: "$$COMPANY_NAME", value: c.name }]);
+      if (!response.status) continue;
+      try {
+        const rows = normalizeEnvelope(parser.parse(response.data).ENVELOPE);
+        ledgerCountCache.set(c.guid, { count: rows.length, at: Date.now() });
+      } catch (_) { /* keep the previous count */ }
+    }
+  } finally {
+    ledgerRefreshRunning = false;
+  }
+};
+
+const cachedLedgerCount = (guid) => ledgerCountCache.get(guid)?.count ?? null;
+
+/**
+ * Typed discovery result. `status: "ok"` is the only positive evidence about which
+ * companies are open; anything else means "unknown" and must not change the selection.
+ */
+const discoverCompanies = async () => {
+  const observedAt = new Date().toISOString();
   const response = await getData("Companies.xml");
-
   if (!response.status) {
-    return [];
+    return { status: "unavailable", reason: "tally_request_failed", observedAt, companies: [] };
   }
-
+  let list;
+  try {
+    const node = parser.parse(response.data)?.ENVELOPE?.BODY?.DATA?.COLLECTION?.COMPANY ?? [];
+    list = Array.isArray(node) ? node : [node].filter(Boolean);
+  } catch (_) {
+    return { status: "unavailable", reason: "parse_failed", observedAt, companies: [] };
+  }
   const currentCompany = await getCurrentCompany();
+  const result = buildDiscovery(list, currentCompany?.GUID, { observedAt, ledgerCountFor: cachedLedgerCount });
+  refreshLedgerCounts(result.companies).catch(() => {});
+  return result;
+};
 
-  const json = parser.parse(response.data);
-  const companiesNode = json?.ENVELOPE?.BODY?.DATA?.COLLECTION?.COMPANY ?? [];
-
-  const companies = Array.isArray(companiesNode)
-    ? companiesNode
-    : [companiesNode].filter(Boolean);
-
-  // getCompanyGSTNumber(
-  //   companies.map((company) => company.NAME)
-  // );
-
-  let ledgerPromises = [];
-
-  for (let i = 0; i < companies.length; i++) {
-    const company = companies[i];
-
-    ledgerPromises.push(
-      syncHelper({
-        xml: "SimplifiedLedger.xml",
-        companyName: company.NAME,
-      })
-    );
-  }
-
-  ledgerPromises = await Promise.all(ledgerPromises);
-
-  return companies.map((company, i) => ({
-    name: company.NAME,
-    guid: company.GUID,
-    startingFrom: company.STARTINGFROM,
-    booksFrom: company.BOOKSFROM,
-    website: company.WEBSITE,
-    email: company.EMAIL,
-    phoneNumber: company.PHONENUMBER,
-    mobileNumber: company.MOBILENO,
-    address: [
-      company._ADDRESS1 ?? "",
-      company._ADDRESS2 ?? "",
-      company._ADDRESS3 ?? "",
-      company._ADDRESS4 ?? "",
-      company._ADDRESS5 ?? "",
-    ],
-    pincode: company.PINCODE,
-    state: company.STATENAME,
-    country: company.COUNTRYNAME,
-    gstNumber: "",
-    incomeTaxNumber: company.INCOMETAXNUMBER,
-    companyNumber: company.COMPANYNUMBER,
-    destination: company.DESTINATION,
-    isSynced: false,
-    years: createFinancialYears(
-      company.STARTINGFROM.toString(),
-      company.ENDINGAT.toString()
-    ),
-    isCurrentCompany: company.GUID == currentCompany.GUID,
-    ledgersCount: ledgerPromises[i].length,
-  }));
+/** Legacy array shape (empty on failure); prefer discoverCompanies(). */
+const getCompanies = async () => {
+  const result = await discoverCompanies();
+  return result.companies;
 };
 
 const getCompaniesGSTNumber = async (companies = []) => {
@@ -882,7 +916,6 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
   }
 
   totalVouchers = 0;
-  stopTallySyncCode = null;
   const sendProgress = createTallySyncProgressSender(windowContent);
   const sendMessage = tallySyncMessageSender(windowContent);
 
@@ -1037,6 +1070,8 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
 
   promises = await Promise.all(promises);
 
+  if (jobStopCode()) return stoppedResult(syncRunId);
+
   sendMessage("Fetching Vouchers Basic Details");
 
   const endTime = new Date().getTime();
@@ -1120,6 +1155,8 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
 
   masterPromises = masterPromises.flat();
   voucherPromises = voucherPromises.flat();
+
+  if (jobStopCode()) return stoppedResult(syncRunId);
 
   // Tally's AlterId only grows — unless its data was restored from a backup. If the highest
   // AlterId Tally lists is below what we already hold, re-fetch every FY for this company.
@@ -1254,12 +1291,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
     info("[sync] voucher_list", { company: name, ...voucherListLog(voucherLists[companyGuid]) });
 
     for (let j = 0; j < years.length; j++) {
-      if (stopTallySyncCode) {
-        return {
-          status: false,
-          data: { code: stopTallySyncCode },
-        };
-      }
+      if (jobStopCode()) return stoppedResult(syncRunId);
       const year = years[j];
       const yearId = yearIds[companyGuid][year.finYear];
 
@@ -1424,12 +1456,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
     }
   }
 
-  if (stopTallySyncCode) {
-    return {
-      status: false,
-      data: { code: stopTallySyncCode },
-    };
-  }
+  if (jobStopCode()) return stoppedResult(syncRunId);
 
   const endTime3 = new Date().getTime();
   const timeTaken3 = endTime3 - startTime3;
@@ -1444,13 +1471,19 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
     sendMessage(`Bill outstanding kept from last sync for ${billSnapshotProblems.join(", ")} — check Settings → Bill Outstanding TDL`);
   }
 
-  let response;
-
   // One upload per company: the backend files a whole chunk under one company, so a
-  // chunk must never straddle two companies.
+  // chunk must never straddle two companies. A company-specific failure no longer
+  // skips the companies after it; cancellation, auth and an unreachable backend do.
   const ofCompany = (rows, guid) => rows.filter((r) => r?.COMPANY_GUID === guid);
-  try {
-    for (const c of companies) {
+  const outcomes = [];
+  let globalFailure = null;
+  for (const c of companies) {
+    if (globalFailure) {
+      outcomes.push({ guid: c.guid, name: c.name, status: "not_attempted", code: globalFailure.code || null });
+      continue;
+    }
+    let response;
+    try {
       const companyRecords = ofCompany(records, c.guid);
       const sentOf = (xml) => companyRecords.reduce((n, r) => n + (r?.XML === xml ? 1 : 0), 0);
       const voucherWatermarks = buildVoucherWatermarks({
@@ -1479,39 +1512,58 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
         },
         sendMessage,
       });
-      if (!response.status) break;
+    } catch (err) {
+      const apiMessage = err?.response?.data?.message || err?.message;
+      const apiCode = err?.response?.data?.code;
+      info(`[sync] API Error main`, { err: apiMessage, code: apiCode });
+      response = {
+        status: false,
+        global: isGlobalUploadFailure(err),
+        message: apiMessage || "Something went wrong",
+        code: apiCode,
+        data: err?.response?.data,
+      };
     }
-  } catch (err) {
-    const apiMessage = err?.response?.data?.message || err?.message;
-    const apiCode = err?.response?.data?.code;
-    info(`[sync] API Error main`, { err: apiMessage, code: apiCode });
-    response = {
-      status: false,
-      message: apiMessage || "Something went wrong",
-      code: apiCode,
-      data: err?.response?.data,
-    };
+    if (response.status) {
+      outcomes.push({ guid: c.guid, name: c.name, status: "uploaded", uploadId: response.uploadId });
+    } else {
+      const code = response.code || response.data?.code || null;
+      outcomes.push({ guid: c.guid, name: c.name, status: "failed", code, message: response.message || null });
+      info("[sync] company upload failed", { companyGuid: c.guid, code, global: !!response.global });
+      if (response.global || jobCancelled()) globalFailure = { code, message: response.message };
+    }
   }
 
-  if (!response.status) {
-    // V2: Mark sync_run as failed
+  const uploaded = outcomes.filter((o) => o.status === "uploaded");
+  const failed = outcomes.filter((o) => o.status !== "uploaded");
+  const lastUploadId = uploaded.length ? uploaded[uploaded.length - 1].uploadId : null;
+
+  if (failed.length) {
+    const firstFailure = failed.find((o) => o.status === "failed") || failed[0];
     if (syncRunId) {
       try {
         await axiosInstance.post('/ingest/sync-run/complete', {
-          syncRunId, status: 'failed', errorMessage: response.message || 'Upload failed',
+          syncRunId,
+          status: 'failed',
+          errorMessage: firstFailure.message || 'Upload failed',
+          ...(lastUploadId ? { uploadId: lastUploadId } : {}),
         });
       } catch (err) {
         info('[sync_run] failed-mark failed (non-fatal):', err?.message);
       }
     }
+    if (lastUploadId) store.set("uploadId", lastUploadId);
+    const partial = uploaded.length > 0;
+    const code = jobCancelled() ? "cancelled" : partial ? "partial_sync" : firstFailure.code;
+    const message = partial
+      ? `Synced ${uploaded.map((o) => o.name).join(", ")}. Not synced: ${failed.map((o) => o.name).join(", ")}${firstFailure.message ? ` (${firstFailure.message})` : ""}.`
+      : firstFailure.message;
     return {
       status: false,
-      data: {
-        message: response.message,
-        code: response.code || response.data?.code,
-      },
-      code: response.code || response.data?.code,
-      message: response.message,
+      partial,
+      data: { message, code, companies: outcomes, uploadId: lastUploadId },
+      code,
+      message,
     };
   }
 
@@ -1520,7 +1572,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
     try {
       await axiosInstance.post('/ingest/sync-run/complete', {
         syncRunId,
-        uploadId: response.uploadId,
+        uploadId: lastUploadId,
         status: 'completed',
       });
       info('[sync_run] completed', { syncRunId });
@@ -1529,13 +1581,24 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
     }
   }
 
-  store.set("uploadId", response.uploadId);
-  return { status: true, data: { code: null, uploadId: response.uploadId } };
+  store.set("uploadId", lastUploadId);
+  return { status: true, data: { code: null, uploadId: lastUploadId, companies: outcomes } };
 };
 
-const stopTallySyncHandler = (code) => {
-  stopTallySyncCode = code;
+/** Stopped before any upload was committed: nothing was sent to the server. */
+const stoppedResult = (syncRunId) => {
+  const code = jobStopCode() || "cancelled";
+  if (syncRunId) {
+    axiosInstance
+      .post('/ingest/sync-run/complete', { syncRunId, status: 'failed', errorMessage: `stopped: ${code}` })
+      .catch((err) => info('[sync_run] stop-mark failed (non-fatal):', err?.message));
+  }
+  return { status: false, data: { code }, code };
 };
+
+/** Ask the running sync to stop. It stops at the next safe point and then releases itself. */
+const stopTallySyncHandler = (code) =>
+  coordinator.requestCancel({ types: ["sync", "hard_sync"], code: code || "manually_stopped" });
 
 // ---------------------------------------------------------------------------
 // Phase 2b (2026-07-02): Targeted post-write sync
@@ -1652,6 +1715,8 @@ const fetchAndIngestSingleVouchers = async ({ companyName, companyGuid, tallyIds
 module.exports = {
   getCompanyDestinations,
   getCompanies,
+  discoverCompanies,
+  toDiscoveredCompany,
   syncTallyData,
   isSyncRunning,
   stopTallySyncHandler,

@@ -15,6 +15,7 @@ import { CODE_ERROR_MESSAGE } from "./utils/helper";
 import VersionUpdateModal from "./views/components/VersionUpdateModal";
 import ForceUpdateModal from "./views/components/ForceUpdateModal";
 import PreviousCompaniesModal from "./views/components/PreviousCompaniesModal";
+import { mergeDiscovery, activeSyncJob } from "./utils/selectionMerge";
 
 export default function App() {
   const [state, setState] = useState({
@@ -91,6 +92,8 @@ export default function App() {
   const autoFirstSyncClaimTokenRef = useRef(null);
   /** Once first soft sync has been kicked for this bind, ignore late duplicate pairingClaimed. */
   const autoFirstSyncStartedForBindRef = useRef(null);
+  /** "name|oldGuid|newGuid" pairs already alerted this session. */
+  const identityAlertedRef = useRef(new Set());
 
   const {
     active,
@@ -180,6 +183,33 @@ export default function App() {
     isSyncingRef.current = isSyncing;
   }, [isSyncing]);
 
+  // isSyncing mirrors the main-process job coordinator; the renderer never sets it false itself.
+  const applyJobSnapshot = (snapshot) => {
+    const job = activeSyncJob(snapshot);
+    isSyncingRef.current = !!job;
+    updateState("isSyncing", !!job);
+    updateState("syncJob", job);
+    if (job) {
+      updateState("syncMode", job.type === "hard_sync" ? "hard" : "normal");
+      if (job.cancelRequested) updateState("syncMessage", "Stopping…");
+    }
+  };
+
+  const refreshJobState = async () => {
+    try {
+      const snapshot = await window.tally?.currentJob?.();
+      if (snapshot) applyJobSnapshot(snapshot);
+    } catch (_) {}
+  };
+
+  useEffect(() => {
+    if (!window.tally?.onJobChanged) return undefined;
+    refreshJobState();
+    const off = window.tally.onJobChanged((payload) => applyJobSnapshot(payload?.snapshot));
+    return () => off && off();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     hardSyncRequestIdRef.current = state.hardSyncRequestId;
   }, [state.hardSyncRequestId]);
@@ -235,6 +265,8 @@ export default function App() {
       const appVersion = await window.api.getPref("appVersion");
       const syncMode = await window.api.getPref("syncMode");
       const forceUpdate = await window.api.getPref("forceUpdate");
+      const port = await window.api.getPref("port");
+      if (Number.isInteger(port)) updateState("port", port);
 
       if (isAutoSync) {
         updateState("isAutoSync", isAutoSync);
@@ -303,6 +335,7 @@ export default function App() {
     const listener = window.api.listener(({ key, value }) => {
       if (key == "syncingCurrentStatus") {
         resetSyncStates(false);
+        if (value?.code === "partial_sync") markUploadedCompanies(value.companies);
         if (value.message == "Data Mismatch") {
           setIsHardSyncConfirmationModalOpen(true);
         } else if (value.code === "TALLY_DATA_MISMATCH") {
@@ -477,9 +510,22 @@ export default function App() {
       });
     }
     updateState("syncMessage", "");
-    window.api.setPref("isSyncing", false);
-    updateState("isSyncing", false);
     updateState("syncProgress", 0);
+    refreshJobState();
+  };
+
+  /** Partial upload: only the companies the server accepted count as synced. */
+  const markUploadedCompanies = (outcomes) => {
+    const uploaded = new Set(
+      (outcomes || []).filter((o) => o?.status === "uploaded").map((o) => o.guid)
+    );
+    if (!uploaded.size) return;
+    const at = new Date().toISOString();
+    const mark = (list) =>
+      (list || []).map((c) =>
+        uploaded.has(c.guid || c.id) ? { ...c, isSynced: true, lastSyncedAt: at } : c
+      );
+    updateState("selectedCompanies", mark);
   };
 
   const updateState = (key, value) => {
@@ -509,10 +555,20 @@ export default function App() {
     }
   };
 
-  const updatePort = (port) => {
-    window.api.setPref("port", port);
-    updateState("port", port);
+  const updatePort = async (port) => {
+    const value = Number(port);
+    if (!Number.isInteger(value) || value < 1 || value > 65535) {
+      openAlertModal("Port must be a whole number between 1 and 65535.");
+      return false;
+    }
+    const saved = await window.api.setPref("port", value);
+    if (saved === false) {
+      openAlertModal("Port could not be saved.");
+      return false;
+    }
+    updateState("port", value);
     updateTallyStatus();
+    return true;
   };
 
   // Ref and state change together, so the 5s Tally refresh (which reads the ref)
@@ -534,116 +590,41 @@ export default function App() {
   };
 
   const fetchCompanies = async () => {
-    const companies = await window.tally.companies();
+    const discovery = await window.tally.companies();
     if (selectionClearedByUserRef.current === null) {
       const stored = !!(await window.api.getPref("selectionClearedByUser"));
       if (selectionClearedByUserRef.current === null) selectionClearedByUserRef.current = stored;
     }
     // No await from here until the selection is written back.
     const clearedByUser = selectionClearedByUserRef.current;
-    const data = companies.map((company) => ({
-      id: company.guid,
-      name: company.name,
-      guid: company.guid,
-      path: company.destination,
-      years: company.years,
-      isCurrentCompany: company.isCurrentCompany,
-      allYears: company.years,
-      ledgersCount: company.ledgersCount,
-      // Preserve date fields needed for OpeningBalanceDiff.xml sync
-      startingFrom: company.startingFrom,
-      booksFrom: company.booksFrom,
-      // Lets the TDL restart reopen the company (/LOAD) instead of Tally's default one
-      companyNumber: company.companyNumber,
-    }));
+    const current = selectedCompaniesRef.current || [];
+    const merged = mergeDiscovery({ selected: current, discovery, clearedByUser });
 
-    const ids = data.map((item) => item.id);
-    const ledgersCount = data.reduce((acc, cv) => {
-      acc[cv.id] = cv.ledgersCount;
-      return acc;
-    }, {});
+    // Tally unreachable / busy / unknown: never treat that as "companies removed".
+    if (!merged.available) return current;
 
-    // let newSelectedCompanies = await window.api.getPref("selectedCompanies");
-    let newSelectedCompanies = selectedCompaniesRef.current;
-
-    let isCompanyRemoved = false;
-
-    if (ids.length == 0) {
-      newSelectedCompanies = [];
-    } else if (newSelectedCompanies.length > 0) {
-      newSelectedCompanies = newSelectedCompanies.filter((company) =>
-        ids.includes(company.id)
-      );
-      newSelectedCompanies = newSelectedCompanies.map((company) => {
-        company.ledgersCount = ledgersCount[company.id];
-
-        // Always refresh allYears from latest Tally data so new FYs appear in the Edit Years modal
-        const freshData = data.find(d => d.id === company.id);
-        if (freshData) {
-          company.allYears = freshData.allYears;
-          company.name = freshData.name;
-          company.companyNumber = freshData.companyNumber;
-        }
-
-        // Auto-add ONLY genuinely new FY years:
-        // A year is "new" if its begin date is AFTER the end date of all currently selected years
-        // This avoids adding old historical years the user deliberately excluded
-        if (freshData?.allYears && (company.years || []).length > 0) {
-          const selectedYears = company.years || [];
-          const selectedFYNames = new Set(selectedYears.map(y => y.finYear));
-
-          // Find the latest end date among currently selected years (YYYYMMDD format)
-          const maxEnd = selectedYears.reduce((max, y) => y.end > max ? y.end : max, '');
-
-          if (maxEnd) {
-            const trulyNewYears = freshData.allYears.filter(y =>
-              !selectedFYNames.has(y.finYear) && y.begin > maxEnd
-            );
-            if (trulyNewYears.length > 0) {
-              console.log('[fetchCompanies] Auto-adding new FY years:', trulyNewYears.map(y => y.finYear));
-              company.years = [...selectedYears, ...trulyNewYears];
-            }
-          }
-        }
-
-        return company;
-      });
-
-      isCompanyRemoved = true;
+    if (clearedByUser && merged.selection.length > 0) markCompaniesAdded();
+    if (merged.changed) {
+      selectedCompaniesRef.current = merged.selection;
+      updateState("selectedCompanies", merged.selection);
     }
+    updateState("companies", merged.companies);
 
-    if (
-      (isCompanyRemoved && newSelectedCompanies.length == 0) ||
-      !isCompanyRemoved
-    ) {
-      newSelectedCompanies = clearedByUser
-        ? []
-        : data
-            .filter((item) => item.isCurrentCompany)
-            .map((item) => ({ ...item, years: item.years.slice(-2) }));
-    }
-
-    if (clearedByUser && newSelectedCompanies.length > 0) markCompaniesAdded();
-
-    const prevSynced = (selectedCompaniesRef.current || []).filter((c) => c.isSynced);
-    selectedCompaniesRef.current = newSelectedCompanies;
-    updateState("selectedCompanies", newSelectedCompanies);
-    updateState("companies", data);
-
-    // ── GUID change detection ─────────────────────────────────────────
-    // If a previously-synced company GUID is no longer in the live Tally list,
-    // the company was migrated/reinstalled. Suggest hard sync.
-    const newIds = new Set(ids);
-    const missingGuids = prevSynced.filter((c) => !newIds.has(c.guid));
-    if (missingGuids.length > 0) {
-      const names = missingGuids.map((c) => c.name).join(", ");
+    const fresh = merged.identityConflicts.filter((c) => {
+      const key = `${c.name}|${c.oldGuid}|${c.newGuid}`;
+      if (identityAlertedRef.current.has(key)) return false;
+      identityAlertedRef.current.add(key);
+      return true;
+    });
+    if (fresh.length > 0) {
+      const names = fresh.map((c) => c.name).join(", ");
       openAlertModal(
         `Company GUID changed for: ${names}.\n\nThis usually means Tally was reinstalled or the company was recreated. ` +
         `Hard Sync is recommended to rebuild data safely.`
       );
     }
 
-    return newSelectedCompanies;
+    return merged.selection;
   };
 
   /**
@@ -713,21 +694,21 @@ export default function App() {
       });
       if (data?.code === "tally_not_connected" || code === "tally_not_connected") {
         autoFirstSyncStartedForBindRef.current = null;
-        updateState("isSyncing", false);
+        refreshJobState();
         updateState("pendingFirstSyncAfterPair", true);
         await updateTallyStatus();
         return false;
       }
       if (code === "COMPANY_SELECTION_PENDING") {
         autoFirstSyncStartedForBindRef.current = null;
-        updateState("isSyncing", false);
+        refreshJobState();
         updateState("pendingFirstSyncAfterPair", true);
         return false;
       }
       return true;
     } catch (e) {
       autoFirstSyncStartedForBindRef.current = null;
-      updateState("isSyncing", false);
+      refreshJobState();
       updateState("pendingFirstSyncAfterPair", true);
       openAlertModal(
         e?.message ||
@@ -767,9 +748,9 @@ export default function App() {
   }, [state.pendingFirstSyncAfterPair, state.isTallyOnline, selectedCompanies]);
 
   const stopSync = async (code) => {
-    await window.tally.stopSync(code);
-    updateState("isSyncing", false);
-    // updateState("lastSync", null);
+    const result = await window.tally.stopSync(code);
+    if (result?.ok) updateState("syncMessage", "Stopping…");
+    refreshJobState();
   };
 
   const closeAlertSyncModal = () => {
@@ -797,7 +778,7 @@ export default function App() {
       isHardSync: true,
     });
     if (code === "HARD_SYNC_APPROVAL_REQUIRED" || data?.code === "HARD_SYNC_APPROVAL_REQUIRED") {
-      updateState("isSyncing", false);
+      refreshJobState();
       hardSyncContinueOnceRef.current = null;
       updateState("hardSyncRequestId", data?.requestId || data?.data?.requestId);
       updateState("hardSyncWaitMessage", "Waiting for Owner/Admin approval");
@@ -805,12 +786,12 @@ export default function App() {
       return;
     }
     if (code === "HARD_SYNC_IN_FLIGHT" || data?.code === "HARD_SYNC_IN_FLIGHT") {
-      updateState("isSyncing", false);
+      refreshJobState();
       openAlertModal(message || CODE_ERROR_MESSAGE.HARD_SYNC_IN_FLIGHT);
       return;
     }
     if (code === "HARD_SYNC_REJECTED" || code === "HARD_SYNC_EXPIRED") {
-      updateState("isSyncing", false);
+      refreshJobState();
       updateState("hardSyncRequestId", null);
       hardSyncContinueOnceRef.current = null;
       openAlertModal(message || CODE_ERROR_MESSAGE[code]);
@@ -820,17 +801,10 @@ export default function App() {
       updateTallyStatus();
     }
     if (code === "TALLY_DATA_MISMATCH") {
-      updateState("isSyncing", false);
+      refreshJobState();
       openAlertModal(message || "This Tally data does not match the workspace.");
     }
-    // if (status) {
-    //   const date = new Date();
-    //   window.api.setPref("lastSync", date);
-    //   updateState("lastSync", date);
-    // }
-
-    // updateState("isSyncing", false);
-    // updateState("syncProgress", 0);
+    refreshJobState();
   };
 
   const closeHardSyncModal = () => {
@@ -918,6 +892,7 @@ export default function App() {
           markCompaniesAdded,
           updatePort,
           openAlertModal,
+          refreshJobState,
           syncState: deriveSyncState(state),
           versionLevel: state.versionLevel,
           versionMessage: state.versionMessage,

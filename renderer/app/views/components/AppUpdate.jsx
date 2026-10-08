@@ -15,11 +15,14 @@ export default function AppUpdate({
 
   useEffect(() => {
     if (isVersionUpdateModalOpen || forceUpdate) {
-      window.updater.check().then((response) => {
-        if (response.info?.isUpdateAvailable) {
-          startDownload();
-        }
-      });
+      window.updater
+        .check()
+        .then((response) => {
+          if (response?.info?.isUpdateAvailable) {
+            startDownload();
+          }
+        })
+        .catch(() => {});
       updateState("isVersionUpdateModalOpen", false);
     }
   }, [isVersionUpdateModalOpen, forceUpdate]);
@@ -101,22 +104,19 @@ export default function AppUpdate({
         </button>
       );
     }
-    if (state === "idle") {
-      return (
-        <button
-          className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#F0EFE9] hover:text-[#1A1A1A]"
-          style={{ borderColor: "#E9E8E3" }}
-          onClick={() => {
-            setError("");
-            setState("checking");
-            window.updater.check().finally(() => {});
-          }}
-        >
-          Check for updates
-        </button>
-      );
-    }
-    return <></>;
+    return (
+      <button
+        className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#F0EFE9] hover:text-[#1A1A1A]"
+        style={{ borderColor: "#E9E8E3" }}
+        onClick={() => {
+          setError("");
+          setState("checking");
+          window.updater.check().catch(() => {});
+        }}
+      >
+        {state === "error" ? "Retry" : "Check for updates"}
+      </button>
+    );
   }, [state, percent, isDownloadStarted]);
 
   return (
@@ -156,9 +156,9 @@ export default function AppUpdate({
       {state === "none" && (
         <div className="mt-2 text-xs text-[#9A9A97]">You're up to date.</div>
       )}
-      {/* {state === "error" && (
-        <div className="mt-2 text-xs text-red-600">Update error: {error}</div>
-      )} */}
+      {state === "error" && (
+        <div className="mt-2 text-xs text-red-600">Update check failed: {error}</div>
+      )}
     </Card>
   );
 }

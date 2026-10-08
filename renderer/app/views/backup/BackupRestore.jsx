@@ -5,6 +5,7 @@ import { formatDate, formatDateTime } from "../../utils/datetime";
 import Progress from "../components/Progress";
 import { computeNextSync } from "../../controllers/scheduler";
 import CustomSelect from "../components/CustomSelect";
+import { CODE_ERROR_MESSAGE } from "../../utils/helper";
 
 const options = [
   { value: "off", label: "OFF" },
@@ -35,6 +36,7 @@ export default function BackupRestore() {
       autoBackupStartedAt,
     },
     updateState,
+    openAlertModal,
   } = useContext(TallyContext);
 
   useEffect(() => {
@@ -53,7 +55,12 @@ export default function BackupRestore() {
   async function runBackup() {
     if (isBackingUp || isSyncing) return;
 
-    await window.tally.startBackup();
+    const result = await window.tally.startBackup();
+    if (result?.code === "JOB_CONFLICT" || result?.code === "JOB_ALREADY_RUNNING") {
+      openAlertModal?.(result.message || CODE_ERROR_MESSAGE[result.code]);
+    } else if (result && !result.status && result.message) {
+      openAlertModal?.(`Backup did not complete: ${result.message}`);
+    }
   }
 
   const saveAutoBackupHandler = (value) => {

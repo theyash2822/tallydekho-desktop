@@ -6,11 +6,14 @@ import HeaderBar from "./HeaderBar";
 import Companies from "./Companies";
 import { TallyContext } from "../../utils/TallyContext.js";
 import { HardSyncModal } from "../components/HardSyncModal.jsx";
+import { isStartRejected, rejectionMessage } from "../../utils/helper";
 
 export default function Dashboard({ hardSync }) {
   const {
     updateTallyStatus,
     updateState,
+    refreshJobState,
+    openAlertModal,
     state: {
       isTallyOnline,
       isSyncing,
@@ -32,28 +35,19 @@ export default function Dashboard({ hardSync }) {
     updateState("syncMode", "normal");
 
     if (syncStatus) {
-      //stop
-      await window.tally.stopSync("manually_stopped");
-      updateState("isSyncing", false);
-      // updateState("lastSync", null);
-      updateState("syncProgress", 0);
+      // Stop is a request; the job releases itself at a safe point and the job event clears isSyncing.
+      const result = await window.tally.stopSync("manually_stopped");
+      if (result?.ok) updateState("syncMessage", "Stopping…");
+      refreshJobState();
     } else {
-      //start
-
       updateState("isSyncing", true);
       updateState("syncMessage", "");
-      const { status, data } = await window.tally.startSync({ companies });
-      if (data?.code == "tally_not_connected") {
+      const result = await window.tally.startSync({ companies });
+      if (result?.data?.code == "tally_not_connected") {
         updateTallyStatus();
       }
-      // if (status) {
-      //   const date = new Date();
-      //   window.api.setPref("lastSync", date);
-      //   updateState("lastSync", date);
-      // }
-
-      // updateState("isSyncing", false);
-      // updateState("syncProgress", 0);
+      if (isStartRejected(result)) openAlertModal(rejectionMessage(result));
+      refreshJobState();
     }
   };
 

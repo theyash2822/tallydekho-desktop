@@ -187,9 +187,11 @@ check("update checks skip while the feed is the .invalid placeholder", () => {
   assert.match(guard, /!isUpdateFeedConfigured\(\)[\s\S]{0,120}return null/, "checkForUpdates must bail out without a real feed");
   assert.match(guard, /try \{[\s\S]{0,80}autoUpdater\.checkForUpdates\(\)/, "update check must be wrapped in try/catch");
   const main = fs.readFileSync(path.join(root, "main.js"), "utf8");
+  const refusal = main.slice(main.indexOf("const updaterRefusal = ")).slice(0, 400);
+  assert.match(refusal, /isUpdateFeedConfigured\(\)/, "updaterRefusal must check the feed is configured");
   for (const channel of ["updater:check", "updater:download"]) {
     const handler = main.slice(main.indexOf(`ipcMain.handle("${channel}"`)).slice(0, 500);
-    assert.match(handler, /isUpdateFeedConfigured\(\)/, `${channel} must check the feed is configured`);
+    assert.match(handler, /updaterRefusal\(\)/, `${channel} must check the feed is configured`);
   }
 });
 

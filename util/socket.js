@@ -4,6 +4,7 @@ const { info, error } = require("./logger");
 const store = require("./store.js");
 const { postToTally, fetchAndIngestSingleVouchers } = require("./xml");
 const { getSelectedCompanies } = require("./companySelection");
+const { coordinator } = require("./jobCoordinator");
 const {
   processCompanyWriteback,
   reconcilePendingWriteback,
@@ -87,9 +88,9 @@ module.exports = (window, socket) => {
       }
       info("[sync status body]: ", body);
       window.webContents.send("window:listener", body);
-      // Reset syncing state after completion
+      // Server-side processing of an upload finished; the sync job itself already
+      // released, so the running state is owned by the job coordinator, not this event.
       if (payload.status) {
-        window.webContents.send("window:listener", { key: "isSyncing", value: false });
         window.webContents.send("window:listener", { key: "syncProgress", value: 100 });
       }
     }
@@ -109,13 +110,11 @@ module.exports = (window, socket) => {
     } catch (_) {}
 
     if (window && window.webContents) {
-      window.webContents.send("window:listener", { key: "isSyncing", value: false });
-      window.webContents.send("window:listener", { key: "syncProgress", value: 0 });
       window.webContents.send("window:listener", { key: "pairedDevice", value: null });
       window.webContents.send("window:listener", { key: "pairingCode", value: null });
       window.webContents.send("window:listener", { key: "unpairedAlert", value: true });
     }
-    store.set("isSyncing", false);
+    coordinator.requestCancel({ types: ["sync", "hard_sync", "single_voucher"], code: "unpaired" });
     const { clearDeviceSecret } = require("./deviceCredential");
     clearDeviceSecret();
     // Drops the workspace binding (the company selection stays), then starts a
@@ -197,7 +196,7 @@ module.exports = (window, socket) => {
       require("./pairingSessionState").clearPairingSession();
     } catch (_) {}
     store.delete("workspace");
-    store.set("isSyncing", false);
+    coordinator.requestCancel({ types: ["sync", "hard_sync", "single_voucher"], code: "binding_revoked" });
     window?.webContents?.send("window:listener", { key: "bindingRevoked", value: payload || true });
     require("./pairingRuntime").handleUnpaired("binding-revoked");
   });
@@ -221,7 +220,7 @@ module.exports = (window, socket) => {
     const companyGuid = payload?.companyGuid || null;
     info('[sync:request] received from backend', reason, 'tallyIds:', tallyIds.join(',') || '(none)');
 
-    if (store.get('isSyncing')) {
+    if (coordinator.isActive(["sync", "hard_sync"])) {
       info('[sync:request] already syncing — current sync will pick up new voucher(s)');
       return;
     }
@@ -239,7 +238,16 @@ module.exports = (window, socket) => {
 
     if (canTargetedFetch) {
       try {
-        const result = await fetchAndIngestSingleVouchers({ companyName, companyGuid, tallyIds });
+        const run = await coordinator.run(
+          "single_voucher",
+          { trigger: "socket", scope: { companyGuid } },
+          () => fetchAndIngestSingleVouchers({ companyName, companyGuid, tallyIds })
+        );
+        if (!run.accepted) {
+          info('[sync:request] targeted fetch not started:', run.code);
+          return;
+        }
+        const result = run.result;
         if (result?.status) {
           info(`[sync:request] targeted SingleVoucher.xml fetch OK — ${result.count} row(s) ingested`);
           return; // done — no full sync needed
@@ -297,7 +305,7 @@ module.exports = (window, socket) => {
       // Delay 2s to let Tally finish numbering the entry before the sync pull.
       if (result.status === true) {
         setTimeout(() => {
-          if (store.get('isSyncing')) return; // ongoing sync will pick it up
+          if (coordinator.isActive(["sync", "hard_sync"])) return; // ongoing sync will pick it up
           const selectedCompanies = getSelectedCompanies();
           if (selectedCompanies.length > 0) {
             info('[tally:write] triggering post-write sync to capture voucher number');

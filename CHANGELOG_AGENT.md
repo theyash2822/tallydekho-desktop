@@ -4,6 +4,17 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-10-08 — P1 desktop state & operation ownership (branch `8-10-2026`, TD-FIX-2026-10-08)
+
+- `util/jobCoordinator.js` (new): one owner for sync / hard sync / single voucher / backup / restore. Synchronous admission with a conflict matrix, job-local cancel (AbortController + AsyncLocalStorage), owner-only release, `job:changed` events. `isSyncing` is mirrored from it; renderer can no longer write it.
+- Stop is a cancel request ("Stopping…"); sync checks at masters / voucher lists / each FY / before upload. Upload init+chunks get the job signal, `/ingest/complete` never aborted. Per-company upload outcomes; partial upload → `partial_sync`.
+- `tally:companies` returns a typed discovery. Unknown result never changes the selection; missing companies stay selected as "Not open in Tally". GUID-change alert only on same-name/new-GUID evidence. Ledger counts cached, refreshed in background.
+- Config validator repairs instead of deleting: backup + quarantine files, no relaunch. Schema accepts the company shape the renderer writes.
+- Headless registration failure exits without a modal; import-time missed-backup run removed; second launch routed by intent; UI can open during a headless job. Async cross-device dialog with timeout.
+- Port validated and hydrated; updater shows errors with Retry; registration response validated; logger redacts / caps / rotates; `closeSoftware` IPC removed.
+- Tested: new `test-job-coordinator`, `test-settings-migration`, `test-p1-foundation`, `test-selection-merge`; `npm test` 166/166; renderer vite build ok. Windows/Tally behaviour not yet verified (INTEGRATION_PENDING).
+- Risk: renderer and main must ship together (internal IPC shape changed).
+
 ## 2026-10-05 — Normal sync downloads only what changed (branch `tdl`)
 
 - **Before:** every manual/auto sync re-downloaded the entire current FY (backend date-format bug gave a start point of 0).

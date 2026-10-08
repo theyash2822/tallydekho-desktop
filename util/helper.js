@@ -14,6 +14,7 @@ const getDeviceProfile = require("./deviceProfile");
 const store = require("./store");
 const { saveDeviceSecret, getDeviceSecret } = require("./deviceCredential");
 const { resolveBackendEnvironment } = require("./backendConfig");
+const { REGISTER_FAILED_MESSAGE, checkRegisterResponse, toIsoDate } = require("./registerResponse");
 
 const execFileAsync = promisify(execFile);
 const MS_PER_DAY = 86_400_000;
@@ -187,11 +188,15 @@ async function registerDevice() {
   let response;
 
   try {
-    response = await axiosInstance.post("/desktop/register", {
-      deviceId: deviceProfile.deviceId,
-      host: deviceProfile.host,
-      desktopVersion: deviceProfile.app.version,
-    });
+    response = await axiosInstance.post(
+      "/desktop/register",
+      {
+        deviceId: deviceProfile.deviceId,
+        host: deviceProfile.host,
+        desktopVersion: deviceProfile.app.version,
+      },
+      { timeout: REGISTER_TIMEOUT_MS }
+    );
 
     response = response.data;
   } catch (err) {
@@ -210,15 +215,21 @@ async function registerDevice() {
     } else if (networkErrorCodes.includes(err.code)) {
       message = "No internet connection or DNS error";
     } else {
-      message =
-        "Something went wrong. If this message persists, please contact the support team.";
+      message = REGISTER_FAILED_MESSAGE;
     }
 
     return { status: false, message };
   }
 
-  if (response.status) {
-    store.set("lastSync", response.data.lastSync);
+  const checked = checkRegisterResponse(response);
+  if (!checked.ok) {
+    error(`registerDevice: ${checked.reason}`, "registerDevice");
+    return { status: false, message: checked.message };
+  }
+
+  {
+    const serverLastSync = toIsoDate(response.data?.lastSync);
+    if (serverLastSync) store.set("lastSync", serverLastSync);
 
     // Do not persist register pairingCode — codes are session-bound and temporary.
     // Fresh code comes from GET /desktop/pairing-code after startup.
@@ -254,6 +265,8 @@ async function registerDevice() {
     versionMessage: response.data?.versionMessage || null,
   };
 }
+
+const REGISTER_TIMEOUT_MS = 20_000;
 
 /** False while package.json still carries the `.invalid` placeholder feed (real URL set at go-live). */
 function isUpdateFeedConfigured() {
@@ -400,6 +413,8 @@ module.exports = {
   isTaskExists,
   getDefaultMailClient,
   registerDevice,
+  checkRegisterResponse,
+  toIsoDate,
   axiosInstance,
   baseURL,
   APP_ENV,

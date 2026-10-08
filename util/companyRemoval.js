@@ -14,12 +14,6 @@ const TIMEOUT_MESSAGE = "The server took too long to answer. The company may alr
 
 let deps = null;
 let inFlight = false;
-// tally:start_sync awaits Tally / the backend before it sets isSyncing.
-let syncStarting = false;
-
-function setSyncStarting(value) {
-  syncStarting = !!value;
-}
 
 function getDeps() {
   if (deps) return deps;
@@ -28,7 +22,11 @@ function getDeps() {
     post: (url, body) => require("./helper.js").axiosInstance.post(url, body, { timeout: REQUEST_TIMEOUT_MS }),
     isPaired: () => selection.isDevicePaired(),
     getBoundWorkspaceId: () => selection.getBoundWorkspaceId(),
-    isSyncBusy: () => !!require("./store").get("isSyncing") || require("./xml.js").isSyncRunning(),
+    // A sync is admitted synchronously, before its first await, so there is no
+    // "starting but not yet running" window to cover separately.
+    isSyncBusy: () =>
+      require("./jobCoordinator").coordinator.isActive(["sync", "hard_sync"]) ||
+      require("./xml.js").isSyncRunning(),
     dropFromSelection: (guids) => {
       const drop = new Set(guids);
       selection.setSelectedCompanies(
@@ -41,7 +39,6 @@ function getDeps() {
 function __setDepsForTests(next) {
   deps = next;
   inFlight = false;
-  syncStarting = false;
 }
 
 function isRemovalInFlight() {
@@ -63,7 +60,7 @@ async function removeCompanies(rawGuids) {
   if (inFlight) {
     return { ok: false, code: "REMOVAL_IN_PROGRESS", message: "A removal is already in progress." };
   }
-  if (syncStarting || d.isSyncBusy()) {
+  if (d.isSyncBusy()) {
     return { ok: false, code: "SYNC_IN_PROGRESS", message: "Wait for the sync to finish before removing a company." };
   }
   if (!d.isPaired()) {
@@ -107,4 +104,4 @@ async function removeCompanies(rawGuids) {
   }
 }
 
-module.exports = { removeCompanies, normaliseGuids, isRemovalInFlight, setSyncStarting, __setDepsForTests };
+module.exports = { removeCompanies, normaliseGuids, isRemovalInFlight, __setDepsForTests };

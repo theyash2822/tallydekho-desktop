@@ -18,4 +18,15 @@ export const CODE_ERROR_MESSAGE = {
   HARD_SYNC_IN_FLIGHT: "A sync is already in progress on this Desktop.",
   TALLY_DATA_MISMATCH:
     "This Tally data does not match the workspace. Use Restore or Reset Workspace.",
+  JOB_ALREADY_RUNNING: "A sync is already in progress on this Desktop.",
+  JOB_CONFLICT:
+    "Another operation (backup, restore or Tally restart) is running. Try again when it finishes.",
+  version_blocked: "Sync is blocked until this Desktop app is updated.",
+  partial_sync: "Some companies could not be uploaded. Synced companies are up to date; retry for the rest.",
 };
+
+/** Start/stop results that mean "not started" rather than "sync failed". */
+export const isStartRejected = (result) => !!result?.rejected;
+
+export const rejectionMessage = (result) =>
+  result?.message || CODE_ERROR_MESSAGE[result?.code] || "Sync could not start right now.";

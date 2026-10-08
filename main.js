@@ -26,7 +26,9 @@ const {
   startAutoSyncHeadless,
   startAutoBackupHeadless,
   startAutoBackup,
+  startMissedBackupIfDue,
 } = require("./util/ipcRegistry");
+const { coordinator } = require("./util/jobCoordinator");
 const { registerBackup } = require("./util/saveBackup");
 const registerRestoreBackup = require("./util/restoreBackup");
 const {
@@ -58,12 +60,27 @@ const {
 // Note: ipcRegistry already required above via destructuring — do NOT require again
 // require("./util/ipcRegistry"); // REMOVED: double-require crashes Electron (duplicate IPC handlers)
 require("./util/backup");
-require("./util/closeSoftware");
 
 let mainWindow;
 let rendererRecovery = null;
 let allowQuit = false;
 let quittingByWatcherOrSignal = false;
+// Startup (registration + version check) finished; scheduled triggers wait for it.
+let appReady = false;
+// The UI half of the app (window, socket, pairing, heartbeat) has been started.
+let interactiveStarted = false;
+// The user opened the app while this instance was still starting up headless.
+let uiRequested = false;
+
+const getMainWindow = () =>
+  mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+
+const SYNC_JOB_TYPES = ["sync", "hard_sync"];
+
+coordinator.onChange((job, snapshot) => {
+  const win = getMainWindow();
+  if (win) win.webContents.send("job:changed", { job, snapshot });
+});
 
 const gotLock = app.requestSingleInstanceLock();
 
@@ -315,9 +332,8 @@ async function createWindow() {
       return;
     }
 
-    const isSyncing = store.get("isSyncing");
-    if (isSyncing) {
-      mainWindow.send("window:listener", {
+    if (coordinator.isActive(SYNC_JOB_TYPES)) {
+      mainWindow.webContents.send("window:listener", {
         key: "isCloseConfirmationModalOpen",
         value: true,
       });
@@ -427,6 +443,15 @@ ipcMain.handle("store:set", (_event, key, value) => {
     setSelectedCompanies(value);
     return true;
   }
+  if (key === "port") {
+    const port = Number(value);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      error(`rejected invalid Tally port`, "store:set");
+      return false;
+    }
+    store.set("port", port);
+    return true;
+  }
   const previousOnline = key === "isOnline" ? store.get("isOnline") : null;
   store.set(key, value);
   // Offline → online is a pairing/writeback recovery edge. Socket reconnect
@@ -441,35 +466,59 @@ ipcMain.handle("store:set", (_event, key, value) => {
   return true;
 });
 
-ipcMain.handle("updater:check", async () => {
+const UPDATE_CHECK_TIMEOUT_MS = 30_000;
+
+/** Every refusal or failure is also pushed as a status, so the UI never stays on "Checking…". */
+const updaterRefusal = () => {
   if (!app.isPackaged || APP_ENV !== "production") {
-    return { ok: false, error: "Updates are only available on the production Desktop." };
+    return "Updates are only available on the production Desktop.";
   }
-  if (!isUpdateFeedConfigured()) {
-    return { ok: false, error: "Update feed is not configured yet." };
+  if (!isUpdateFeedConfigured()) return "Update feed is not configured yet.";
+  return null;
+};
+
+const withTimeout = (promise, ms, message) =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
+  ]);
+
+ipcMain.handle("updater:check", async () => {
+  const refusal = updaterRefusal();
+  if (refusal) {
+    notify("updater:status", { state: "error", error: refusal });
+    return { ok: false, error: refusal };
   }
   try {
     info("[updater:check] called");
-    const r = await autoUpdater.checkForUpdates();
+    const r = await withTimeout(
+      autoUpdater.checkForUpdates(),
+      UPDATE_CHECK_TIMEOUT_MS,
+      "The update server did not answer. Try again later."
+    );
+    if (!r) notify("updater:status", { state: "none" });
     return { ok: true, info: r };
   } catch (e) {
-    return { ok: false, error: e?.message || String(e) };
+    const message = e?.message || String(e);
+    notify("updater:status", { state: "error", error: message });
+    return { ok: false, error: message };
   }
 });
 
 ipcMain.handle("updater:download", async () => {
-  if (!app.isPackaged || APP_ENV !== "production") {
-    return { ok: false, error: "Updates are only available on the production Desktop." };
-  }
-  if (!isUpdateFeedConfigured()) {
-    return { ok: false, error: "Update feed is not configured yet." };
+  const refusal = updaterRefusal();
+  if (refusal) {
+    notify("updater:status", { state: "error", error: refusal });
+    return { ok: false, error: refusal };
   }
   try {
     info("[updater:download] called");
     await autoUpdater.downloadUpdate();
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: e?.message || String(e) };
+    const message = e?.message || String(e);
+    notify("updater:status", { state: "error", error: message });
+    return { ok: false, error: message };
   }
 });
 
@@ -482,7 +531,7 @@ ipcMain.handle(
 );
 
 function notify(ch, payload) {
-  mainWindow?.webContents.send(ch, payload);
+  getMainWindow()?.webContents.send(ch, payload);
 }
 
 autoUpdater.on("checking-for-update", () =>
@@ -522,25 +571,49 @@ autoUpdater.on("update-downloaded", (info) => {
   //   });
 });
 
+/** What a second launch asks this (primary) instance to do. */
+const secondInstanceIntent = (argv = []) => {
+  if (argv.includes("--run-sync")) return "scheduled_sync";
+  if (argv.includes("--run-backup")) return "scheduled_backup";
+  return "open_ui";
+};
+
+const showMainWindow = () => {
+  const win = getMainWindow();
+  if (!win) return false;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+  return true;
+};
+
 app.on("second-instance", async (_event, argv) => {
-  // if (mainWindow) {
-  //   if (mainWindow.isMinimized()) {
-  //     mainWindow.restore();
-  //     mainWindow.focus();
-  //   }
-  // }
+  const intent = secondInstanceIntent(argv);
+  info(`Second instance [intent]: ${intent}`);
 
-  // If the scheduler launches a second instance while UI is open:
+  if (intent === "open_ui") {
+    // A user opening the app while a scheduled job runs headless gets the UI now;
+    // the job keeps running and reports into the new window.
+    if (!appReady) {
+      uiRequested = true;
+      return;
+    }
+    if (!interactiveStarted) {
+      startInteractive();
+      return;
+    }
+    showMainWindow();
+    return;
+  }
 
-  info("Background [started]");
-
-  if (argv.includes("--run-sync")) {
-    info("Background [sync]");
-
-    await startAutoSync(mainWindow);
-  } else if (argv.includes("--run-backup")) {
-    info("Background [backup]");
-    await startAutoBackup(mainWindow);
+  if (!appReady) {
+    info(`Background [${intent} skipped]: still starting up`);
+    return;
+  }
+  if (intent === "scheduled_sync") {
+    await startAutoSync(getMainWindow);
+  } else {
+    await startAutoBackup(getMainWindow);
   }
 });
 
@@ -600,6 +673,13 @@ app.whenReady().then(async () => {
   }
 
   if (!response.status) {
+    if (isHeadless && !uiRequested) {
+      // Task Scheduler runs this with nobody at the screen: a modal would hang the
+      // task forever. Log and exit; the next scheduled run tries again.
+      error("Headless [registration failed]", { message: response.message });
+      app.quit();
+      return;
+    }
     if (isDev) {
       // In dev mode: log warning and fall through to createWindow() at the bottom
       // Backend may not be running yet or URL may be wrong — don't block development
@@ -650,39 +730,57 @@ app.whenReady().then(async () => {
     }
   }
 
+  appReady = true;
+
   if (isHeadless) {
+    // Primary instance launched by Task Scheduler. If the user opened the app
+    // meanwhile (or does so during the job), the UI starts alongside the job.
+    if (uiRequested) startInteractive();
     try {
-      // If no instance was running, this one is primary—do headless backup and exit (used by Task Scheduler)
-      //   run backup and exit
       info("Headless [started]");
       if (isHeadlessSync) {
         info("Headless [sync]");
-        await startAutoSyncHeadless();
+        await startAutoSyncHeadless(getMainWindow);
       } else if (isHeadlessBackup) {
         info("Headless [backup]");
-        await startAutoBackupHeadless();
+        await startAutoBackupHeadless(getMainWindow);
       }
     } catch (err) {
       error("Headless [error]", err);
     } finally {
-      app.quit();
+      if (!interactiveStarted) app.quit();
     }
     return;
   }
+
+  startInteractive();
+});
+
+/** Window, socket, pairing runtime and heartbeat. Runs once per process. */
+function startInteractive() {
+  if (interactiveStarted) {
+    showMainWindow();
+    return;
+  }
+  interactiveStarted = true;
 
   info(`App Started`);
 
   // before-quit never runs on a reboot or power cut, so these flags can survive
   // from the last session and block Sync Now ("already in progress"). The
-  // single-instance lock guarantees nothing else is syncing right now.
+  // single-instance lock guarantees no other process is working — but when the UI
+  // opens inside a running headless job, that job's flags are real.
   // isOnline starts false so the first successful ping is an offline→online
   // edge that re-runs the pairing check if startup ran before the network was up.
-  store.set("isSyncing", false);
-  store.set("isRestoring", false);
-  store.set("isBackingUp", false);
+  if (coordinator.snapshot().active.length === 0) {
+    store.set("isSyncing", false);
+    store.set("isRestoring", false);
+    store.set("isBackingUp", false);
+  }
   store.set("isOnline", false);
 
   createWindow();
+  startMissedBackupIfDue();
 
   // if (app.isPackaged) {
   //   setTimeout(() => {
@@ -749,7 +847,7 @@ app.whenReady().then(async () => {
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
-});
+}
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();

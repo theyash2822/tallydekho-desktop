@@ -23,9 +23,9 @@ const RENDERER_READABLE_PREFS = new Set([
   "versionMessage",
 ]);
 
+// isSyncing is owned by the main-process job coordinator; the renderer only reads job events.
 const RENDERER_WRITABLE_PREFS = new Set([
   "isOnline",
-  "isSyncing",
   "lastSync",
   "port",
   "selectedCompanies",

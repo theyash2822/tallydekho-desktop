@@ -30,16 +30,18 @@
       "type": "object",
       "properties": {
         "id": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "name": {
-          "type": "string"
+          "type": ["string", "number"]
         },
         "guid": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "path": {
-          "type": "string"
+          "type": ["string", "null"]
         },
         "years": {
           "type": "array",
@@ -59,7 +61,7 @@
           "minItems": 0
         },
         "ledgersCount": {
-          "type": "integer",
+          "type": ["integer", "null"],
           "minimum": 0
         },
         "isSynced": {
@@ -67,19 +69,30 @@
         },
         "lastSyncedAt": {
           "type": "string"
+        },
+        "startingFrom": {
+          "type": ["string", "number", "null"]
+        },
+        "booksFrom": {
+          "type": ["string", "number", "null"]
+        },
+        "companyNumber": {
+          "type": ["string", "number", "null"]
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "lastSeenAt": {
+          "type": "string"
         }
       },
       "required": [
         "id",
         "name",
         "guid",
-        "path",
-        "years",
-        "isCurrentCompany",
-        "allYears",
-        "ledgersCount"
+        "years"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "backupItem": {
       "type": "object",

@@ -13,8 +13,6 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.on("window:listener", handler);
     return () => ipcRenderer.removeListener("window:listener", handler);
   },
-  closeByName: (name, opts) =>
-    ipcRenderer.invoke("window:closeByName", name, opts),
   // Display-safe snapshot only. The main process owns the pairing session and
   // pushes updates over `window:listener`; the renderer cannot mint or claim.
   pairingState: () => ipcRenderer.invoke("api:pairing_state"),
@@ -44,6 +42,13 @@ contextBridge.exposeInMainWorld("tally", {
     return () => ipcRenderer.removeListener("tally:sync_progress", handler);
   },
   stopSync: (args) => ipcRenderer.invoke("tally:stop_sync", args),
+  // Running operations are owned by the main process; the renderer only mirrors them.
+  currentJob: () => ipcRenderer.invoke("job:current"),
+  onJobChanged: (cb) => {
+    const handler = (_e, payload) => cb(payload);
+    ipcRenderer.on("job:changed", handler);
+    return () => ipcRenderer.removeListener("job:changed", handler);
+  },
   saveAutoSync: (args) => ipcRenderer.invoke("tally:save_auto_sync", args),
   deleteAutoSync: () => ipcRenderer.invoke("tally:delete_auto_sync"),
   startBackup: () => ipcRenderer.invoke("tally:start_backup"),

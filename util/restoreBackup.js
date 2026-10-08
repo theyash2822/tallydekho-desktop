@@ -263,21 +263,32 @@ async function startCloudRestore(windowContent) {
     endCloudRestore();
     return { status: false, message: "Restore already running" };
   }
+  const { coordinator } = require("./jobCoordinator");
+  const admission = coordinator.admit("restore", { trigger: "cloud" });
+  if (!admission.accepted) {
+    endCloudRestore();
+    const result = { status: false, code: admission.code, message: admission.message };
+    if (windowContent && !windowContent.isDestroyed?.()) {
+      windowContent.send("window:listener", { key: "restoreComplete", value: result });
+    }
+    return result;
+  }
+  let result;
   try {
-    const result = await runCloudRestore(windowContent);
-    if (windowContent && !windowContent.isDestroyed?.()) {
-      windowContent.send("window:listener", { key: "restoreComplete", value: result });
-    }
-    return result;
-  } catch (err) {
-    const result = { status: false, message: err.message };
-    if (windowContent && !windowContent.isDestroyed?.()) {
-      windowContent.send("window:listener", { key: "restoreComplete", value: result });
-    }
-    return result;
+    const run = await coordinator.execute(admission.job, async () => {
+      const r = await runCloudRestore(windowContent);
+      return { state: r?.status ? "succeeded" : "failed", result: r };
+    });
+    result = run.result && "status" in run.result
+      ? run.result
+      : { status: false, message: run.result?.message || "Restore failed" };
   } finally {
     endCloudRestore();
   }
+  if (windowContent && !windowContent.isDestroyed?.()) {
+    windowContent.send("window:listener", { key: "restoreComplete", value: result });
+  }
+  return result;
 }
 
 async function runCloudRestore(windowContent) {

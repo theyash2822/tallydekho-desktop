@@ -451,6 +451,9 @@ export default function Companies({
                     <div className="font-medium max-w-[100px] truncate">
                       {company.name}
                     </div>
+                    {company.available === false && (
+                      <div className="text-[10px] text-[#787774] mt-0.5">Not open in Tally</div>
+                    )}
                     {!company.isSynced && (
                       <div className="text-[10px] text-[#D97706] mt-0.5">Data not synced yet</div>
                     )}

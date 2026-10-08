@@ -38,8 +38,7 @@ export default function TitleBar() {
 
   const successConfirmationModal = async () => {
     await window.tally.stopSync("manually_stopped");
-    updateState("isSyncing", false);
-    updateState("syncProgress", 0);
+    updateState("syncMessage", "Stopping…");
 
     await window.api.close();
     setIsConfirmationModalOpen(false);

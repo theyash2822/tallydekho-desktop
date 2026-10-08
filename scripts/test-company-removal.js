@@ -8,7 +8,6 @@ const {
   removeCompanies,
   normaliseGuids,
   isRemovalInFlight,
-  setSyncStarting,
   __setDepsForTests,
 } = require("../util/companyRemoval");
 const { canRendererRead, canRendererWrite } = require("../util/storeAllowlist");
@@ -72,14 +71,13 @@ test("sync running: refused before any call", async () => {
   assert.equal(dropped.length, 0);
 });
 
-test("sync still starting up (before isSyncing is set): refused", async () => {
-  setSyncStarting(true);
-  assert.equal((await removeCompanies(["A"])).code, "SYNC_IN_PROGRESS");
-  setSyncStarting(false);
-  assert.equal((await removeCompanies(["A"])).ok, true);
+test("a sync is busy from admission on: start_sync claims the slot before its first await", () => {
   const src = fs.readFileSync(path.join(__dirname, "../util/ipcRegistry.js"), "utf8");
-  assert.match(src, /syncStartInFlight = true;\s*\n\s*require\("\.\/companyRemoval"\)\.setSyncStarting\(true\);/);
-  assert.match(src, /syncStartInFlight = false;\s*\n\s*require\("\.\/companyRemoval"\)\.setSyncStarting\(false\);/);
+  const start = src.slice(src.indexOf('"tally:start_sync"'), src.indexOf("if (!admission.accepted)", src.indexOf('"tally:start_sync"')));
+  assert.match(start, /coordinator\.admit\(/);
+  assert.doesNotMatch(start, /await /, "no await between the handler start and admission");
+  const removal = fs.readFileSync(path.join(__dirname, "../util/companyRemoval.js"), "utf8");
+  assert.match(removal, /coordinator\.isActive\(\["sync", "hard_sync"\]\)/);
 });
 
 test("in-flight flag blocks a second removal and is cleared afterwards", async () => {
@@ -145,9 +143,9 @@ test("renderer may read and write the 'cleared by user' flag", () => {
 
 test("syncs refuse to start while a removal is in flight", () => {
   const src = fs.readFileSync(path.join(__dirname, "../util/ipcRegistry.js"), "utf8");
-  const start = src.slice(src.indexOf('"tally:start_sync"'), src.indexOf("syncStartInFlight = true;"));
+  const start = src.slice(src.indexOf('"tally:start_sync"'), src.indexOf("coordinator.admit(", src.indexOf('"tally:start_sync"')));
   assert.match(start, /isRemovalInFlight\(\)/);
-  const auto = src.slice(src.indexOf("const startAutoSync"), src.indexOf("const companies = getSelectedCompanies();", src.indexOf("const startAutoSync")));
+  const auto = src.slice(src.indexOf("const startAutoSync"), src.indexOf("coordinator.admit(", src.indexOf("const startAutoSync")));
   assert.match(auto, /isRemovalInFlight\(\)/);
 });
 
@@ -164,5 +162,7 @@ test("Remove goes through the warning and the backend; empty list stays empty", 
   );
   const removeFn = appSrc.slice(appSrc.indexOf("const removeSelectedCompanies"), appSrc.indexOf("const markCompaniesAdded"));
   assert.ok(removeFn.indexOf("selectedCompaniesRef.current = next") < removeFn.indexOf('updateState("selectedCompanies"'));
-  assert.match(appSrc, /clearedByUser\s*\n?\s*\?\s*\[\]/, "auto-select must respect the cleared flag");
+  assert.match(appSrc, /mergeDiscovery\(\{ selected: current, discovery, clearedByUser \}\)/);
+  const mergeSrc = fs.readFileSync(path.join(__dirname, "../renderer/app/utils/selectionMerge.js"), "utf8");
+  assert.match(mergeSrc, /\} else if \(!clearedByUser\) \{/, "auto-select must respect the cleared flag");
 });

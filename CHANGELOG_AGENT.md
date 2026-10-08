@@ -4,6 +4,18 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-10-08 — P3 lossless Tally text, deterministic decoding, fiscal planner, stock FY scope (branch `8-10-2026`, TD-FIX-2026-10-08)
+
+- Files: `util/tallyXmlParser.js`, `util/tallyDecode.js`, `util/fiscalPlanner.js` (new); `util/xml.js`, `util/billSnapshot.js`, `util/tdlHealth.js`, `util/tallyHelper.js`; tests `scripts/test-p3-lossless.js`, `scripts/test-p3-fiscal.js`; `package.json`.
+- Behaviour (01/02): one parser factory. Values stay exact text (`04021010`, `0012`, `12.10`, `2E5`, `0x1A`, long ids, phones). `&#13;&#10;`, `&#8377;` are decoded once by the parser; an escaped literal `&amp;#13;` stays the text `&#13;`; only control markers (e.g. `&#4;`) are stripped, tab/CR/LF kept. Decoding: BOM, then the NUL position of the first code unit for BOM-less UTF-16, then strict UTF-8, then a supported declared encoding; anything else fails with `TALLY_ENCODING_UNSUPPORTED` (no retry, no U+FFFD).
+- Behaviour (08): every sync (window, scheduled, headless, socket) plans its fiscal scope in main from the same Companies.xml read: selected years kept, later years Tally now reports appended (renderer rule), deselections untouched, scope frozen for the job and persisted to the selection.
+- Behaviour (S6): StockFYBalance rows carry `_FINANCIAL_YEAR` = the FY's own label plus `FY_BEGIN`, `FY_END`, `BALANCE_DATE`, `BALANCE_ROLE`.
+- Verified (03): ledger opening and StockFYBalance exports are always full (`alterId: 0`); `2d6eded` is on this branch.
+- Tested: `npm test` 191/191. Not tested: real Tally byte responses (UTF-16 without BOM, Hindi company), ENDINGAT behaviour before the first voucher of a new FY (Windows gate, D-002).
+- Risks: a new FY appears only once Tally's ENDINGAT reaches it; a Tally that answers in an undeclared non-UTF encoding now fails visibly.
+
+---
+
 ## 2026-10-08 — P2 ingest client deadlines and sync-run lifecycle (branch `8-10-2026`, TD-FIX-2026-10-08)
 
 - Files: `util/helper.js`, `util/xml.js`, `scripts/test-p2-ingest-client.js`, `package.json`.

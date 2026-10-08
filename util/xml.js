@@ -1,9 +1,10 @@
-const { XMLParser } = require("fast-xml-parser");
+const { createTallyParser } = require("./tallyXmlParser");
+const { decodeTallyBytes, TallyEncodingError } = require("./tallyDecode");
+const { yearsFromCompanyNodes, planFiscalScope, applyPlannedYears } = require("./fiscalPlanner");
+const { getSelectedCompanies, setSelectedCompanies } = require("./companySelection");
 const path = require("path");
 const { readFile } = require("fs").promises;
 const axios = require("axios");
-const iconv = require("iconv-lite");
-
 const { error, info } = require("./logger");
 const store = require("./store");
 const { normalizeEnvelope } = require("./tallyHelper");
@@ -28,26 +29,7 @@ const {
   voucherListLog,
 } = require("./voucherList");
 
-/** Decode Tally HTTP body — custom reports may return UTF-16 LE with BOM. */
-function decodeTallyResponse(data) {
-  const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
-  if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) {
-    return iconv.decode(buf, "utf16-le");
-  }
-  if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) {
-    return iconv.decode(buf, "utf16-be");
-  }
-  if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) {
-    return buf.slice(3).toString("utf8");
-  }
-  const sample = buf.slice(0, Math.min(120, buf.length));
-  let nulls = 0;
-  for (let i = 0; i < sample.length; i++) if (sample[i] === 0) nulls++;
-  if (sample.length > 20 && nulls > sample.length / 4) {
-    return iconv.decode(buf, "utf16-le");
-  }
-  return buf.toString("utf8");
-}
+const decodeTallyResponse = decodeTallyBytes;
 
 /** Counts only — the full sync state (every company / FY alter id) is too large and too revealing for logs. */
 function summarizeSyncState(res) {
@@ -78,16 +60,7 @@ const isGlobalUploadFailure = (err) => {
   return !err?.response || httpStatus === 401 || httpStatus === 403 || AUTH_CODES.has(err?.response?.data?.code);
 };
 
-const parser = new XMLParser({
-  //   ignoreAttributes: false,
-  //   attributeNamePrefix: "@_",
-  //   textNodeName: "#text",
-  ignoreAttributes: true, // drop @_TYPE, @_NAME, etc.
-  attributeNamePrefix: "", // (ignored anyway)
-  textNodeName: "value", // where element text lands
-  parseTagValue: true, // auto number/boolean coercion
-  trimValues: true,
-});
+const parser = createTallyParser();
 
 async function uploadLargeArray({
   records,
@@ -420,6 +393,11 @@ const getData = async (filePath, replacer = []) => {
       return { status: true, data: decoded, message: "" };
     } catch (err) {
       if (job?.isCancelled()) return { status: false, data: null, message: "cancelled", cancelled: true };
+      if (err instanceof TallyEncodingError) {
+        error(err.message, filePath);
+        job?.recordSourceFailure("tally_encoding_unsupported");
+        return { status: false, data: null, message: err.message, code: err.code };
+      }
       error(err?.message, filePath);
       if (++attempt >= 3 || filePath == "TallyDestination.xml") {
         job?.recordSourceFailure("tally_timeout");
@@ -744,7 +722,7 @@ function localYmd(d = new Date()) {
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}`;
 }
 
-function decorateRows(rows, { xml, companyName, fromDate, toDate, companyGuid, yearId }) {
+function decorateRows(rows, { xml, companyName, fromDate, toDate, companyGuid, yearId, fiscal }) {
   const financialYear = computeFinancialYear(fromDate);
   return rows.map((item) => ({
     ...item,
@@ -756,8 +734,18 @@ function decorateRows(rows, { xml, companyName, fromDate, toDate, companyGuid, y
     YEAR_ID:         yearId,
     _RECORD_TYPE:    XML_RECORD_TYPE[xml] || 'unknown',
     _FINANCIAL_YEAR: financialYear,
+    ...(fiscal || {}),
   }));
 }
+
+/** Explicit per-row scope for point-in-time balances; the query date alone does not identify the FY. */
+const stockBalanceFiscal = (year, role, balanceDate) => ({
+  _FINANCIAL_YEAR: year.finYear,
+  FY_BEGIN: year.begin,
+  FY_END: year.end,
+  BALANCE_DATE: balanceDate,
+  BALANCE_ROLE: role,
+});
 
 const TALLY_GUID_RE = /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-[0-9a-f]+/gi;
 const hasForeignTallyGuid = (text, companyGuid) => {
@@ -777,6 +765,7 @@ const syncHelperWithDate = async ({
   companyGuid,
   yearId,
   onFail,
+  fiscal,
 }) => {
   const response = await getData(xml, [
     {
@@ -821,7 +810,7 @@ const syncHelperWithDate = async ({
   if (onFail && companyGuid && baseRows.some((r) => hasForeignTallyGuid(JSON.stringify(r), companyGuid))) {
     onFail(xml);
   }
-  const normalizeData = decorateRows(baseRows, { xml, companyName, fromDate, toDate, companyGuid, yearId });
+  const normalizeData = decorateRows(baseRows, { xml, companyName, fromDate, toDate, companyGuid, yearId, fiscal });
 
   if (xml == "Voucher.xml") {
     totalVouchers += normalizeData.length;
@@ -945,12 +934,35 @@ const stopSyncRunHeartbeat = () => {
 const isSyncRunning = () => syncInProgress;
 
 /** GUID → current name of every company open in Tally, or null when Tally could not be asked. */
-const getOpenCompanyNames = async () => {
+const getOpenCompanies = async () => {
   const response = await getData("Companies.xml");
   if (!response.status) return null;
-  const node = parser.parse(response.data)?.ENVELOPE?.BODY?.DATA?.COLLECTION?.COMPANY ?? [];
-  const list = Array.isArray(node) ? node : [node].filter(Boolean);
-  return new Map(list.filter((c) => c?.GUID).map((c) => [String(c.GUID), String(c.NAME ?? "")]));
+  let list;
+  try {
+    const node = parser.parse(response.data)?.ENVELOPE?.BODY?.DATA?.COLLECTION?.COMPANY ?? [];
+    list = Array.isArray(node) ? node : [node].filter(Boolean);
+  } catch (_) {
+    return null;
+  }
+  return {
+    names: new Map(list.filter((c) => c?.GUID).map((c) => [String(c.GUID), String(c.NAME ?? "")])),
+    years: yearsFromCompanyNodes(list),
+  };
+};
+
+/** Every run (window, scheduled, headless, socket) gets its fiscal scope here, then keeps it. */
+const planJobScope = (companies, open) => {
+  const { companies: planned, added } = planFiscalScope(companies, open?.years || null);
+  if (added.length) {
+    info("[sync] new financial year(s) added to scope", added);
+    try {
+      const next = applyPlannedYears(getSelectedCompanies(), added, planned);
+      if (next) setSelectedCompanies(next);
+    } catch (e) {
+      info("[sync] could not persist planned years (scope still applies to this run):", e?.message);
+    }
+  }
+  return planned;
 };
 
 const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
@@ -980,8 +992,10 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
   // companies that are open right now, under their current Tally name.
   // init-sync still gets every selected company: it marks companies missing from the list
   // inactive, and a company closed in Tally for one sync must not disappear from the apps.
+  const open = await getOpenCompanies();
+  companies = planJobScope(companies, open);
   const selectedCompanies = companies;
-  const openCompanies = await getOpenCompanyNames();
+  const openCompanies = open?.names || null;
   if (openCompanies) {
     const notOpen = companies.filter((c) => !openCompanies.has(String(c.guid)));
     if (notOpen.length) {
@@ -1375,6 +1389,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
         toDate:   fyEndStr,
         companyGuid,
         yearId,
+        fiscal: stockBalanceFiscal(year, "closing", fyEndStr),
       });
       promises.push(stockFYClosingResponse);
 
@@ -1387,6 +1402,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
         toDate:   prevDayStr,
         companyGuid,
         yearId,
+        fiscal: stockBalanceFiscal(year, "opening", prevDayStr),
       });
       promises.push(stockFYOpeningResponse);
 

@@ -1,3 +1,5 @@
+const { cleanTallyText } = require("./tallyXmlParser");
+
 function asArray(v) {
   if (v === undefined || v === null) return [];
   return Array.isArray(v) ? v : [v];
@@ -54,13 +56,8 @@ function normalizeEnvelope(envelope, { map = {}, strictLengths = false } = {}) {
           : null;
 
       const value = map[k] ? map[k](raw) : coerce(raw);
-      row[k] =
-        typeof value == "string"
-          ? value
-              .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, "")
-              .replace(/&#[0-9]{1,2};/g, "")
-              .trim()
-          : value;
+      // Character references were already decoded by the parser; any "&#..;" left here is literal text.
+      row[k] = cleanTallyText(value);
     }
     rows.push(row);
   }

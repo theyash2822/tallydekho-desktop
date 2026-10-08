@@ -6,7 +6,7 @@
  * Settings → Retry Setup (ensureBillOutstandingTdl.js).
  */
 const axios = require("axios");
-const iconv = require("iconv-lite");
+const { decodeTallyBytes } = require("./tallyDecode");
 const { XMLParser } = require("fast-xml-parser");
 const { runTallyExclusive, xmlText } = require("./tallyQueue");
 const { info } = require("./logger");
@@ -60,20 +60,7 @@ const parser = new XMLParser({
   trimValues: true,
 });
 
-function decodeTallyBody(data) {
-  if (typeof data === "string") return data;
-  const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
-  if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) return iconv.decode(buf, "utf16-le");
-  if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) return iconv.decode(buf, "utf16-be");
-  if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) {
-    return buf.slice(3).toString("utf8");
-  }
-  const sample = buf.slice(0, Math.min(120, buf.length));
-  let nulls = 0;
-  for (let i = 0; i < sample.length; i++) if (sample[i] === 0) nulls++;
-  if (sample.length > 20 && nulls > sample.length / 4) return iconv.decode(buf, "utf16-le");
-  return buf.toString("utf8");
-}
+const decodeTallyBody = decodeTallyBytes;
 
 function tallyUrl() {
   const port = require("./store").get("port") || 9000;

@@ -10,7 +10,7 @@
  * status is SUCCESS and snapshotComplete is true; every other status keeps the
  * previous bills.
  */
-const { XMLParser } = require("fast-xml-parser");
+const { createTallyParser } = require("./tallyXmlParser");
 const { xmlText, runCompanyExclusive } = require("./tallyQueue");
 const { info } = require("./logger");
 const {
@@ -48,13 +48,7 @@ const BILL_STATUS = Object.freeze({
   UNKNOWN: "UNKNOWN",
 });
 
-const parser = new XMLParser({
-  ignoreAttributes: true,
-  attributeNamePrefix: "",
-  textNodeName: "value",
-  parseTagValue: true,
-  trimValues: true,
-});
+const parser = createTallyParser();
 
 /**
  * Dr/Cr of an outstanding bill. Tally XML amounts are negative for Dr, but the

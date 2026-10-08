@@ -4,6 +4,8 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+2026-10-08 | P4 hard sync (TD-FIX-2026-10-08, branch `8-10-2026`) | util/xml.js (comment only) | None on desktop: backend no longer purges at init-sync; it publishes after a verified upload with a complete voucher list. A refused hard-sync start shows the backend message (existing path). | desktop `npm test` unchanged | Hard sync on Windows/Tally untested (D-002)
+
 ## 2026-10-08 — P3 lossless Tally text, deterministic decoding, fiscal planner, stock FY scope (branch `8-10-2026`, TD-FIX-2026-10-08)
 
 - Files: `util/tallyXmlParser.js`, `util/tallyDecode.js`, `util/fiscalPlanner.js` (new); `util/xml.js`, `util/billSnapshot.js`, `util/tdlHealth.js`, `util/tallyHelper.js`; tests `scripts/test-p3-lossless.js`, `scripts/test-p3-fiscal.js`; `package.json`.

@@ -306,7 +306,8 @@ const initSync = async (companies, isHardSync = false) => {
   let response;
 
   try {
-    // isHardSync → backend purges selected company GUID tally data, then rebuilds via ingest
+    // isHardSync → backend consumes the approval and opens jobs; stale rows are removed only
+    // after a verified complete upload (backend services/hardSyncPublication.js).
     response = await axiosInstance.post("/desktop/init-sync", {
       companies,
       isHardSync: !!isHardSync,

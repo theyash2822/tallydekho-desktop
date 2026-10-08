@@ -314,6 +314,12 @@ async function createWindow() {
     });
   }
 
+  // Tasks created by older builds woke the PC; re-apply our own task settings once per version.
+  require("./util/backgroundRunner.js")
+    .reconcileOwnedTaskSettings(store, { log: info })
+    .then((r) => info("[tasks] settings reconcile", r))
+    .catch((e) => info("[tasks] settings reconcile skipped", e?.message));
+
   loadRenderer(mainWindow);
   if (!isDev) checkForUpdates(mainWindow);
 

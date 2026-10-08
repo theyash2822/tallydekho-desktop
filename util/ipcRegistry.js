@@ -7,7 +7,6 @@ const fsSync = require("fs");
 const {
   isTallyOpen,
   isOnlineHandler,
-  diffDays,
   axiosInstance,
   pollJobStatus,
 } = require("./helper.js");
@@ -169,11 +168,22 @@ ipcMain.handle("tally:tdl_health", async () => {
   }
 });
 
+/** Setup may start Tally, so it never overlaps a sync, backup, restore or voucher refresh. */
+async function runTdlSetup(dir) {
+  const { setupTdl } = require("./ensureBillOutstandingTdl");
+  const { coordinator } = require("./jobCoordinator");
+  const run = await coordinator.run("tally_restart", { trigger: "manual" }, () => setupTdl(dir, { allowRestart: true }));
+  if (!run.accepted) {
+    return { status: "blocked", level: "warn", reason: "job_conflict", message: run.message, missing: [] };
+  }
+  if (run.error) throw run.error;
+  return run.result;
+}
+
 ipcMain.handle("tally:tdl_setup", async (_event, optionalDir) => {
   try {
-    const { setupTdl } = require("./ensureBillOutstandingTdl");
-    // Retry setup is the only place Tally may be restarted (official /TDL load, no manual F1)
-    return await setupTdl(optionalDir || null, { allowRestart: true });
+    // Retry setup is the only place Tally may be started (official /TDL load, no manual F1).
+    return await runTdlSetup(optionalDir || null);
   } catch (e) {
     error(e?.message || String(e), "tally:tdl_setup");
     return {
@@ -197,8 +207,7 @@ ipcMain.handle("tally:tdl_select_path", async () => {
     if (result.canceled || !result.filePaths?.[0]) {
       return { status: false, cancelled: true };
     }
-    const { setupTdl } = require("./ensureBillOutstandingTdl");
-    const health = await setupTdl(result.filePaths[0], { allowRestart: true });
+    const health = await runTdlSetup(result.filePaths[0]);
     return { status: true, health };
   } catch (e) {
     error(e?.message || String(e), "tally:tdl_select_path");
@@ -603,7 +612,18 @@ ipcMain.handle(
   }
 );
 
+/** Scheduled/headless triggers run only when a backup is actually due (no churn on repeats). */
+const scheduledBackupDue = (trigger) => {
+  const { backupDue, readScheduleState } = require("./backupSchedule");
+  const verdict = backupDue(readScheduleState(store), Date.now());
+  if (!verdict.due) info(`Background [${trigger} backup skipped: ${verdict.reason}]`);
+  return verdict.due;
+};
+
 const startAutoBackup = async (getWindow) => {
+  if (!scheduledBackupDue("scheduled")) {
+    return { status: false, data: null, code: "BACKUP_NOT_DUE", message: "Backup not due" };
+  }
   // Admission (inside startBackup) refuses while a sync, restore or backup is running.
   const response = await startBackup(liveTarget(getWindow), { trigger: "scheduled" });
 
@@ -621,6 +641,7 @@ const startAutoBackupHeadless = async (getWindow) => {
   if (!isOnline) {
     return;
   }
+  if (!scheduledBackupDue("headless")) return true;
 
   const response = await startBackup(liveTarget(getWindow), { trigger: "headless" });
 
@@ -638,16 +659,13 @@ const startAutoBackupHeadless = async (getWindow) => {
 const startMissedBackupIfDue = () => {
   const backupInterval = store.get("backupInterval");
   if (["7days", "1month"].includes(backupInterval)) {
-    const daysDifference = diffDays(
-      Date.now(),
-      store.get("autoBackupStartedAt")
-    );
+    const { backupDue, readScheduleState } = require("./backupSchedule");
+    const now = Date.now();
+    const verdict = backupDue(readScheduleState(store), now, { missed: true });
 
-    if (
-      (backupInterval == "7days" && daysDifference > 8) ||
-      (backupInterval == "1month" && daysDifference > 31)
-    ) {
-      info(`Background [missed backup started]`);
+    if (verdict.due) {
+      store.set("lastMissedBackupTriggerAt", now);
+      info(`Background [missed backup started: ${verdict.reason}]`);
       execFile(
         "powershell.exe",
         [

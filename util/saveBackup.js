@@ -181,6 +181,7 @@ async function runBackup(windowContent) {
   }
 
   let status;
+  let backupSessionId = null;
 
   try {
     sendProgress(5, "Preparing");
@@ -218,12 +219,17 @@ async function runBackup(windowContent) {
       sha256,
       desktopVersion: deviceProfile.app?.version,
       tallyVersion: store.get("tallyVersion") || null,
-      companyManifest: companies.map((c) => ({ guid: c.guid || c.id, name: c.name })),
+      companyManifest: companies.map((c) => ({
+        guid: c.guid || c.id,
+        name: c.name,
+        folder: c.path ? path.basename(c.path) : null,
+      })),
     });
     const session = sessionRes.data?.data;
     if (!sessionRes.data?.status || !session?.upload?.url) {
       throw new Error(sessionRes.data?.message || "Backup upload was not authorized");
     }
+    backupSessionId = session.backupId;
 
     await uploadFile(
       session.upload.url,
@@ -260,9 +266,19 @@ async function runBackup(windowContent) {
     status = false;
     await unlinkQuiet(partialZip);
     await unlinkQuiet(zipPath);
+    if (backupSessionId) {
+      await axiosInstance.post(`/desktop/backup/sessions/${backupSessionId}/fail`).catch(() => {});
+    }
     info(`[backup] failed (${err.message})`);
     return { status: false, data: null, message: err.message };
   } finally {
+    try {
+      const { outcomePatch, readScheduleState } = require("./backupSchedule");
+      const patch = outcomePatch(readScheduleState(store), { ok: status === true, nowMs: Date.now() });
+      for (const [k, v] of Object.entries(patch)) store.set(k, v);
+    } catch (e) {
+      info(`[backup] schedule state not updated (${e.message})`);
+    }
     store.set("isBackingUp", false);
     windowContent.send("window:listener", {
       key: "isBackingUp",

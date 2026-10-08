@@ -176,6 +176,12 @@ function buildHealth({ tallyDir, detectSource, applyResult, live = null, activat
     level = "danger";
     reason = !ini.found ? "ini_missing" : !tdlPresent ? "tdl_missing" : "ini_not_linked";
     message = fileProblem;
+  } else if (activateResult?.code && activateResult.status === false) {
+    // Setup did not start Tally (it was open, path unsafe, …): tell the user what to do.
+    reason = activateResult.code.toLowerCase();
+    message = activateResult.message;
+  } else if (activateResult?.companiesNotOpen?.length) {
+    message = `${message} Open these companies in Tally (they stay selected): ${activateResult.companiesNotOpen.join(", ")}`;
   }
 
   return {
@@ -256,39 +262,68 @@ async function runningTallyExe() {
   }
 }
 
+// cmd.exe re-parses its command line, so a folder containing one of these could run something else.
+const CMD_UNSAFE_RE = /["&|<>^%!\r\n]/;
+const COMPANY_NUMBER_RE = /^\d{1,10}$/;
+
 /**
- * Settings Setup / Retry Setup only: restart Tally with /TDL so the report loads without manual F1.
+ * Decide whether Setup may start Tally. TallyDekho never force-closes Tally (an unsaved entry or
+ * other open companies would be lost); when Tally is running the user closes it and retries.
+ * @returns {{ ok: true, args: string[] } | { ok: false, code: string, message: string }}
+ */
+function planTallyLaunch({ platform, tallyDir, exeExists, tdlExists, running, companyNumber }) {
+  if (platform !== "win32") return { ok: false, code: "UNSUPPORTED_PLATFORM", message: "Windows only" };
+  if (!tallyDir || CMD_UNSAFE_RE.test(tallyDir)) {
+    return { ok: false, code: "TALLY_PATH_UNSAFE", message: "The Tally folder path has characters TallyDekho cannot pass safely. Open Tally yourself, then Retry setup." };
+  }
+  if (!exeExists) return { ok: false, code: "TALLY_EXE_MISSING", message: `tally.exe not found in ${tallyDir}` };
+  if (!tdlExists) return { ok: false, code: "TDL_MISSING", message: "TDL file missing — run setup first" };
+  if (running) {
+    return {
+      ok: false,
+      code: "TALLY_CLOSE_REQUIRED",
+      message: "Tally is open. Save your work and close Tally, then click Retry setup — TallyDekho will start Tally with the add-on.",
+    };
+  }
+  const number = companyNumber != null ? String(companyNumber).trim() : "";
+  const args = [`/TDL:${TDL_FILENAME}`];
+  if (COMPANY_NUMBER_RE.test(number)) args.unshift(`/LOAD:${number}`);
+  return { ok: true, args };
+}
+
+/** Selected companies that are not open in Tally after a restart (null = Tally could not be asked). */
+function companiesNotOpen(expected, open) {
+  if (!open?.names) return null;
+  return (expected || []).filter((c) => c?.guid && !open.names.has(String(c.guid))).map((c) => c.name || c.guid);
+}
+
+/**
+ * Settings Setup / Retry Setup only: start Tally with /TDL so the report loads without manual F1.
  *
  * Tally docs: argv is `/TDL:path` (or `/TDL:filename` if file is in Tally folder).
  * Do NOT embed extra quotes inside the argv — that breaks paths like "TallyPrime (1)".
  * Prefer filename-only since we copy TDKBillOutstanding.tdl into the Tally folder.
- * /LOAD:companyNumber reopens the company after the restart.
+ * /LOAD:companyNumber opens one company (multiple /LOAD is not verified); the others are reported.
  */
 async function activateTdlByRestartingTally(tallyDir, destTdl, opts = {}) {
-  if (process.platform !== "win32") {
-    return { status: false, message: "Windows only" };
+  const exe = tallyDir ? path.join(tallyDir, "tally.exe") : null;
+  const running = process.platform === "win32" ? !!(await runningTallyExe()) : false;
+  const plan = planTallyLaunch({
+    platform: process.platform,
+    tallyDir,
+    exeExists: !!exe && fs.existsSync(exe),
+    tdlExists: fs.existsSync(destTdl),
+    running,
+    companyNumber: opts.companyNumber,
+  });
+  if (!plan.ok) {
+    info("[tdl] setup: Tally not started", { code: plan.code });
+    return { status: false, code: plan.code, message: plan.message };
   }
-  const exe = path.join(tallyDir, "tally.exe");
-  if (!fs.existsSync(exe)) {
-    return { status: false, message: `tally.exe not found in ${tallyDir}` };
-  }
-  if (!fs.existsSync(destTdl)) {
-    return { status: false, message: "TDL file missing — run setup first" };
-  }
+  const args = plan.args;
+  const companyNumber = args[0].startsWith("/LOAD:") ? args[0].slice(6) : null;
 
-  const companyNumber = opts.companyNumber != null && String(opts.companyNumber).trim() !== ""
-    ? String(opts.companyNumber).trim()
-    : null;
-
-  const args = [`/TDL:${TDL_FILENAME}`];
-  if (companyNumber) {
-    args.unshift(`/LOAD:${companyNumber}`);
-  }
-
-  info("[tdl] setup: restarting Tally with /TDL", { exe, args, destTdl, companyNumber });
-
-  await execFileAsync("taskkill", ["/IM", "tally.exe", "/F"]);
-  await new Promise((r) => setTimeout(r, 2500));
+  info("[tdl] setup: starting Tally with /TDL", { exe, args, destTdl, companyNumber });
 
   try {
     // cmd `start` is the reliable way to launch a GUI Tally from Electron
@@ -348,6 +383,8 @@ const defaultDeps = {
   checkHealth: checkTdlHealth,
   activate: activateTdlByRestartingTally,
   companyMeta: selectedCompanyMeta,
+  expectedCompanies: () => require("./companySelection").getSelectedCompanies(),
+  openCompanies: async () => require("./xml").getOpenCompanies(),
   wait: (ms) => new Promise((r) => setTimeout(r, ms)),
 };
 let deps = defaultDeps;
@@ -446,6 +483,13 @@ async function setupTdl(optionalDir, opts = {}) {
         if ((await deps.checkHealth()).status === TDL_STATUS.ACTIVE) break;
       }
       live = await deps.liveStatus(companyName);
+      let notOpen = null;
+      try {
+        notOpen = companiesNotOpen(deps.expectedCompanies(), await deps.openCompanies());
+      } catch (_) {
+        notOpen = null;
+      }
+      activateResult = { ...activateResult, companiesNotOpen: notOpen };
     }
   }
 
@@ -469,6 +513,9 @@ module.exports = {
   detectTallyInstallPath,
   applyTdlToDir,
   activateTdlByRestartingTally,
+  planTallyLaunch,
+  companiesNotOpen,
+  runningTallyExe,
   buildHealth,
   settingsTdlStatus,
   TDL_FILENAME,

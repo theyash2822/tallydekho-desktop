@@ -267,6 +267,32 @@
       "type": "integer",
       "minimum": 0
     },
+    "lastBackupSuccessAt": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "backupFailureCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "nextBackupRetryAt": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "lastMissedBackupTriggerAt": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "scheduledTaskSettingsVersion": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "restoreToken": {
+      "type": ["string", "null"]
+    },
+    "pendingRestoreAck": {
+      "type": ["object", "null"]
+    },
     "boundWorkspaceId": {
       "type": "string",
       "default": ""

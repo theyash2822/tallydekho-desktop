@@ -1783,6 +1783,7 @@ module.exports = {
   stopTallySyncHandler,
   postToTally,
   fetchAndIngestSingleVouchers,
+  getOpenCompanies,
 };
 
 // console.dir(json, { depth: null, colors: true, maxArrayLength: null });

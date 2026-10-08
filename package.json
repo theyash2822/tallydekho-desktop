@@ -12,7 +12,7 @@
         "build": "node scripts/set-build-env.js production && npm run build --prefix renderer && electron-builder",
         "build:staging": "node scripts/set-build-env.js staging && npm run build --prefix renderer && electron-builder",
         "verify:config": "node scripts/verify-backend-config.js",
-        "test": "npm run verify:config && node --test scripts/test-pairing-lifecycle.js scripts/test-workspace-writeback.js scripts/test-company-removal.js scripts/test-backup-restore.js scripts/test-tally-queue.js scripts/test-bill-snapshot.js scripts/test-voucher-list.js scripts/test-tdl-status-view.js scripts/test-renderer-recovery.js scripts/test-upload-chunks.js scripts/test-job-coordinator.js scripts/test-settings-migration.js scripts/test-p1-foundation.js scripts/test-selection-merge.js scripts/test-p2-ingest-client.js scripts/test-p3-lossless.js scripts/test-p3-fiscal.js",
+        "test": "npm run verify:config && node --test scripts/test-pairing-lifecycle.js scripts/test-workspace-writeback.js scripts/test-company-removal.js scripts/test-backup-restore.js scripts/test-tally-queue.js scripts/test-bill-snapshot.js scripts/test-voucher-list.js scripts/test-tdl-status-view.js scripts/test-renderer-recovery.js scripts/test-upload-chunks.js scripts/test-job-coordinator.js scripts/test-settings-migration.js scripts/test-p1-foundation.js scripts/test-selection-merge.js scripts/test-p2-ingest-client.js scripts/test-p3-lossless.js scripts/test-p3-fiscal.js scripts/test-p5-schedule-restart.js scripts/test-p5-restore.js",
         "postinstall": "electron-builder install-app-deps",
         "dist": "electron-builder"
     },

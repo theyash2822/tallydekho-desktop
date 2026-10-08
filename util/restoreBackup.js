@@ -18,6 +18,8 @@ const { looksLikeZipArchive } = require("./backupArchive");
 const { applyRestoreWithSafety, RESTORE_ROLLBACK_FAILED } = require("./restoreCopy");
 const { restrictOwnerOnly, restrictOwnerDir, unlinkQuiet } = require("./filePrivacy");
 const { tryBeginCloudRestore, endCloudRestore } = require("./restoreFlight");
+const { parseSevenZipListing, inspectArchiveEntries, checkRestoredFolders } = require("./restoreGuards");
+const { restoreHeaders, rememberRestoreRequest, sendRestoreAck, retryPendingRestoreAck } = require("./restoreAck");
 
 const sevenZipPath = path7za.replace("app.asar", "app.asar.unpacked");
 const final7z = sevenZipPath.includes("app.asar.unpacked")
@@ -94,6 +96,31 @@ function unzipWithPassword(zipPath, outDir, password, sendProgress) {
   });
 }
 
+function listArchive(zipPath, password) {
+  return new Promise((resolve, reject) => {
+    const args = ["l", "-slt", zipPath, ...(password ? [`-p${password}`] : [])];
+    const child = spawn(final7z, args, { windowsHide: true });
+    let out = "";
+    child.stdout.on("data", (buf) => {
+      out += buf.toString();
+    });
+    child.stderr.on("data", () => {});
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) resolve(parseSevenZipListing(out));
+      else reject(new Error(`7z list exited with code ${code}`));
+    });
+  });
+}
+
+async function topLevelFolders(dir) {
+  const entries = await fsp.readdir(dir, { withFileTypes: true });
+  if (entries.some((e) => !e.isDirectory())) {
+    throw Object.assign(new Error("Backup archive has files outside company folders"), { code: "BACKUP_ARCHIVE_UNSAFE" });
+  }
+  return entries.map((e) => e.name).sort();
+}
+
 async function copyWithProgress(srcDir, destDir, sendProgress) {
   await ensureDir(destDir);
   const files = await listFilesRec(srcDir);
@@ -134,7 +161,19 @@ async function rimrafSafe(p) {
   } catch {}
 }
 
-async function restoreBackup(windowContent, zipPath) {
+async function tallyIsRunning() {
+  if (process.platform !== "win32") return false;
+  const { runningTallyExe } = require("./ensureBillOutstandingTdl");
+  return !!(await runningTallyExe());
+}
+
+const TALLY_CLOSE_REQUIRED = {
+  status: false,
+  code: "TALLY_CLOSE_REQUIRED",
+  message: "Close Tally on this PC, then start the restore again.",
+};
+
+async function restoreBackup(windowContent, zipPath, { manifest = null, isTallyRunning = tallyIsRunning } = {}) {
   const newActivity = store.get("backupAndRestoreActivity") || [];
   const isRestoring = store.get("isRestoring");
 
@@ -180,30 +219,56 @@ async function restoreBackup(windowContent, zipPath) {
   const dest = store.get("destination");
 
   let status;
+  let restoredFolders = [];
 
   try {
     sendProgress(5, "Verifying");
     await ensureDir(temporaryRoot);
     await restrictOwnerDir(temporaryRoot);
 
+    if (!dest) throw new Error("Tally destination is not set. Connect Tally once so the data path is known.");
+
+    let entries;
     try {
-      const st = await fsp.stat(zipPath);
-      const destStat = dest && fs.existsSync(dest) ? await fsp.statfs(dest).catch(() => null) : null;
-      if (destStat && destStat.bavail * destStat.bsize < st.size + 80 * 1024 * 1024) {
-        throw new Error("Not enough free disk space to restore");
-      }
-    } catch (e) {
-      if (String(e.message).includes("Not enough")) throw e;
+      entries = await listArchive(zipPath, null);
+    } catch (_) {
+      entries = await listArchive(zipPath, deviceProfile.uniqueid);
+    }
+    // Extraction lands in the temp dir and then the Tally folder; the safety copy needs room too.
+    const freeOf = async (p) => {
+      const s = p && fs.existsSync(p) ? await fsp.statfs(p).catch(() => null) : null;
+      return s ? s.bavail * s.bsize : null;
+    };
+    const freeTmp = await freeOf(os.tmpdir());
+    const freeDest = await freeOf(dest);
+    const free = [freeTmp, freeDest].filter((n) => n != null);
+    const inspected = inspectArchiveEntries(entries, { freeBytes: free.length ? Math.min(...free) : null });
+    if (!inspected.ok) throw Object.assign(new Error(inspected.message), { code: inspected.code });
+    const preFolders = checkRestoredFolders(manifest, inspected.topFolders);
+    if (!preFolders.ok) {
+      throw Object.assign(new Error("Backup folders do not match the approved backup"), { code: preFolders.code });
     }
 
     sendProgress(15, "Restoring");
     try {
       await unzipWithPassword(zipPath, unzipDir, null, sendProgress);
     } catch (_) {
+      await rimrafSafe(unzipDir);
       await unzipWithPassword(zipPath, unzipDir, deviceProfile.uniqueid, sendProgress);
     }
 
-    if (!dest) throw new Error("Tally destination is not set. Connect Tally once so the data path is known.");
+    restoredFolders = await topLevelFolders(unzipDir);
+    const sameAsListing =
+      restoredFolders.length === inspected.topFolders.length &&
+      restoredFolders.every((f, i) => f === inspected.topFolders[i]);
+    const postFolders = checkRestoredFolders(manifest, restoredFolders);
+    if (!sameAsListing || !postFolders.ok) {
+      throw Object.assign(new Error("Extracted folders do not match the approved backup"), { code: "TALLY_DATA_MISMATCH" });
+    }
+
+    if (await isTallyRunning()) {
+      throw Object.assign(new Error(TALLY_CLOSE_REQUIRED.message), { code: TALLY_CLOSE_REQUIRED.code });
+    }
 
     const applied = await applyRestoreWithSafety({
       dest,
@@ -226,7 +291,7 @@ async function restoreBackup(windowContent, zipPath) {
 
     status = true;
 
-    return { status: true, message: null };
+    return { status: true, message: null, restoredFolders };
   } catch (err) {
     status = false;
     info(`[restore] failed (${err.code || "RESTORE_FAILED"})`);
@@ -255,7 +320,23 @@ async function restoreBackup(windowContent, zipPath) {
   }
 }
 
-async function startCloudRestore(windowContent) {
+async function confirmRestoreLocally(windowContent, backup) {
+  const { dialog, BrowserWindow } = require("electron");
+  const win = (windowContent && BrowserWindow.fromWebContents?.(windowContent)) || BrowserWindow.getFocusedWindow?.() || null;
+  const when = backup?.createdAt ? ` from ${new Date(Number(backup.createdAt) * 1000).toLocaleString()}` : "";
+  const { response } = await dialog.showMessageBox(win, {
+    type: "warning",
+    buttons: ["Restore now", "Cancel"],
+    defaultId: 1,
+    cancelId: 1,
+    title: "Restore Tally data",
+    message: `Restore the approved backup${when} on this PC?`,
+    detail: "The Tally data folder on this PC will be replaced. A safety copy is kept until the restore finishes. Close Tally before continuing.",
+  });
+  return response === 0;
+}
+
+async function startCloudRestore(windowContent, { confirm = confirmRestoreLocally } = {}) {
   if (!tryBeginCloudRestore()) {
     return { status: false, message: "Restore already running" };
   }
@@ -276,7 +357,7 @@ async function startCloudRestore(windowContent) {
   let result;
   try {
     const run = await coordinator.execute(admission.job, async () => {
-      const r = await runCloudRestore(windowContent);
+      const r = await runCloudRestore(windowContent, { confirm });
       return { state: r?.status ? "succeeded" : "failed", result: r };
     });
     result = run.result && "status" in run.result
@@ -291,22 +372,59 @@ async function startCloudRestore(windowContent) {
   return result;
 }
 
-async function runCloudRestore(windowContent) {
+async function applyRestoredSecret(secret) {
+  // Replacement credential comes from the backend, not from the zip or a
+  // cached workspaceId. Drop any leftover local tenant state first.
+  const { clearWorkspaceBinding } = require("./companySelection");
+  clearWorkspaceBinding();
+  saveDeviceSecret(secret);
+  await axiosInstance.post("/desktop/claim-credential").catch(() => {});
+}
+
+async function finishRestoreBinding() {
+  try {
+    const { reconcileBinding } = require("./pairingRuntime");
+    await reconcileBinding("cloud-restore");
+  } catch (_) {}
+}
+
+async function reportRestoreFailure() {
+  await axiosInstance
+    .post("/desktop/restore/complete", { ok: false }, { headers: restoreHeaders(store) })
+    .catch(() => {});
+}
+
+async function runCloudRestore(windowContent, { confirm = confirmRestoreLocally } = {}) {
   const sendProgress = createTallyRestoreProgressSender(windowContent);
+
+  const retried = await retryPendingRestoreAck({ store, post: axiosInstance.post.bind(axiosInstance), applySecret: applyRestoredSecret });
+  if (retried.status) {
+    await finishRestoreBinding();
+    sendProgress(100, "Complete");
+    return { status: true, message: null, data: retried.data };
+  }
+
   sendProgress(2, "Waiting for approval");
-  const statusRes = await axiosInstance.get("/desktop/restore/status");
+  const statusRes = await axiosInstance.get("/desktop/restore/status", { headers: restoreHeaders(store) });
   const data = statusRes.data?.data;
   if (!statusRes.data?.status || data?.status !== "APPROVED") {
     return {
       status: false,
       code: data?.status || "RESTORE_APPROVAL_REQUIRED",
-      message: "Waiting for Owner/Admin approval",
-      data,
+      message: data?.status === "RESTORE_TOKEN_REQUIRED"
+        ? "Request restore again on this PC"
+        : "Waiting for Owner/Admin approval",
+      data: data ? { status: data.status } : null,
     };
   }
   if (!data.download?.url || !data.backup?.sha256) {
     return { status: false, code: "RESTORE_SESSION_EXPIRED", message: "Restore download is not ready" };
   }
+
+  if (!(await confirm(windowContent, data.backup))) {
+    return { status: false, code: "RESTORE_CANCELLED", message: "Restore cancelled on this PC" };
+  }
+  if (await tallyIsRunning()) return { ...TALLY_CLOSE_REQUIRED };
 
   sendProgress(10, "Downloading");
   const zipPath = path.join(os.tmpdir(), `tallydekho-restore-${Date.now()}-${Math.random().toString(16).slice(2)}.zip`);
@@ -319,58 +437,69 @@ async function runCloudRestore(windowContent) {
   const zipStat = await fsp.stat(zipPath).catch(() => null);
   if (data.backup.sizeBytes && zipStat && Number(data.backup.sizeBytes) !== zipStat.size) {
     await unlinkQuiet(zipPath);
-    await axiosInstance.post("/desktop/restore/complete", { ok: false }).catch(() => {});
+    await reportRestoreFailure();
     return { status: false, code: "BACKUP_SIZE_MISMATCH", message: "Backup size did not match" };
   }
   const hash = await sha256File(zipPath);
   if (hash !== data.backup.sha256) {
     await unlinkQuiet(zipPath);
-    await axiosInstance.post("/desktop/restore/complete", { ok: false }).catch(() => {});
+    await reportRestoreFailure();
     return { status: false, code: "BACKUP_CHECKSUM_MISMATCH", message: "Backup checksum did not match" };
   }
   if (!looksLikeZipArchive(zipPath)) {
     await unlinkQuiet(zipPath);
-    await axiosInstance.post("/desktop/restore/complete", { ok: false }).catch(() => {});
+    await reportRestoreFailure();
     return { status: false, code: "BACKUP_ARCHIVE_INVALID", message: "Backup file is not a valid archive" };
   }
 
-  const restored = await restoreBackup(windowContent, zipPath);
+  const restored = await restoreBackup(windowContent, zipPath, { manifest: data.backup.manifest });
   await unlinkQuiet(zipPath);
   if (!restored?.status) {
-    await axiosInstance.post("/desktop/restore/complete", { ok: false }).catch(() => {});
+    // Nothing was written; keep the approval so the user can close Tally and retry.
+    if (restored?.code !== TALLY_CLOSE_REQUIRED.code) await reportRestoreFailure();
     return restored;
   }
 
   sendProgress(96, "Validating Tally");
-  const done = await axiosInstance.post("/desktop/restore/complete", { ok: true });
-  if (done.data?.data?.deviceSecret) {
-    // Replacement credential comes from the backend, not from the zip or a
-    // cached workspaceId. Drop any leftover local tenant state first.
-    const { clearWorkspaceBinding } = require("./companySelection");
-    clearWorkspaceBinding();
-    saveDeviceSecret(done.data.data.deviceSecret);
-    await axiosInstance.post("/desktop/claim-credential").catch(() => {});
+  // GUID lineage is not sent: Tally still has the pre-restore companies loaded at this point.
+  const ack = await sendRestoreAck({
+    store,
+    post: axiosInstance.post.bind(axiosInstance),
+    ack: { restoredFolders: restored.restoredFolders || [], lineageGuids: [] },
+    applySecret: applyRestoredSecret,
+  });
+  if (!ack.status) {
+    return { status: false, code: ack.code, message: ack.message || "Restore finished locally; confirmation is pending", retry: !!ack.retry };
   }
-  try {
-    const { reconcileBinding } = require("./pairingRuntime");
-    await reconcileBinding("cloud-restore");
-  } catch (_) {}
+  await finishRestoreBinding();
   sendProgress(100, "Complete");
-  return { status: true, message: null, data: done.data?.data };
+  return { status: true, message: null, data: ack.data };
 }
 
 function registerRestoreBackup(windowContent) {
   ipcMain.handle("tally:restore_request", async () => {
     const res = await axiosInstance.post("/desktop/restore/request");
-    return res.data;
+    const body = res.data;
+    if (body?.data) body.data = rememberRestoreRequest(store, body.data);
+    return body;
   });
   ipcMain.handle("tally:restore_status", async () => {
-    const res = await axiosInstance.get("/desktop/restore/status");
-    return res.data;
+    const res = await axiosInstance.get("/desktop/restore/status", { headers: restoreHeaders(store) });
+    const body = res.data;
+    // Download URLs stay in the main process.
+    if (body?.data) body.data = { status: body.data.status, restoreRequestId: body.data.restoreRequestId };
+    return body;
   });
   ipcMain.handle("tally:restore_cloud", async () => {
     return startCloudRestore(windowContent);
   });
+  if (store.get("pendingRestoreAck")) {
+    setTimeout(() => {
+      retryPendingRestoreAck({ store, post: axiosInstance.post.bind(axiosInstance), applySecret: applyRestoredSecret })
+        .then((r) => (r.status ? finishRestoreBinding() : null))
+        .catch(() => {});
+    }, 15000).unref?.();
+  }
 }
 
 module.exports = registerRestoreBackup;

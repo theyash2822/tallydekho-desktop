@@ -38,7 +38,8 @@ const axiosInstance = axios.create({
   baseURL,
   maxBodyLength: Infinity,
   maxContentLength: Infinity,
-  // timeout: timeoutMs,
+  // Every backend call has a deadline; long operations pass their own larger timeout.
+  timeout: 60_000,
   headers: {
     "device-id": getDeviceProfile().deviceId,
   },

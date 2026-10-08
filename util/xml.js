@@ -210,10 +210,20 @@ async function uploadLargeArray({
   let completeRes;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      completeRes = (await axiosInstance.post("/ingest/complete", { uploadId, ...extras })).data;
+      completeRes = (await axiosInstance.post("/ingest/complete", { uploadId, ...extras }, { timeout: COMPLETE_TIMEOUT_MS })).data;
       break;
     } catch (err) {
       info("[sync] complete attempt failed", { attempt, message: err?.message });
+      // No answer within the deadline: the server may still be committing. Re-sending
+      // complete could run it twice, so report the outcome as unknown instead.
+      if (err?.code === "ECONNABORTED" || err?.code === "ETIMEDOUT") {
+        return {
+          status: false,
+          global: true,
+          code: "COMPLETE_OUTCOME_UNKNOWN",
+          message: "The server did not confirm this sync in time. It may still finish; check the last sync time before syncing again.",
+        };
+      }
       if (attempt === 3) {
         return {
           status: false,
@@ -271,6 +281,17 @@ async function sendChunks({
   return { status: true };
 }
 
+const CHUNK_TIMEOUT_MS = 120_000;
+const COMPLETE_TIMEOUT_MS = 10 * 60_000;
+// Server will refuse these the same way every time.
+const NON_RETRYABLE_CHUNK_CODES = new Set([
+  "NDJSON_INVALID",
+  "CHUNK_TOO_LARGE",
+  "CHUNK_CONTENT_CONFLICT",
+  "UPLOAD_OWNERSHIP_DENIED",
+  "COMPANY_GUID_REQUIRED",
+]);
+
 async function sendOneChunk(client, uploadId, streamName, idx, body, gzip, companyGuid = null, billSnapshotMode = null) {
   const headers = {
     "Upload-Id": uploadId,
@@ -283,17 +304,19 @@ async function sendOneChunk(client, uploadId, streamName, idx, body, gzip, compa
   if (billSnapshotMode) headers["Bill-Snapshot-Mode"] = billSnapshotMode;
   if (gzip) headers["Content-Encoding"] = "gzip";
 
-  // retry 3 times with small backoff
+  // retry 3 times with small backoff; the server acknowledges an identical replay without re-applying it
   let attempt = 0;
   while (true) {
     try {
-      await client.post("/ingest/chunk", body, { headers, signal: jobSignal() });
+      await client.post("/ingest/chunk", body, { headers, signal: jobSignal(), timeout: CHUNK_TIMEOUT_MS });
       info(`[sync] Chunks`, { attempt, idx });
 
       return { status: true };
     } catch (e) {
       if (jobCancelled()) return CANCELLED_RESULT();
-      if (++attempt >= 3) {
+      const code = e?.response?.data?.code;
+      const retryable = !NON_RETRYABLE_CHUNK_CODES.has(code) && e?.response?.status !== 401 && e?.response?.status !== 403;
+      if (!retryable || ++attempt >= 3) {
         return {
           status: false,
           global: isGlobalUploadFailure(e),
@@ -316,7 +339,7 @@ const initSync = async (companies, isHardSync = false) => {
       isHardSync: !!isHardSync,
       // We send voucherWatermarks and fetch opening balances / stock items in full.
       watermarkSync: true,
-    });
+    }, { timeout: 10 * 60_000 });
     response = response.data;
   } catch (err) {
     info("[sync] data error", err);
@@ -895,8 +918,28 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
   try {
     return await syncTallyDataUnlocked(windowContent, companies, isHardSync);
   } finally {
+    stopSyncRunHeartbeat();
     syncInProgress = false;
   }
+};
+
+const SYNC_RUN_HEARTBEAT_MS = 60_000;
+let syncRunHeartbeat = null;
+
+/** The server treats a run without heartbeats for its lease as abandoned. */
+const startSyncRunHeartbeat = (syncRunId) => {
+  stopSyncRunHeartbeat();
+  if (!syncRunId) return;
+  syncRunHeartbeat = setInterval(() => {
+    axiosInstance
+      .post('/ingest/sync-run/heartbeat', { syncRunId })
+      .catch((err) => info('[sync_run] heartbeat failed (non-fatal):', err?.message));
+  }, SYNC_RUN_HEARTBEAT_MS);
+};
+
+const stopSyncRunHeartbeat = () => {
+  if (syncRunHeartbeat) clearInterval(syncRunHeartbeat);
+  syncRunHeartbeat = null;
 };
 
 const isSyncRunning = () => syncInProgress;
@@ -959,22 +1002,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
   }
 
   const startTime = new Date().getTime();
-
-  // V2: Start a sync_run record for monitoring/atomicity
   let syncRunId = null;
-  try {
-    const firstCompanyGuid = companies[0]?.guid || companies[0]?.id;
-    if (firstCompanyGuid) {
-      const runRes = await axiosInstance.post('/ingest/sync-run/start', {
-        companyGuid: firstCompanyGuid,
-        syncType: isHardSync ? 'hard' : 'normal',
-      });
-      syncRunId = runRes?.data?.data?.syncRunId || null;
-      info('[sync_run] started', { syncRunId, companyGuid: firstCompanyGuid, isHardSync });
-    }
-  } catch (err) {
-    info('[sync_run] start failed (non-fatal):', err?.message);
-  }
 
   let promises = [];
   const billSnapshots = {};
@@ -999,6 +1027,22 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
   }
 
   syncedData = syncedData.data;
+
+  // After init-sync so a first-sync company already exists on the server and gets a run ID.
+  try {
+    const firstCompanyGuid = companies[0]?.guid || companies[0]?.id;
+    if (firstCompanyGuid) {
+      const runRes = await axiosInstance.post('/ingest/sync-run/start', {
+        companyGuid: firstCompanyGuid,
+        syncType: isHardSync ? 'hard' : 'normal',
+      });
+      syncRunId = runRes?.data?.data?.syncRunId || null;
+      info('[sync_run] started', { syncRunId, companyGuid: firstCompanyGuid, isHardSync });
+      startSyncRunHeartbeat(syncRunId);
+    }
+  } catch (err) {
+    info('[sync_run] start failed (non-fatal):', err?.message);
+  }
 
   if (isHardSync) {
     // Use cv.allYears if available, fall back to cv.years (both contain FY list)
@@ -1544,7 +1588,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
       try {
         await axiosInstance.post('/ingest/sync-run/complete', {
           syncRunId,
-          status: 'failed',
+          status: uploaded.length > 0 ? 'partial' : 'failed',
           errorMessage: firstFailure.message || 'Upload failed',
           ...(lastUploadId ? { uploadId: lastUploadId } : {}),
         });

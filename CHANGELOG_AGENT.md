@@ -4,6 +4,15 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-10-08 — P2 ingest client deadlines and sync-run lifecycle (branch `8-10-2026`, TD-FIX-2026-10-08)
+
+- Files: `util/helper.js`, `util/xml.js`, `scripts/test-p2-ingest-client.js`, `package.json`.
+- Behaviour: axios default timeout 60 s; chunk 120 s; complete and init-sync 10 min. A timed-out `/ingest/complete` returns `COMPLETE_OUTCOME_UNKNOWN` and is not re-sent. `NDJSON_INVALID`, `CHUNK_TOO_LARGE`, `CHUNK_CONTENT_CONFLICT`, `UPLOAD_OWNERSHIP_DENIED`, `COMPANY_GUID_REQUIRED`, 401, 403 are not retried. The sync run starts after init-sync (first-sync companies get a run ID), heartbeats every 60 s until the sync ends, and a partly uploaded sync reports `partial`.
+- Tested: `npm test` pass (incl. new 5/5). Not tested: Windows/Tally network loss and long extraction.
+- Risks: a very slow backend complete (>10 min) now shows "outcome unknown" instead of waiting forever.
+
+---
+
 ## 2026-10-08 — P1 desktop state & operation ownership (branch `8-10-2026`, TD-FIX-2026-10-08)
 
 - `util/jobCoordinator.js` (new): one owner for sync / hard sync / single voucher / backup / restore. Synchronous admission with a conflict matrix, job-local cancel (AbortController + AsyncLocalStorage), owner-only release, `job:changed` events. `isSyncing` is mirrored from it; renderer can no longer write it.

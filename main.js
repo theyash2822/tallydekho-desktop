@@ -20,6 +20,11 @@ const ioClient = require("socket.io-client");
 const store = require("./util/store");
 
 const { error, info, logPath } = require("./util/logger");
+// Before any module registers an IPC handler: only the app's own top-level page may call them.
+const { installIpcSenderCheck, safeOpenFileOptions } = require("./util/ipcTrust");
+installIpcSenderCheck(ipcMain, (url) => isTrustedRendererUrl(url), info, {
+  "renderer:recover": (url) => url.startsWith("data:text/html"),
+});
 const {
   registerTallySync,
   startAutoSync,
@@ -335,7 +340,7 @@ ipcMain.handle("renderer:recover", async (event, action) => {
 });
 
 ipcMain.handle("dialog:openFile", async (_event, options) => {
-  const result = await dialog.showOpenDialog(mainWindow, options);
+  const result = await dialog.showOpenDialog(mainWindow, safeOpenFileOptions(options));
   return result.canceled ? [] : result.filePaths;
 });
 

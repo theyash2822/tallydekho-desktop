@@ -21,6 +21,7 @@ const { planChunks } = require("./uploadChunks");
 const { runTallyExclusive, xmlText } = require("./tallyQueue");
 const { coordinator } = require("./jobCoordinator");
 const { toDiscoveredCompany, discoveryFromResponse } = require("./companyDiscovery");
+const { rootsFromDiscovery, mergeRoots } = require("./backupSources");
 const {
   checkVoucherListResponse,
   buildVoucherListSummary,
@@ -595,6 +596,9 @@ const discoverCompanies = async ({ ledgerCountsFor = null } = {}) => {
     ledgerCountFor: cachedLedgerCount,
   });
   if (result.status === "unavailable") return result;
+  // Remember where Tally keeps company data; backups confine their sources to these roots.
+  const roots = rootsFromDiscovery(result);
+  if (roots.length) store.set("tallyDataRoots", mergeRoots(store.get("tallyDataRoots"), roots));
   const currentGuid = (await getCurrentCompany())?.GUID;
   if (currentGuid != null) {
     for (const c of result.companies) c.isCurrentCompany = c.guid == String(currentGuid);

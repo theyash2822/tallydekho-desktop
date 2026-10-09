@@ -1,4 +1,5 @@
 const { ipcMain } = require("electron");
+const { resolveBackupFolders } = require("./backupSources");
 const { boundActivity } = require("./activityHistory");
 const path = require("path");
 const fse = require("fs-extra");
@@ -190,11 +191,26 @@ async function runBackup(windowContent) {
     await ensureDir(backupFolder);
     await restrictOwnerDir(backupFolder);
 
+    // Folders come from Tally discovery / known Tally data roots, never from renderer input.
+    const { discoverCompanies } = require("./xml.js");
+    const discovery = await discoverCompanies().catch(() => null);
+    const { folders, rejected } = await resolveBackupFolders(companies, {
+      discovery: discovery?.status === "ok" || discovery?.status === "partial" ? discovery : null,
+      knownRoots: store.get("tallyDataRoots") || [],
+    });
+    if (rejected.length) info("Backup [folders refused]", rejected);
+    if (!folders.length) {
+      const err = new Error("No company data folder could be verified for backup. Open the companies in Tally and try again.");
+      err.code = "BACKUP_SOURCE_UNVERIFIED";
+      throw err;
+    }
+    const folderByGuid = new Map(folders.map((f) => [f.guid, f.path]));
+
     sendProgress(10, "Backing up");
     await unlinkQuiet(partialZip);
     try {
       await createZip({
-        folderPaths: companies.map((company) => company.path),
+        folderPaths: folders.map((f) => f.path),
         outZipPath: partialZip,
         password: null,
         encryption: null,
@@ -220,11 +236,13 @@ async function runBackup(windowContent) {
       sha256,
       desktopVersion: deviceProfile.app?.version,
       tallyVersion: store.get("tallyVersion") || null,
-      companyManifest: companies.map((c) => ({
-        guid: c.guid || c.id,
-        name: c.name,
-        folder: c.path ? path.basename(c.path) : null,
-      })),
+      companyManifest: companies
+        .filter((c) => folderByGuid.has(String(c.guid || c.id)))
+        .map((c) => ({
+          guid: c.guid || c.id,
+          name: c.name,
+          folder: path.basename(folderByGuid.get(String(c.guid || c.id))),
+        })),
     });
     const session = sessionRes.data?.data;
     if (!sessionRes.data?.status || !session?.upload?.url) {

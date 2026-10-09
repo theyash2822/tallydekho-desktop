@@ -187,10 +187,11 @@ async function runTdlSetup(dir) {
   return run.result;
 }
 
-ipcMain.handle("tally:tdl_setup", async (_event, optionalDir) => {
+ipcMain.handle("tally:tdl_setup", async () => {
   try {
     // Retry setup is the only place Tally may be started (official /TDL load, no manual F1).
-    return await runTdlSetup(optionalDir || null);
+    // A folder is only ever chosen in this process (tally:tdl_select_path), never passed in.
+    return await runTdlSetup(null);
   } catch (e) {
     error(e?.message || String(e), "tally:tdl_setup");
     return {

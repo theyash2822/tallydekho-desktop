@@ -33,7 +33,7 @@ contextBridge.exposeInMainWorld("tally", {
   connected: () => ipcRenderer.invoke("tally:connected"),
   companies: (opts) => ipcRenderer.invoke("tally:companies", opts || {}),
   tdlHealth: () => ipcRenderer.invoke("tally:tdl_health"),
-  tdlSetup: (dir) => ipcRenderer.invoke("tally:tdl_setup", dir),
+  tdlSetup: () => ipcRenderer.invoke("tally:tdl_setup"),
   tdlSelectPath: () => ipcRenderer.invoke("tally:tdl_select_path"),
   startSync: (args) => ipcRenderer.invoke("tally:start_sync", args),
   syncProgress: (cb) => {

@@ -287,6 +287,13 @@
       "type": "integer",
       "minimum": 0
     },
+    "tallyDataRoots": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 5
+    },
     "configSchemaVersion": {
       "type": "integer",
       "minimum": 1

@@ -8,6 +8,12 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 2026-10-08 | P4 hard sync (TD-FIX-2026-10-08, branch `8-10-2026`) | util/xml.js (comment only) | None on desktop: backend no longer purges at init-sync; it publishes after a verified upload with a complete voucher list. A refused hard-sync start shows the backend message (existing path). | desktop `npm test` unchanged | Hard sync on Windows/Tally untested (D-002)
 
+## 2026-10-09 — Fix: sync failed with "not valid UTF-8/UTF-16" (branch `8-10-2026`)
+
+- **Cause:** our report templates emit `$$StrByCharCode:241` as the empty-date marker (9 templates, e.g. `StockOpeningBalance.xml` ManfDate, vouchers). Tally writes it as a raw `0xF1` byte. The P3 strict decoder rejected the whole response (`tally_encoding_unsupported`), so every sync failed on a real Tally.
+- **Fix:** `util/tallyDecode.js` tolerates only that marker byte and decodes it to U+FFFD exactly as the pre-P3 decoder did (backend behaviour unchanged). Any other invalid byte is still rejected; the error now names the byte offset and value (no content).
+- **Tests:** new case in `test-p3-lossless.js`; desktop `npm test` 208/208. Needs re-test on the Windows PC.
+
 ## 2026-10-08 — P3 lossless Tally text, deterministic decoding, fiscal planner, stock FY scope (branch `8-10-2026`, TD-FIX-2026-10-08)
 
 - Files: `util/tallyXmlParser.js`, `util/tallyDecode.js`, `util/fiscalPlanner.js` (new); `util/xml.js`, `util/billSnapshot.js`, `util/tdlHealth.js`, `util/tallyHelper.js`; tests `scripts/test-p3-lossless.js`, `scripts/test-p3-fiscal.js`; `package.json`.

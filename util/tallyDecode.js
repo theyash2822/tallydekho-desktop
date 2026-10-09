@@ -11,6 +11,37 @@ class TallyEncodingError extends Error {
 }
 
 const utf8Strict = new TextDecoder("utf-8", { fatal: true });
+const utf8Lenient = new TextDecoder("utf-8");
+
+// Our templates emit `$$StrByCharCode:241` as the "empty date" marker. Tally writes it as one raw
+// 0xF1 byte, which is not UTF-8; the pre-P3 decoder turned it into U+FFFD and the backend relies
+// on that. Only this byte is tolerated; any other invalid sequence is still rejected.
+const EMPTY_MARKER_BYTE = 0xf1;
+
+const utf8SequenceLength = (buf, i) => {
+  const b = buf[i];
+  if (b < 0x80) return 1;
+  const cont = (k) => i + k < buf.length && (buf[i + k] & 0xc0) === 0x80;
+  if (b >= 0xc2 && b <= 0xdf) return cont(1) ? 2 : 0;
+  if (b === 0xe0) return buf[i + 1] >= 0xa0 && buf[i + 1] <= 0xbf && cont(2) ? 3 : 0;
+  if (b === 0xed) return buf[i + 1] >= 0x80 && buf[i + 1] <= 0x9f && cont(2) ? 3 : 0;
+  if (b >= 0xe1 && b <= 0xef) return cont(1) && cont(2) ? 3 : 0;
+  if (b === 0xf0) return buf[i + 1] >= 0x90 && buf[i + 1] <= 0xbf && cont(2) && cont(3) ? 4 : 0;
+  if (b === 0xf4) return buf[i + 1] >= 0x80 && buf[i + 1] <= 0x8f && cont(2) && cont(3) ? 4 : 0;
+  if (b >= 0xf1 && b <= 0xf3) return cont(1) && cont(2) && cont(3) ? 4 : 0;
+  return 0;
+};
+
+/** Offset/value of the first invalid byte other than the empty-date marker, or null. */
+const firstForeignInvalidByte = (buf, start) => {
+  for (let i = start; i < buf.length;) {
+    const n = utf8SequenceLength(buf, i);
+    if (n) { i += n; continue; }
+    if (buf[i] !== EMPTY_MARKER_BYTE) return { offset: i, byte: buf[i] };
+    i += 1;
+  }
+  return null;
+};
 
 const decodeUtf16 = (buf, start, encoding) => {
   if ((buf.length - start) % 2 !== 0) {
@@ -53,8 +84,11 @@ function decodeTallyBytes(data) {
     if (declared && !/^utf-?8$/.test(declared) && iconv.encodingExists(declared)) {
       return iconv.decode(buf, declared);
     }
+    const foreign = firstForeignInvalidByte(buf, utf8Start);
+    if (!foreign) return utf8Lenient.decode(buf.subarray(utf8Start));
+    const hex = foreign.byte.toString(16).padStart(2, "0");
     throw new TallyEncodingError(
-      `Tally response is not valid UTF-8/UTF-16${declared ? ` (declared ${declared})` : ""}`,
+      `Tally response is not valid UTF-8/UTF-16${declared ? ` (declared ${declared})` : ""} at byte ${foreign.offset} (0x${hex})`,
     );
   }
 }

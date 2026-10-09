@@ -85,6 +85,17 @@ test("decoder: invalid bytes fail explicitly instead of becoming replacement cha
   assert.throws(() => decodeTallyBytes(odd), TallyEncodingError);
 });
 
+test("decoder: the $$StrByCharCode:241 empty-date byte decodes as before; other bad bytes still fail with offset", () => {
+  const row = (date) => Buffer.concat([Buffer.from("<R><N>मिठाई ₹ 0042</N><ManfDate>"), date, Buffer.from("</ManfDate></R>")]);
+  const body = Buffer.concat([row(Buffer.from([0xf1])), row(Buffer.from("2024-04-01")), row(Buffer.from([0xf1]))]);
+  const out = decodeTallyBytes(body);
+  assert.equal(out, body.toString("utf8"), "same result as the pre-P3 decoder");
+  assert.equal(out.split("\uFFFD").length - 1, 2);
+  assert.match(out, /<N>मिठाई ₹ 0042<\/N><ManfDate>2024-04-01</);
+  const bad = Buffer.concat([row(Buffer.from([0xf1])), Buffer.from([0x92])]);
+  assert.throws(() => decodeTallyBytes(bad), (e) => e instanceof TallyEncodingError && /at byte \d+ \(0x92\)/.test(e.message));
+});
+
 test("decoder: a declared single-byte encoding is honoured", () => {
   const body = Buffer.concat([
     Buffer.from(`<?xml version="1.0" encoding="windows-1252"?><N>caf`),

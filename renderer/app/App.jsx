@@ -543,13 +543,12 @@ export default function App() {
   const updateTallyStatus = async () => {
     try {
       const status = await window.tally.connected();
+      // null: a sync/backup/restore is using Tally, so there is no fresh observation.
+      // A running job is never stopped from here; it fails on its own if Tally goes away.
+      if (status === null || status === undefined) return;
       updateState("isTallyOnline", status);
 
-      if (status) {
-        fetchCompanies();
-      } else if (isSyncingRef.current) {
-        stopSync("tally_is_not_connected");
-      }
+      if (status) fetchCompanies();
     } catch (err) {
       updateState("isTallyOnline", false);
     }
@@ -647,12 +646,18 @@ export default function App() {
     }
     autoFirstSyncInFlightRef.current = true;
     try {
-      let tallyOk = false;
+      let tallyStatus = false;
       try {
-        tallyOk = !!(await window.tally.connected());
+        tallyStatus = await window.tally.connected();
       } catch (_) {
-        tallyOk = false;
+        tallyStatus = false;
       }
+      if (tallyStatus === null || tallyStatus === undefined) {
+        // Another job is using Tally; try again once it finishes.
+        updateState("pendingFirstSyncAfterPair", true);
+        return false;
+      }
+      const tallyOk = !!tallyStatus;
       updateState("isTallyOnline", tallyOk);
       if (!tallyOk) {
         updateState("pendingFirstSyncAfterPair", true);

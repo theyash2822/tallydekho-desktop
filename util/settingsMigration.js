@@ -8,6 +8,8 @@
  */
 const SELECTION_KEY = "selectedCompanies";
 const QUARANTINABLE_ARRAYS = new Set([SELECTION_KEY, "backups", "backupAndRestoreActivity"]);
+// Credential material: reset when invalid, never copied to a quarantine file.
+const NEVER_COPIED = new Set(["deviceSecretEnc"]);
 
 const decode = (pointer) =>
   pointer
@@ -65,7 +67,7 @@ function repairConfig(input, validate, applyDefaults) {
       if (key && Object.prototype.hasOwnProperty.call(config, key)) {
         // Unknown keys are dropped as before (they may hold legacy secrets, so they are
         // not copied anywhere); a known key with a bad value is kept for inspection.
-        if (!unknownKeys.has(key)) quarantined.push({ key, item: config[key] });
+        if (!unknownKeys.has(key) && !NEVER_COPIED.has(key)) quarantined.push({ key, item: config[key] });
         delete config[key];
         removedKeys.push(key);
         actions.push(`reset '${key}' to default`);

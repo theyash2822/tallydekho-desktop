@@ -39,6 +39,18 @@ const SYNC_TYPES = ["sync", "hard_sync"];
 const TALLY_BUSY_TYPES = ["sync", "hard_sync", "restore", "tally_restart"];
 const tallyBusy = () => coordinator.isActive(TALLY_BUSY_TYPES) || isSyncRunning();
 
+/**
+ * true/false from a real probe, or null while a Tally-busy job runs: the renderer
+ * polls every 5 s and must not add requests between the job's own, and a cached
+ * answer from before the job (or none at all in a headless launch) is not evidence
+ * about Tally now.
+ */
+const tallyConnectedStatus = async () => {
+  if (tallyBusy()) return null;
+  tallyConnectStatus = await probeTally();
+  return tallyConnectStatus;
+};
+
 // store.isSyncing mirrors the coordinator for code that only reads the store
 // (window close prompt, older call sites). The coordinator is the authority.
 coordinator.onChange(() => {
@@ -215,17 +227,7 @@ ipcMain.handle("tally:tdl_select_path", async () => {
   }
 });
 
-ipcMain.handle("tally:connected", async () => {
-  // The renderer polls every 5 s; during a sync, answer from the last check instead of
-  // adding requests to Tally's queue between the sync's own requests.
-  if (tallyBusy()) return tallyConnectStatus;
-
-  const status = await probeTally();
-
-  tallyConnectStatus = status;
-
-  return status;
-});
+ipcMain.handle("tally:connected", () => tallyConnectedStatus());
 
 /**
  * Typed discovery: { status: "ok" | "unavailable", companies, observedAt, cached? }.

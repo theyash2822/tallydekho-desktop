@@ -42,6 +42,7 @@ const {
   assetPath,
 } = require("./util/helper");
 const validateSchema = require("./util/validateSchema");
+const { runProcessStartup } = require("./util/processStartup");
 const {
   getSelectedCompanies,
   setSelectedCompanies,
@@ -267,58 +268,6 @@ async function createWindow() {
   mainWindow.webContents.on("did-finish-load", () => {
     rendererRecovery?.onLoaded(mainWindow?.webContents.getURL());
   });
-
-  // store.clear();
-
-  // if (!store.get("port")) {
-  //   store.set("port", 9000);
-  // }
-
-  // if (!store.get("selectedCompanies")) {
-  //   store.set("selectedCompanies", []);
-  // }
-
-  if (!store.get("backup.dir")) {
-    store.set("backup.dir", os.tmpdir());
-  }
-
-  store.set("appVersion", app.getVersion());
-
-  // if (!store.get("backups")) {
-  //   store.set("backups", []);
-  // }
-
-  // if (!store.get("backupAndRestoreActivity")) {
-  //   store.set("backupAndRestoreActivity", []);
-  // }
-
-  // if (!store.get("backupInterval")) {
-  //   store.set("backupInterval", "off");
-  // }
-
-  validateSchema();
-
-  if (store.get("isAutoSync")) {
-    isTaskExists("TallyDekhoAutoSync").then((response) => {
-      if (!response) {
-        store.set("isAutoSync", false);
-      }
-    });
-  }
-
-  if (store.get("backupInterval") && store.get("backupInterval") != "off") {
-    isTaskExists("TallyDekhoAutoBackup").then((response) => {
-      if (!response) {
-        store.set("backupInterval", "off");
-      }
-    });
-  }
-
-  // Tasks created by older builds woke the PC; re-apply our own task settings once per version.
-  require("./util/backgroundRunner.js")
-    .reconcileOwnedTaskSettings(store, { log: info })
-    .then((r) => info("[tasks] settings reconcile", r))
-    .catch((e) => info("[tasks] settings reconcile skipped", e?.message));
 
   loadRenderer(mainWindow);
   if (!isDev) checkForUpdates(mainWindow);
@@ -659,6 +608,16 @@ app.whenReady().then(async () => {
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
 
+  runProcessStartup({
+    store,
+    validateSchema,
+    isTaskExists,
+    reconcileOwnedTaskSettings: require("./util/backgroundRunner.js").reconcileOwnedTaskSettings,
+    appVersion: app.getVersion(),
+    tmpdir: os.tmpdir(),
+    log: info,
+  });
+
   store.set("forceUpdate", false);
   const response = await registerDevice();
 
@@ -786,7 +745,8 @@ function startInteractive() {
   store.set("isOnline", false);
 
   createWindow();
-  startMissedBackupIfDue();
+  // A window opened inside a headless launch joins that run; it does not start a backup.
+  if (!isHeadless) startMissedBackupIfDue();
 
   // if (app.isPackaged) {
   //   setTimeout(() => {

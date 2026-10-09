@@ -64,10 +64,17 @@ test("an invalid scalar is reset to its default and kept in quarantine; input is
 });
 
 test("unknown top-level keys are dropped as before but never copied to quarantine", () => {
-  const r = repair({ deviceSecretEnc: "legacy-secret", port: 9100 });
-  assert.equal(r.config.deviceSecretEnc, undefined);
+  const r = repair({ legacyAuthToken: "legacy-secret", port: 9100 });
+  assert.equal(r.config.legacyAuthToken, undefined);
   assert.equal(r.config.port, 9100);
   assert.equal(JSON.stringify(r.quarantined).includes("legacy-secret"), false);
+});
+
+test("the legacy device secret is kept for its migration, and never quarantined when malformed", () => {
+  assert.equal(repair({ deviceSecretEnc: "legacy-secret" }).config.deviceSecretEnc, "legacy-secret");
+  const bad = repair({ deviceSecretEnc: { v: "legacy-secret" } });
+  assert.equal(bad.config.deviceSecretEnc, undefined);
+  assert.equal(JSON.stringify(bad.quarantined).includes("legacy-secret"), false);
 });
 
 test("validateSchema never deletes config.json or relaunches", () => {

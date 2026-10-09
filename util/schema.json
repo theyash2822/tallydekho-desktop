@@ -287,6 +287,20 @@
       "type": "integer",
       "minimum": 0
     },
+    "configSchemaVersion": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "cloudBackups": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "default": []
+    },
+    "deviceSecretEnc": {
+      "type": "string"
+    },
     "restoreToken": {
       "type": ["string", "null"]
     },

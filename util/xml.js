@@ -22,6 +22,7 @@ const { runTallyExclusive, xmlText } = require("./tallyQueue");
 const { coordinator } = require("./jobCoordinator");
 const { toDiscoveredCompany, discoveryFromResponse } = require("./companyDiscovery");
 const { rootsFromDiscovery, mergeRoots } = require("./backupSources");
+const { assignLineOrdinals } = require("./lineOrdinals");
 const {
   checkVoucherListResponse,
   buildVoucherListSummary,
@@ -867,7 +868,7 @@ const syncHelperWithDate = async ({
   if (onFail && companyGuid && baseRows.some((r) => hasForeignTallyGuid(JSON.stringify(r), companyGuid))) {
     onFail(xml);
   }
-  const normalizeData = decorateRows(baseRows, { xml, companyName, fromDate, toDate, companyGuid, yearId, fiscal });
+  const normalizeData = assignLineOrdinals(xml, decorateRows(baseRows, { xml, companyName, fromDate, toDate, companyGuid, yearId, fiscal }));
 
   if (xml == "Voucher.xml") {
     totalVouchers += normalizeData.length;

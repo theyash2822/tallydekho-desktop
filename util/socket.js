@@ -1,4 +1,5 @@
 const getDeviceProfile = require("./deviceProfile");
+const { versionPolicy } = require("./syncPolicy");
 const { checkForUpdates } = require("./helper");
 const { info, error } = require("./logger");
 const store = require("./store.js");
@@ -240,7 +241,7 @@ module.exports = (window, socket) => {
       try {
         const run = await coordinator.run(
           "single_voucher",
-          { trigger: "socket", scope: { companyGuid } },
+          { trigger: "socket", scope: { companyGuid }, policy: versionPolicy },
           () => fetchAndIngestSingleVouchers({ companyName, companyGuid, tallyIds })
         );
         if (!run.accepted) {

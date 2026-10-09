@@ -14,7 +14,7 @@ const { AsyncLocalStorage } = require("async_hooks");
 const { EventEmitter } = require("events");
 const crypto = require("crypto");
 
-const TERMINAL_STATES = new Set(["succeeded", "failed", "cancelled", "partial", "rejected"]);
+const TERMINAL_STATES = new Set(["succeeded", "failed", "cancelled", "partial", "rejected", "deferred"]);
 
 const EXCLUSIVE = ["restore", "tally_restart"];
 const SOURCE = ["sync", "hard_sync"];

@@ -43,6 +43,7 @@ const {
 } = require("./util/helper");
 const validateSchema = require("./util/validateSchema");
 const { runProcessStartup } = require("./util/processStartup");
+const { createLaunchDispatcher, headlessExitCode, EXIT } = require("./util/launchDispatcher");
 const {
   getSelectedCompanies,
   setSelectedCompanies,
@@ -526,13 +527,6 @@ autoUpdater.on("update-downloaded", (info) => {
   //   });
 });
 
-/** What a second launch asks this (primary) instance to do. */
-const secondInstanceIntent = (argv = []) => {
-  if (argv.includes("--run-sync")) return "scheduled_sync";
-  if (argv.includes("--run-backup")) return "scheduled_backup";
-  return "open_ui";
-};
-
 const showMainWindow = () => {
   const win = getMainWindow();
   if (!win) return false;
@@ -542,34 +536,22 @@ const showMainWindow = () => {
   return true;
 };
 
-app.on("second-instance", async (_event, argv) => {
-  const intent = secondInstanceIntent(argv);
-  info(`Second instance [intent]: ${intent}`);
+// A user opening the app while a scheduled job runs headless gets the UI now; the job
+// keeps running and reports into the new window. Scheduled triggers that arrive during
+// startup wait for it instead of being dropped.
+const launchDispatcher = createLaunchDispatcher({
+  isReady: () => appReady,
+  isInteractive: () => interactiveStarted,
+  startInteractive: () => startInteractive(),
+  showWindow: () => showMainWindow(),
+  requestUi: () => { uiRequested = true; },
+  runSync: () => startAutoSync(getMainWindow),
+  runBackup: () => startAutoBackup(getMainWindow),
+  log: info,
+});
 
-  if (intent === "open_ui") {
-    // A user opening the app while a scheduled job runs headless gets the UI now;
-    // the job keeps running and reports into the new window.
-    if (!appReady) {
-      uiRequested = true;
-      return;
-    }
-    if (!interactiveStarted) {
-      startInteractive();
-      return;
-    }
-    showMainWindow();
-    return;
-  }
-
-  if (!appReady) {
-    info(`Background [${intent} skipped]: still starting up`);
-    return;
-  }
-  if (intent === "scheduled_sync") {
-    await startAutoSync(getMainWindow);
-  } else {
-    await startAutoBackup(getMainWindow);
-  }
+app.on("second-instance", (_event, argv) => {
+  launchDispatcher.onSecondInstance(argv).catch((e) => error("Second instance [error]", e?.message));
 });
 
 // Global crash logging + auto-email to project@tallydekho.com
@@ -642,7 +624,7 @@ app.whenReady().then(async () => {
       // Task Scheduler runs this with nobody at the screen: a modal would hang the
       // task forever. Log and exit; the next scheduled run tries again.
       error("Headless [registration failed]", { message: response.message });
-      app.quit();
+      quitHeadless(EXIT.failed, { state: "failed", code: "registration_failed" });
       return;
     }
     if (isDev) {
@@ -701,24 +683,28 @@ app.whenReady().then(async () => {
     // Primary instance launched by Task Scheduler. If the user opened the app
     // meanwhile (or does so during the job), the UI starts alongside the job.
     if (uiRequested) startInteractive();
+    let outcome = null;
     try {
       info("Headless [started]");
       if (isHeadlessSync) {
         info("Headless [sync]");
-        await startAutoSyncHeadless(getMainWindow);
+        outcome = await startAutoSyncHeadless(getMainWindow);
       } else if (isHeadlessBackup) {
         info("Headless [backup]");
-        await startAutoBackupHeadless(getMainWindow);
+        outcome = await startAutoBackupHeadless(getMainWindow);
       }
+      await launchDispatcher.drain();
     } catch (err) {
       error("Headless [error]", err);
+      outcome = { state: "failed" };
     } finally {
-      if (!interactiveStarted) app.quit();
+      if (!interactiveStarted) quitHeadless(headlessExitCode(outcome), outcome);
     }
     return;
   }
 
   startInteractive();
+  launchDispatcher.drain().catch((e) => error("Startup [queued intents]", e?.message));
 });
 
 /** Window, socket, pairing runtime and heartbeat. Runs once per process. */
@@ -821,6 +807,18 @@ app.on("window-all-closed", () => {
 
 // process.on("exit", (code) => console.log("process exit", code));
 // app.on("quit", (_e, code) => console.log("app quit", code));
+
+// Task Scheduler reads the exit code; app.quit() alone always exits 0. Set just before
+// quitting a headless run and applied after before-quit/will-quit handlers have run.
+let headlessExit = null;
+const quitHeadless = (code, outcome) => {
+  info("Headless [exit]", { code, state: outcome?.state || null, result: outcome?.code || null });
+  headlessExit = code;
+  app.quit();
+};
+app.on("will-quit", () => {
+  if (headlessExit != null) app.exit(headlessExit);
+});
 
 app.on("before-quit", () => {
   quittingByWatcherOrSignal = true;

@@ -58,14 +58,7 @@ coordinator.onChange(() => {
   if (store.get("isSyncing") !== active) store.set("isSyncing", active);
 });
 
-/** One version rule for manual, scheduled, headless and post-pair syncs. */
-const versionPolicy = () => {
-  const level = Number(store.get("versionLevel") || 0);
-  if (level >= 2) {
-    return { code: "version_blocked", message: store.get("versionMessage") || "Update required to sync" };
-  }
-  return null;
-};
+const { versionPolicy } = require("./syncPolicy");
 
 /** Send to a window or webContents that may be missing (headless) or already destroyed. */
 const sendTo = (target, channel, payload) => {
@@ -300,25 +293,44 @@ const CONFLICT_DIALOG_TIMEOUT_MS = 60_000;
 const CONFLICT_STATUS_TIMEOUT_MS = 10_000;
 
 /**
- * Another Desktop synced this company more recently. Asked without blocking the
- * main process; no answer within a minute (or a Stop) counts as Cancel.
- * Returns true when the user chose to continue.
+ * Did another Desktop sync any of these companies more recently than this one?
+ * "unknown" when the server could not be asked: that is never read as "no conflict".
  */
-const confirmCrossDeviceSync = async (job, windowContent, company) => {
-  const companyGuid = company?.guid || company?.id;
-  if (!companyGuid) return true;
-  let syncInfo = null;
-  try {
-    syncInfo = await axiosInstance.get(
-      `/desktop/company-sync-status?companyGuid=${encodeURIComponent(companyGuid)}`,
-      { timeout: CONFLICT_STATUS_TIMEOUT_MS, signal: job.signal }
-    );
-  } catch (_) {
-    return true; // non-critical — never block sync on this check
-  }
-  const { lastSyncedAt, isMyDevice } = syncInfo?.data?.data || {};
+const crossDeviceConflict = async (job, companies) => {
   const myLastSyncEpoch = store.get("myLastSyncEpoch") || 0;
-  if (!(lastSyncedAt && !isMyDevice && lastSyncedAt > myLastSyncEpoch + 60)) return true;
+  for (const company of companies || []) {
+    const companyGuid = company?.guid || company?.id;
+    if (!companyGuid) continue;
+    let syncInfo;
+    try {
+      syncInfo = await axiosInstance.get(
+        `/desktop/company-sync-status?companyGuid=${encodeURIComponent(companyGuid)}`,
+        { timeout: CONFLICT_STATUS_TIMEOUT_MS, signal: job.signal }
+      );
+    } catch (err) {
+      info("[sync] conflict status unknown", { companyGuid, message: err?.message });
+      return { state: "unknown", company };
+    }
+    const data = syncInfo?.data?.data;
+    if (!syncInfo?.data?.status || !data) return { state: "unknown", company };
+    const { lastSyncedAt, isMyDevice } = data;
+    if (lastSyncedAt && !isMyDevice && lastSyncedAt > myLastSyncEpoch + 60) return { state: "conflict", company };
+  }
+  return { state: "clear" };
+};
+
+/**
+ * Interactive runs ask (without blocking the main process); no answer within a minute
+ * (or a Stop) counts as Cancel. Returns true when the user chose to continue.
+ */
+const confirmCrossDeviceSync = async (job, windowContent, companies) => {
+  const verdict = await crossDeviceConflict(job, companies);
+  if (verdict.state === "clear") return true;
+  if (job.isCancelled()) return false;
+  const name = verdict.company?.name || verdict.company?.guid || "this company";
+  const message = verdict.state === "conflict"
+    ? `A different desktop synced "${name}" more recently.\n\nSyncing now may overwrite newer data. Proceed?`
+    : `TallyDekho could not check whether another desktop synced "${name}" recently.\n\nSyncing now may overwrite newer data. Proceed?`;
 
   const { dialog, BrowserWindow } = require("electron");
   const parent = windowContent instanceof BrowserWindow ? windowContent : null;
@@ -330,8 +342,8 @@ const confirmCrossDeviceSync = async (job, windowContent, company) => {
       buttons: ["Force Sync Anyway", "Cancel"],
       defaultId: 1,
       cancelId: 1,
-      title: "Another device synced recently",
-      message: `A different desktop synced "${company?.name || companyGuid}" more recently.\n\nSyncing now may overwrite newer data. Proceed?`,
+      title: verdict.state === "conflict" ? "Another device synced recently" : "Could not check other devices",
+      message,
       signal,
     };
     const { response } = parent
@@ -345,6 +357,21 @@ const confirmCrossDeviceSync = async (job, windowContent, company) => {
   }
 };
 
+/** Unattended runs never ask: a conflict or an unknown status defers the run. */
+const unattendedConflictDeferral = async (job, companies, target) => {
+  const verdict = await crossDeviceConflict(job, companies);
+  if (verdict.state === "clear") return null;
+  const code = verdict.state === "conflict" ? "conflict_deferred" : "conflict_status_unknown";
+  info(`Background [sync deferred]: ${code}`, { company: verdict.company?.guid || null });
+  sendTo(target, "window:listener", {
+    key: "syncMessage",
+    value: verdict.state === "conflict"
+      ? "Scheduled sync paused: another desktop synced more recently. Run Sync Now to continue."
+      : "Scheduled sync paused: could not check other desktops. It will try again next time.",
+  });
+  return { state: "deferred", result: { status: false, code } };
+};
+
 /** Everything a manual / post-pair / post-write sync does once it owns the sync slot. */
 const runForegroundSync = async (job, windowContent, { companies, isHardSync }) => {
   if (!isDevicePaired()) {
@@ -356,7 +383,7 @@ const runForegroundSync = async (job, windowContent, { companies, isHardSync }) 
   if (!status) return { status: false, code: "tally_not_connected" };
 
   if (!isHardSync && companies?.length > 0) {
-    const proceed = await confirmCrossDeviceSync(job, windowContent, companies[0]);
+    const proceed = await confirmCrossDeviceSync(job, windowContent, companies);
     if (!proceed) return { status: false, code: "cancelled_by_user" };
   }
   if (job.isCancelled()) return { status: false, code: job.stopCode() };
@@ -519,6 +546,8 @@ const startAutoSync = async (getWindow) => {
     }
     const companies = getSelectedCompanies();
     info(`Background [companies]: ${describeCompanies(companies)}`);
+    const deferral = await unattendedConflictDeferral(job, companies, target);
+    if (deferral) return deferral;
     job.setState("running");
     const syncStatus = await syncTallyData(target, companies);
     info(`Background [sync status]: ${syncStatus.status}`);
@@ -533,16 +562,18 @@ const startAutoSync = async (getWindow) => {
 const startAutoSyncHeadless = async (getWindow) => {
   if (!isDevicePaired()) {
     info("Headless [sync skipped]: device not paired");
-    return;
+    return { state: "rejected", code: "DEVICE_NOT_PAIRED" };
   }
 
   const admission = coordinator.admit("sync", { trigger: "headless", policy: versionPolicy });
   if (!admission.accepted) {
     info(`Headless [sync skipped]: ${admission.code}`);
-    return;
+    // Another job already runs (it covers this trigger) → deferred; a policy refusal → rejected.
+    const busy = admission.code === "JOB_ALREADY_RUNNING" || admission.code === "JOB_CONFLICT";
+    return { state: busy ? "deferred" : "rejected", code: admission.code };
   }
 
-  await coordinator.execute(admission.job, async (job) => {
+  const run = await coordinator.execute(admission.job, async (job) => {
     const status = await probeTally();
     info(`Headless [tally status]: ${status}`);
     if (!status) return { state: "failed", result: { code: "tally_not_connected" } };
@@ -553,6 +584,8 @@ const startAutoSyncHeadless = async (getWindow) => {
 
     const companies = getSelectedCompanies();
     info(`Headless [companies]: ${describeCompanies(companies)}`);
+    const deferral = await unattendedConflictDeferral(job, companies, liveTarget(getWindow));
+    if (deferral) return deferral;
 
     job.setState("running");
     const syncStatus = await syncTallyData(liveTarget(getWindow), companies);
@@ -582,7 +615,7 @@ const startAutoSyncHeadless = async (getWindow) => {
     return { state: syncJobState(syncStatus), result: syncStatus };
   });
 
-  return true;
+  return { state: run.job?.state || "failed", code: run.result?.code || run.result?.data?.code || null };
 };
 
 ipcMain.handle(
@@ -643,9 +676,9 @@ const startAutoBackupHeadless = async (getWindow) => {
   info(`Headless [online status]: ${isOnline}`);
 
   if (!isOnline) {
-    return;
+    return { state: "deferred", code: "offline" };
   }
-  if (!scheduledBackupDue("headless")) return true;
+  if (!scheduledBackupDue("headless")) return { state: "not_due" };
 
   const response = await startBackup(liveTarget(getWindow), { trigger: "headless" });
 
@@ -653,7 +686,9 @@ const startAutoBackupHeadless = async (getWindow) => {
     `Headless [backup status: ${response.status} | code: ${response.code || "-"} | message:  ${response.message}]`
   );
 
-  return true;
+  if (response.status) return { state: "succeeded" };
+  const busy = response.code === "JOB_ALREADY_RUNNING" || response.code === "JOB_CONFLICT";
+  return { state: busy ? "deferred" : "failed", code: response.code || null };
 };
 
 /**

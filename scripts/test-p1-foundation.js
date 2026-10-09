@@ -189,14 +189,16 @@ test("headless registration failure exits without a modal", () => {
   const headless = main.indexOf("if (isHeadless && !uiRequested)", i);
   const dialogAt = main.indexOf("dialog.showMessageBoxSync", i);
   assert.ok(headless > i && headless < dialogAt, "headless check comes before the dialog");
-  assert.match(main.slice(headless, dialogAt), /app\.quit\(\);\s*return;/);
+  assert.match(main.slice(headless, dialogAt), /quitHeadless\(EXIT\.failed[^;]*;\s*return;/);
 });
 
-test("second instance routes by intent and never runs jobs before ready", () => {
+// Behaviour is covered by scripts/test-r1-launch.js (parser, startup queue, exit codes);
+// this only checks that main.js uses that dispatcher.
+test("second instance goes through the launch dispatcher; headless exits with its outcome", () => {
   const main = read("main.js");
-  assert.match(main, /const secondInstanceIntent = /);
-  assert.match(main, /if \(!appReady\) \{\s*info\(`Background \[\$\{intent\} skipped\]/);
-  assert.match(main, /if \(!interactiveStarted\) app\.quit\(\);/);
+  assert.match(main, /createLaunchDispatcher\(\{/);
+  assert.match(main, /app\.on\("second-instance", \(_event, argv\) => \{\s*launchDispatcher\.onSecondInstance\(argv\)/);
+  assert.match(main, /if \(!interactiveStarted\) quitHeadless\(headlessExitCode\(outcome\), outcome\);/);
 });
 
 test("closeSoftware is gone from main, preload and disk", () => {

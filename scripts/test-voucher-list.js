@@ -177,7 +177,7 @@ test("sync sends the list per company and never logs raw ids", () => {
   const src = fs.readFileSync(path.join(__dirname, "..", "util", "xml.js"), "utf8");
   assert.match(src, /fetchVoucherList\(\{ companyName: name, companyGuid, year, yearId \}\)/);
   assert.match(src, /voucherLists: \[voucherLists\[c\.guid\]\]/);
-  assert.match(src, /\.\.\.\(syncRunId \? \{ syncRunId \} : \{\}\)/);
+  assert.match(src, /\.\.\.\(syncRunIds\[c\.guid\] \? \{ syncRunId: syncRunIds\[c\.guid\] \} : \{\}\)/);
   assert.match(src, /listChecks\.length === voucherListExpected\[companyGuid\]/);
   assert.match(src, /trailingCheckYears\(years\)/);
   assert.match(src, /\{ \.\.\.r, trailing: true \}\);\s*return \[\];/, "trailing years are never ingested");

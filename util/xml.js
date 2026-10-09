@@ -973,14 +973,17 @@ const syncTallyData = async (windowContent, companies, isHardSync) => {
 const SYNC_RUN_HEARTBEAT_MS = 60_000;
 let syncRunHeartbeat = null;
 
-/** The server treats a run without heartbeats for its lease as abandoned. */
-const startSyncRunHeartbeat = (syncRunId) => {
+/** The server treats a run without heartbeats for its lease as abandoned. One run per company. */
+const startSyncRunHeartbeat = (syncRunIds) => {
   stopSyncRunHeartbeat();
-  if (!syncRunId) return;
+  const ids = Object.values(syncRunIds || {}).filter(Boolean);
+  if (!ids.length) return;
   syncRunHeartbeat = setInterval(() => {
-    axiosInstance
-      .post('/ingest/sync-run/heartbeat', { syncRunId })
-      .catch((err) => info('[sync_run] heartbeat failed (non-fatal):', err?.message));
+    for (const syncRunId of ids) {
+      axiosInstance
+        .post('/ingest/sync-run/heartbeat', { syncRunId })
+        .catch((err) => info('[sync_run] heartbeat failed (non-fatal):', err?.message));
+    }
   }, SYNC_RUN_HEARTBEAT_MS);
 };
 
@@ -1080,7 +1083,8 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
   }
 
   const startTime = new Date().getTime();
-  let syncRunId = null;
+  // R2 / S7: one server run per company (guid → syncRunId), not only the first company.
+  const syncRunIds = {};
 
   let promises = [];
   const billSnapshots = {};
@@ -1109,20 +1113,21 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
 
   // After init-sync so a first-sync company already exists on the server and gets a run ID.
   if (jobStopCode()) return stoppedResult(null);
-  try {
-    const firstCompanyGuid = companies[0]?.guid || companies[0]?.id;
-    if (firstCompanyGuid) {
+  for (const company of companies) {
+    const companyGuid = company?.guid || company?.id;
+    if (!companyGuid) continue;
+    try {
       const runRes = await axiosInstance.post('/ingest/sync-run/start', {
-        companyGuid: firstCompanyGuid,
+        companyGuid,
         syncType: isHardSync ? 'hard' : 'normal',
       });
-      syncRunId = runRes?.data?.data?.syncRunId || null;
-      info('[sync_run] started', { syncRunId, companyGuid: firstCompanyGuid, isHardSync });
-      startSyncRunHeartbeat(syncRunId);
+      syncRunIds[companyGuid] = runRes?.data?.data?.syncRunId || null;
+      info('[sync_run] started', { syncRunId: syncRunIds[companyGuid], companyGuid, isHardSync });
+    } catch (err) {
+      info('[sync_run] start failed (non-fatal):', { companyGuid, message: err?.message });
     }
-  } catch (err) {
-    info('[sync_run] start failed (non-fatal):', err?.message);
   }
+  startSyncRunHeartbeat(syncRunIds);
 
   if (isHardSync) {
     // Use cv.allYears if available, fall back to cv.years (both contain FY list)
@@ -1194,7 +1199,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
 
   promises = await Promise.all(promises);
 
-  if (jobStopCode()) return stoppedResult(syncRunId);
+  if (jobStopCode()) return stoppedResult(syncRunIds);
 
   sendMessage("Fetching Vouchers Basic Details");
 
@@ -1280,7 +1285,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
   masterPromises = masterPromises.flat();
   voucherPromises = voucherPromises.flat();
 
-  if (jobStopCode()) return stoppedResult(syncRunId);
+  if (jobStopCode()) return stoppedResult(syncRunIds);
 
   // Tally's AlterId only grows — unless its data was restored from a backup. If the highest
   // AlterId Tally lists is below what we already hold, re-fetch every FY for this company.
@@ -1359,7 +1364,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
       if (!syncTdlHealth) {
         syncTdlHealth = await checkTdlHealth();
         info("[tdl] sync health", {
-          syncRunId: syncRunId || null,
+          syncRunId: syncRunIds[companyGuid] || null,
           status: syncTdlHealth.status,
           version: syncTdlHealth.version || null,
           reason: syncTdlHealth.reason || null,
@@ -1415,7 +1420,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
     info("[sync] voucher_list", { company: name, ...voucherListLog(voucherLists[companyGuid]) });
 
     for (let j = 0; j < years.length; j++) {
-      if (jobStopCode()) return stoppedResult(syncRunId);
+      if (jobStopCode()) return stoppedResult(syncRunIds);
       const year = years[j];
       const yearId = yearIds[companyGuid][year.finYear];
 
@@ -1585,7 +1590,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
     }
   }
 
-  if (jobStopCode()) return stoppedResult(syncRunId);
+  if (jobStopCode()) return stoppedResult(syncRunIds);
 
   const endTime3 = new Date().getTime();
   const timeTaken3 = endTime3 - startTime3;
@@ -1650,7 +1655,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
           ...(voucherLists[c.guid] ? { voucherLists: [voucherLists[c.guid]] } : {}),
           voucherWatermarks: [voucherWatermarks],
           // Its server start time precedes every Tally fetch: the backend's cutoff for deletions.
-          ...(syncRunId ? { syncRunId } : {}),
+          ...(syncRunIds[c.guid] ? { syncRunId: syncRunIds[c.guid] } : {}),
         },
         sendMessage,
       });
@@ -1681,20 +1686,21 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
   const failed = outcomes.filter((o) => o.status === "failed" || o.status === "not_attempted");
   const lastUploadId = uploaded.length ? uploaded[uploaded.length - 1].uploadId : null;
 
+  // Each company's run ends with that company's own outcome.
+  for (const o of outcomes) {
+    const syncRunId = syncRunIds[o.guid];
+    if (!syncRunId) continue;
+    try {
+      await axiosInstance.post('/ingest/sync-run/complete', o.status === "uploaded"
+        ? { syncRunId, status: 'completed', uploadId: o.uploadId }
+        : { syncRunId, status: 'failed', errorMessage: o.message || o.code || 'Not synced' });
+    } catch (err) {
+      info('[sync_run] complete failed (non-fatal):', { companyGuid: o.guid, message: err?.message });
+    }
+  }
+
   if (failed.length) {
     const firstFailure = failed.find((o) => o.status === "failed") || failed[0];
-    if (syncRunId) {
-      try {
-        await axiosInstance.post('/ingest/sync-run/complete', {
-          syncRunId,
-          status: uploaded.length > 0 ? 'partial' : 'failed',
-          errorMessage: firstFailure.message || 'Upload failed',
-          ...(lastUploadId ? { uploadId: lastUploadId } : {}),
-        });
-      } catch (err) {
-        info('[sync_run] failed-mark failed (non-fatal):', err?.message);
-      }
-    }
     if (lastUploadId) store.set("uploadId", lastUploadId);
     const partial = uploaded.length > 0;
     const code = jobCancelled() ? "cancelled" : partial ? "partial_sync" : firstFailure.code;
@@ -1710,28 +1716,14 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
     };
   }
 
-  // V2: Mark sync_run as completed
-  if (syncRunId) {
-    try {
-      await axiosInstance.post('/ingest/sync-run/complete', {
-        syncRunId,
-        uploadId: lastUploadId,
-        status: 'completed',
-      });
-      info('[sync_run] completed', { syncRunId });
-    } catch (err) {
-      info('[sync_run] complete failed (non-fatal):', err?.message);
-    }
-  }
-
   store.set("uploadId", lastUploadId);
   return { status: true, data: { code: null, uploadId: lastUploadId, companies: outcomes } };
 };
 
 /** Stopped before any upload was committed: nothing was sent to the server. */
-const stoppedResult = (syncRunId) => {
+const stoppedResult = (syncRunIds) => {
   const code = jobStopCode() || "cancelled";
-  if (syncRunId) {
+  for (const syncRunId of Object.values(syncRunIds || {}).filter(Boolean)) {
     axiosInstance
       .post('/ingest/sync-run/complete', { syncRunId, status: 'failed', errorMessage: `stopped: ${code}` })
       .catch((err) => info('[sync_run] stop-mark failed (non-fatal):', err?.message));

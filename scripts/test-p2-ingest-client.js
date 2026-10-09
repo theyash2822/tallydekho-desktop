@@ -37,13 +37,16 @@ test("the sync run starts after init-sync and is kept alive until the sync ends"
   const init = body.indexOf("await initSync(selectedCompanies, isHardSync)");
   const start = body.indexOf("'/ingest/sync-run/start'");
   assert.ok(init > 0 && start > init, "run must start after init-sync so a first-sync company has an ID");
-  assert.ok(body.indexOf("startSyncRunHeartbeat(syncRunId)") > start);
+  // R2 / S7: one run per company (behaviour: scripts/test-r1-company-isolation.js).
+  assert.ok(body.indexOf("startSyncRunHeartbeat(syncRunIds)") > start);
 
   const wrapper = xml.slice(xml.indexOf("const syncTallyData = async"), xml.indexOf("const isSyncRunning"));
   assert.match(wrapper, /finally \{\s*stopSyncRunHeartbeat\(\);/);
   assert.match(xml, /'\/ingest\/sync-run\/heartbeat', \{ syncRunId \}/);
 });
 
-test("a partly uploaded sync is reported to the run as partial", () => {
-  assert.match(xml, /status: uploaded\.length > 0 \? 'partial' : 'failed'/);
+// R2 / S7: each company's own run now ends with that company's outcome (a run is no longer
+// shared, so "partial" is reported per company as completed / failed).
+test("each company's run is completed with that company's own outcome", () => {
+  assert.match(xml, /o\.status === "uploaded"\s*\?\s*\{ syncRunId, status: 'completed', uploadId: o\.uploadId \}\s*:\s*\{ syncRunId, status: 'failed'/);
 });

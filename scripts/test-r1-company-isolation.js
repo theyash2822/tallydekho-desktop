@@ -36,7 +36,7 @@ stub("util/helper", {
     get: async (url) => { backendCalls.push(["GET", url]); return reply({ status: true, data: {} }); },
     post: async (url, body, opts) => {
       const companyGuid = opts?.headers?.["Company-Guid"] || body?.companyGuid || null;
-      backendCalls.push(["POST", url, companyGuid]);
+      backendCalls.push(["POST", url, companyGuid, body]);
       if (onBackend) await onBackend(url);
       if (url === "/desktop/init-sync") {
         const alterIds = {}; const yearIds = {};
@@ -46,7 +46,7 @@ stub("util/helper", {
         }
         return reply({ status: true, data: { alterIds, yearIds } });
       }
-      if (url === "/ingest/sync-run/start") return reply({ status: true, data: { syncRunId: "run-1" } });
+      if (url === "/ingest/sync-run/start") return reply({ status: true, data: { syncRunId: `run-${body.companyGuid}` } });
       if (url === "/ingest/init") return reply({ status: true, data: { uploadId: `up-${++uploadSeq}` } });
       return reply({ status: true, data: {} });
     },
@@ -111,6 +111,17 @@ test("company B's Tally error skips only B; A and C upload; outcomes are per com
     assert.equal(uploadsFor(), 2, "exactly two companies were completed on the server");
     assert.ok(!chunkCompanies().includes(COMPANIES[1].guid), "nothing of Bravo was uploaded");
     assert.ok(tally.seen.includes("Alpha") && tally.seen.includes("Charlie"), "healthy companies were still extracted");
+    // R2 / S7: one server run per company, each closed with its own outcome.
+    const started = backendCalls.filter(([, url]) => url === "/ingest/sync-run/start").map(([, , g]) => g);
+    assert.deepEqual(started.sort(), COMPANIES.map((c) => c.guid).sort());
+    const completes = Object.fromEntries(backendCalls.filter(([, url]) => url === "/ingest/sync-run/complete").map(([, , , b]) => [b.syncRunId, b.status]));
+    assert.deepEqual(completes, {
+      [`run-${COMPANIES[0].guid}`]: "completed",
+      [`run-${COMPANIES[1].guid}`]: "failed",
+      [`run-${COMPANIES[2].guid}`]: "completed",
+    });
+    const uploadsByRun = backendCalls.filter(([, url]) => url === "/ingest/complete").map(([, , , b]) => b.syncRunId).sort();
+    assert.deepEqual(uploadsByRun, [`run-${COMPANIES[0].guid}`, `run-${COMPANIES[2].guid}`], "each upload names its own company's run");
   } finally {
     await tally.close();
   }

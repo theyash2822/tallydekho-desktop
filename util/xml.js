@@ -26,6 +26,7 @@ const { assignLineOrdinals } = require("./lineOrdinals");
 const {
   checkVoucherListResponse,
   buildVoucherListSummary,
+  coreListContext,
   buildVoucherWatermarks,
   trailingCheckYears,
   voucherListLog,
@@ -715,6 +716,13 @@ function computeFinancialYear(fromDate) {
 // Companies whose Tally source requests failed in the current run (guid → report names).
 // Such a company is not uploaded or marked synced; the other companies continue.
 let companySourceFailures = new Map();
+// Companies whose rows this run carried their own GUID prefix (context proof for 07).
+let companyContextProof = new Set();
+const noteOwnRows = (companyGuid, rows) => {
+  if (!companyGuid || companyContextProof.has(companyGuid)) return;
+  const prefix = `${companyGuid}-`;
+  if (rows.some((r) => JSON.stringify(r).includes(prefix))) companyContextProof.add(companyGuid);
+};
 const noteCompanySourceFailure = (companyGuid, xml) => {
   if (!companyGuid) return;
   if (!companySourceFailures.has(companyGuid)) companySourceFailures.set(companyGuid, new Set());
@@ -764,6 +772,7 @@ const syncHelper = async ({ xml, companyName, alterId, companyGuid }) => {
     noteCompanySourceFailure(companyGuid, xml);
     return [];
   }
+  noteOwnRows(companyGuid, rows);
   return rows.map((item) => ({
     ...item,
     COMPANY_NAME:    companyName,
@@ -868,6 +877,7 @@ const syncHelperWithDate = async ({
   if (onFail && companyGuid && baseRows.some((r) => hasForeignTallyGuid(JSON.stringify(r), companyGuid))) {
     onFail(xml);
   }
+  noteOwnRows(companyGuid, baseRows);
   const normalizeData = assignLineOrdinals(xml, decorateRows(baseRows, { xml, companyName, fromDate, toDate, companyGuid, yearId, fiscal }));
 
   if (xml == "Voucher.xml") {
@@ -1033,6 +1043,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
 
   totalVouchers = 0;
   companySourceFailures = new Map();
+  companyContextProof = new Set();
   const sendProgress = createTallySyncProgressSender(windowContent);
   const sendMessage = tallySyncMessageSender(windowContent);
 
@@ -1412,7 +1423,10 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
     const listChecks = voucherListChecks[companyGuid] || [];
     voucherLists[companyGuid] = buildVoucherListSummary({
       companyGuid,
-      contextStatus: contextStatuses[companyGuid],
+      contextStatus: coreListContext(contextStatuses[companyGuid], {
+        ownGuidSeen: companyContextProof.has(companyGuid),
+        sourceFailed: companySourceFailures.has(companyGuid),
+      }),
       years: listChecks.length > 0 && listChecks.length === voucherListExpected[companyGuid]
         ? listChecks.map(({ year, check, trailing }) => ({ finYear: year.finYear, begin: year.begin, end: year.end, trailing: !!trailing, check }))
         : [],

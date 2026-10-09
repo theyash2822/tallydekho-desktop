@@ -184,3 +184,14 @@ test("sync sends the list per company and never logs raw ids", () => {
   assert.match(src, /voucherLists\.map\(voucherListLog\)/);
   assert.doesNotMatch(src, /info\("\[sync\] ingest complete body", \{ uploadId, \.\.\.extras \}\)/);
 });
+
+// R3 / 07: the core voucher inventory does not need the Bill Outstanding add-on.
+test("core list context: add-on proof, or this sync's own rows without a source failure", () => {
+  const { coreListContext } = require("../util/voucherList");
+  const { CONTEXT_STATUS } = require("../util/tdlHealth");
+  assert.equal(coreListContext(CONTEXT_STATUS.VERIFIED), CONTEXT_STATUS.VERIFIED);
+  assert.equal(coreListContext(null, { ownGuidSeen: true }), CONTEXT_STATUS.VERIFIED, "no add-on, own rows seen");
+  assert.notEqual(coreListContext(null, { ownGuidSeen: true, sourceFailed: true }), CONTEXT_STATUS.VERIFIED);
+  assert.notEqual(coreListContext(null, { ownGuidSeen: false }), CONTEXT_STATUS.VERIFIED, "no proof at all");
+  assert.notEqual(coreListContext("MISMATCH", { ownGuidSeen: false }), CONTEXT_STATUS.VERIFIED);
+});

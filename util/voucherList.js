@@ -69,6 +69,18 @@ function buildVoucherWatermarks({ companyGuid, years, failedYears, sent }) {
 }
 
 /**
+ * R3 / 07: the company context for the core voucher inventory, independent of the Bill
+ * Outstanding add-on. The add-on's Context check is one proof; another is that this sync's own
+ * rows for the company carried its GUID prefix while none of its requests failed (any foreign
+ * GUID already fails the company). Without either, the list stays incomplete.
+ */
+function coreListContext(billContextStatus, { ownGuidSeen = false, sourceFailed = false } = {}) {
+  if (billContextStatus === CONTEXT_STATUS.VERIFIED) return CONTEXT_STATUS.VERIFIED;
+  if (ownGuidSeen && !sourceFailed) return CONTEXT_STATUS.VERIFIED;
+  return billContextStatus || null;
+}
+
+/**
  * @param {{ companyGuid: string, contextStatus?: string|null,
  *   years: Array<{ finYear: string, begin: string, end: string, trailing?: boolean, check: ReturnType<typeof checkVoucherListResponse> }> }} input
  */
@@ -132,6 +144,7 @@ function voucherListLog(summary) {
 }
 
 module.exports = {
+  coreListContext,
   MAX_LIST_IDS,
   checkVoucherListResponse,
   buildVoucherListSummary,

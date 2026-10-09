@@ -69,7 +69,7 @@ export default function Companies({
     if (refreshing || !isTallyOnline) return;
     setRefreshing(true);
     try {
-      await fetchCompanies();
+      await fetchCompanies({ withLedgerCounts: true });
     } finally {
       setRefreshing(false);
     }

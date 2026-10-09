@@ -8,6 +8,23 @@ const KEEP_ROTATED = 3;
 const MAX_META_CHARS = 8 * 1024;
 const MAX_DEPTH = 6;
 const SECRET_KEY = /secret|token|password|passwd|authorization|cookie|otp|claim|api[-_]?key|private/i;
+// Accounting content (Tally XML, uploaded records) never belongs in a log: only its size.
+const CONTENT_KEY = /^(xml|payload|raw_?data|records|vouchers|ledgers|masters|body|rows|data_?xml)$/i;
+const MAX_STRING_CHARS = 2 * 1024;
+const MAX_MESSAGE_CHARS = 4 * 1024;
+// Credentials that can appear inside free text (headers echoed in errors, URLs).
+const SECRET_IN_TEXT = [
+  [/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, "Bearer [REDACTED]"],
+  [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g, "[REDACTED_JWT]"],
+  [/((?:x-device-secret|device[_-]?secret|claim[_-]?token|access[_-]?token|refresh[_-]?token)["']?\s*[:=]\s*["']?)[^"'\s,&}]+/gi, "$1[REDACTED]"],
+];
+
+function scrubText(text, max = MAX_STRING_CHARS) {
+  let out = String(text);
+  for (const [re, rep] of SECRET_IN_TEXT) out = out.replace(re, rep);
+  if (out.length > max) out = `${out.slice(0, max)}…[${out.length - max} chars cut]`;
+  return out;
+}
 
 function ensureDir(p) {
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
@@ -38,7 +55,7 @@ function ts() {
  */
 function toLoggable(value, depth = 0, seen = new WeakSet()) {
   if (value == null || typeof value === "number" || typeof value === "boolean") return value;
-  if (typeof value === "string") return value;
+  if (typeof value === "string") return scrubText(value);
   if (typeof value === "bigint") return value.toString();
   if (typeof value === "function" || typeof value === "symbol") return `[${typeof value}]`;
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? "Invalid Date" : value.toISOString();
@@ -49,7 +66,7 @@ function toLoggable(value, depth = 0, seen = new WeakSet()) {
   seen.add(value);
 
   if (value instanceof Error) {
-    const out = { name: value.name, message: value.message };
+    const out = { name: value.name, message: scrubText(value.message) };
     if (value.code) out.code = value.code;
     if (value.isAxiosError || value.response) {
       out.httpStatus = value.response?.status ?? null;
@@ -57,8 +74,10 @@ function toLoggable(value, depth = 0, seen = new WeakSet()) {
       out.method = value.config?.method || null;
       out.url = value.config?.url || null;
     } else if (value.stack) {
-      out.stack = String(value.stack).split("\n").slice(0, 8).join("\n");
+      out.stack = scrubText(String(value.stack).split("\n").slice(0, 8).join("\n"));
     }
+    if (value.cause !== undefined) out.cause = toLoggable(value.cause, depth + 1, seen);
+    if (Array.isArray(value.errors)) out.errors = toLoggable(value.errors.slice(0, 5), depth + 1, seen);
     return out;
   }
 
@@ -70,16 +89,27 @@ function toLoggable(value, depth = 0, seen = new WeakSet()) {
 
   const out = {};
   for (const key of Object.keys(value)) {
-    out[key] = SECRET_KEY.test(key) ? "[REDACTED]" : toLoggable(value[key], depth + 1, seen);
+    if (SECRET_KEY.test(key)) out[key] = "[REDACTED]";
+    else if (CONTENT_KEY.test(key) && value[key] != null && typeof value[key] !== "number" && typeof value[key] !== "boolean") {
+      out[key] = `[omitted ${describeSize(value[key])}]`;
+    } else out[key] = toLoggable(value[key], depth + 1, seen);
   }
   return out;
+}
+
+function describeSize(v) {
+  if (typeof v === "string") return `${v.length} chars`;
+  if (Array.isArray(v)) return `${v.length} items`;
+  if (Buffer.isBuffer(v)) return `${v.length} bytes`;
+  if (typeof v === "object") return `${Object.keys(v).length} keys`;
+  return typeof v;
 }
 
 function formatMeta(meta) {
   if (meta == null || meta === "") return "";
   let text;
   try {
-    text = typeof meta === "string" ? meta : JSON.stringify(toLoggable(meta));
+    text = typeof meta === "string" ? scrubText(meta, MAX_META_CHARS) : JSON.stringify(toLoggable(meta));
   } catch (_) {
     text = "[unserializable]";
   }
@@ -88,11 +118,11 @@ function formatMeta(meta) {
 }
 
 function formatMessage(message) {
-  if (typeof message === "string") return message;
+  if (typeof message === "string") return scrubText(message, MAX_MESSAGE_CHARS);
   try {
-    return JSON.stringify(toLoggable(message));
+    return scrubText(JSON.stringify(toLoggable(message)), MAX_MESSAGE_CHARS);
   } catch (_) {
-    return String(message);
+    return scrubText(String(message), MAX_MESSAGE_CHARS);
   }
 }
 
@@ -145,6 +175,7 @@ module.exports = {
   logPath,
   toLoggable,
   formatMeta,
+  formatMessage,
   rotateIfNeeded,
   MAX_FILE_BYTES,
 };

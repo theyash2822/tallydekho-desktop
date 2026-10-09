@@ -26,6 +26,8 @@ export default function App() {
     selectedCompanies: [],
     version: "",
     port: 9000,
+    // Settings may not save the port until the stored value has been read.
+    portHydrated: false,
     isSyncing: false,
     syncMode: "normal",
     syncProgress: 0,
@@ -124,10 +126,23 @@ export default function App() {
     };
   }, []);
 
+  // Completion-driven: the next check starts only after the previous one finished, and
+  // backs off while Tally is not answering (5 s → 30 s), so slow checks never pile up.
   useEffect(() => {
-    updateTallyStatus();
-    const timer = setInterval(() => updateTallyStatus(), 5000);
-    return () => clearInterval(timer);
+    let stopped = false;
+    let timer = null;
+    let delay = 5000;
+    const loop = async () => {
+      const online = await updateTallyStatus();
+      if (stopped) return;
+      delay = online === false ? Math.min(delay * 2, 30_000) : 5000;
+      timer = setTimeout(loop, delay);
+    };
+    loop();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
   }, []);
 
   // Backend connectivity check every 15s — requires 2 consecutive failures to mark offline
@@ -267,6 +282,7 @@ export default function App() {
       const forceUpdate = await window.api.getPref("forceUpdate");
       const port = await window.api.getPref("port");
       if (Number.isInteger(port)) updateState("port", port);
+      updateState("portHydrated", true);
 
       if (isAutoSync) {
         updateState("isAutoSync", isAutoSync);
@@ -541,12 +557,14 @@ export default function App() {
       const status = await window.tally.connected();
       // null: a sync/backup/restore is using Tally, so there is no fresh observation.
       // A running job is never stopped from here; it fails on its own if Tally goes away.
-      if (status === null || status === undefined) return;
+      if (status === null || status === undefined) return null;
       updateState("isTallyOnline", status);
 
-      if (status) fetchCompanies();
+      if (status) await fetchCompanies();
+      return !!status;
     } catch (err) {
       updateState("isTallyOnline", false);
+      return false;
     }
   };
 
@@ -556,8 +574,8 @@ export default function App() {
       openAlertModal("Port must be a whole number between 1 and 65535.");
       return false;
     }
-    const saved = await window.api.setPref("port", value);
-    if (saved === false) {
+    const saved = await window.api.setPref("port", value).catch(() => false);
+    if (saved !== true) {
       openAlertModal("Port could not be saved.");
       return false;
     }
@@ -584,8 +602,10 @@ export default function App() {
     window.api.setPref("selectionClearedByUser", false);
   };
 
-  const fetchCompanies = async () => {
-    const discovery = await window.tally.companies();
+  const fetchCompanies = async ({ withLedgerCounts = false } = {}) => {
+    const discovery = await window.tally.companies(
+      withLedgerCounts ? { ledgerCountsFor: (selectedCompaniesRef.current || []).map((c) => c.guid || c.id) } : undefined
+    );
     if (selectionClearedByUserRef.current === null) {
       const stored = !!(await window.api.getPref("selectionClearedByUser"));
       if (selectionClearedByUserRef.current === null) selectionClearedByUserRef.current = stored;

@@ -130,7 +130,9 @@ test("numeric GUIDs from the XML parser become strings", () => {
 test("xml.js discovery is typed and the poll no longer exports ledgers inline", () => {
   const src = read("util/xml.js");
   assert.match(src, /status: "unavailable", reason: "tally_request_failed"/);
-  assert.match(src, /refreshLedgerCounts\(result\.companies\)\.catch/);
+  // Counts are refreshed only on request and only for the requested companies
+  // (behaviour: scripts/test-r1-company-isolation.js, R1 / 16).
+  assert.match(src, /refreshLedgerCounts\(result\.companies\.filter\(\(c\) => wanted\.has/);
   assert.match(src, /coordinator\.isActive\(\["sync", "hard_sync", "restore", "tally_restart"\]\)\) return;/);
   assert.doesNotMatch(src, /stopTallySyncCode/);
 });

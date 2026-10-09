@@ -59,14 +59,14 @@ module.exports = (window, socket) => {
   });
 
   socket.on("subscribe", (payload) => {
-    info("[subscribe socket]", payload);
+    info("[subscribe socket]", { key: payload?.key ?? null });
     if (window && window.webContents) {
       window.webContents.send("window:listener", payload);
     }
   });
 
   socket.on("syncing", (payload, cb) => {
-    info("[sync status socket]: ", payload);
+    info("[sync status socket]", { status: payload?.status ?? null, uploadId: payload?.data?.uploadId ?? null, code: payload?.code ?? payload?.data?.code ?? null });
     if (typeof cb === "function") cb({ receivedAt: Date.now() });
 
     const uploadId = store.get("uploadId");

@@ -1,4 +1,5 @@
 const { ipcMain } = require("electron");
+const { boundActivity } = require("./activityHistory");
 
 const path = require("path");
 const os = require("os");
@@ -199,7 +200,7 @@ async function restoreBackup(windowContent, zipPath, { manifest = null, isTallyR
 
   windowContent.send("window:listener", {
     key: "backupAndRestoreActivity",
-    value: newActivity,
+    value: boundActivity(newActivity),
   });
 
   store.set("isRestoring", true);
@@ -310,11 +311,12 @@ async function restoreBackup(windowContent, zipPath, { manifest = null, isTallyR
       date: new Date(),
       message: `Restore ${status ? `completed ✓` : `failed X`}`,
     });
+    const activity = boundActivity(newActivity);
     windowContent.send("window:listener", {
       key: "backupAndRestoreActivity",
-      value: newActivity,
+      value: activity,
     });
-    store.set("backupAndRestoreActivity", newActivity);
+    store.set("backupAndRestoreActivity", activity);
 
     info(`Restore [status]: ${status}`);
   }

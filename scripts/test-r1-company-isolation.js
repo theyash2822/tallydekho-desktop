@@ -200,3 +200,27 @@ test("Stop while init-sync is in flight: no sync run, no extraction upload", asy
     await tally.close();
   }
 });
+
+// R1 / 16: status discovery never exports ledger collections; counts only on request, scoped.
+test("discovery exports no ledgers on a poll; an explicit refresh asks only for the chosen company", async () => {
+  const ledgerExports = [];
+  const tally = await fakeTally(({ body, company, res }) => {
+    res.setHeader("Content-Type", "text/xml");
+    if (/MyReportLedgerTable/.test(body) && company) {
+      ledgerExports.push(company);
+      return res.end("<ENVELOPE></ENVELOPE>");
+    }
+    if (/<TYPE>Company<\/TYPE>/i.test(body) && !company) return res.end(companiesXml(COMPANIES));
+    return res.end("<ENVELOPE></ENVELOPE>");
+  });
+  try {
+    for (let i = 0; i < 5; i++) assert.equal((await xml.discoverCompanies()).status, "ok");
+    await new Promise((r) => setTimeout(r, 50));
+    assert.deepEqual(ledgerExports, [], "polling never exports ledger collections");
+    await xml.discoverCompanies({ ledgerCountsFor: [COMPANIES[1].guid] });
+    await new Promise((r) => setTimeout(r, 100));
+    assert.deepEqual(ledgerExports, ["Bravo"], "only the requested company");
+  } finally {
+    await tally.close();
+  }
+});

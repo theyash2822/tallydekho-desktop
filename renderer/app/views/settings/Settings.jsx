@@ -16,7 +16,8 @@ export default function Settings() {
     state: {
       isTallyOnline,
       version,
-      port: defaultPort,
+      port: storedPort,
+      portHydrated,
       isSyncing,
       appVersion,
       isVersionUpdateModalOpen,
@@ -26,8 +27,11 @@ export default function Settings() {
     updateState,
   } = useContext(TallyContext);
 
-  const [port, setPort] = useState(defaultPort);
+  // Draft follows the stored port until the user edits it; null until it has been read.
+  const [draftPort, setDraftPort] = useState(null);
+  const port = draftPort ?? (portHydrated ? storedPort : null);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [tdlHealth, setTdlHealth] = useState(null);
   const [tdlBusy, setTdlBusy] = useState(false);
   const [tdlNote, setTdlNote] = useState(null);
@@ -121,8 +125,9 @@ export default function Settings() {
           <label className="flex items-center gap-2">
             Port
             <input
-              value={port}
-              onChange={(e) => setPort(Number(e.target.value || 0))}
+              value={port ?? ""}
+              disabled={!portHydrated}
+              onChange={(e) => setDraftPort(e.target.value === "" ? "" : Number(e.target.value))}
               type="number"
               className="ml-auto border rounded-md px-2 py-1 w-28"
               style={{ borderColor: "#E9E8E3" }}
@@ -149,12 +154,22 @@ export default function Settings() {
         </div>
         <div className="flex items-center justify-end mt-3">
           <button
-            onClick={() => {
-              if (isSyncing || forceUpdate) {
+            disabled={!portHydrated || saving}
+            onClick={async () => {
+              if (isSyncing || forceUpdate || !portHydrated || saving) {
                 return;
               }
-              setSaved(true);
-              updatePort(port);
+              setSaving(true);
+              setSaved(false);
+              try {
+                const ok = await updatePort(port);
+                if (ok === true) {
+                  setDraftPort(null);
+                  setSaved(true);
+                }
+              } finally {
+                setSaving(false);
+              }
             }}
             className={`px-3 py-1.5 rounded-md border text-[#1A1A1A] hover:bg-[#F0EFE9] hover:text-[#1A1A1A] ${
               forceUpdate ? "cursor-not-allowed" : ""

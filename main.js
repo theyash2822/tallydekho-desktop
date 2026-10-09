@@ -44,6 +44,7 @@ const {
 const validateSchema = require("./util/validateSchema");
 const { runProcessStartup } = require("./util/processStartup");
 const { createLaunchDispatcher, headlessExitCode, EXIT } = require("./util/launchDispatcher");
+const { sharedUpdateChecker, checkWithTimeout } = require("./util/updateCheck");
 const {
   getSelectedCompanies,
   setSelectedCompanies,
@@ -433,32 +434,21 @@ const updaterRefusal = () => {
   return null;
 };
 
-const withTimeout = (promise, ms, message) =>
-  Promise.race([
-    promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
-  ]);
-
 ipcMain.handle("updater:check", async () => {
   const refusal = updaterRefusal();
   if (refusal) {
     notify("updater:status", { state: "error", error: refusal });
     return { ok: false, error: refusal };
   }
-  try {
-    info("[updater:check] called");
-    const r = await withTimeout(
-      autoUpdater.checkForUpdates(),
-      UPDATE_CHECK_TIMEOUT_MS,
-      "The update server did not answer. Try again later."
-    );
-    if (!r) notify("updater:status", { state: "none" });
-    return { ok: true, info: r };
-  } catch (e) {
-    const message = e?.message || String(e);
-    notify("updater:status", { state: "error", error: message });
-    return { ok: false, error: message };
+  info("[updater:check] called");
+  const checker = sharedUpdateChecker();
+  const r = await checkWithTimeout(checker, UPDATE_CHECK_TIMEOUT_MS);
+  if (!r.ok) {
+    notify("updater:status", { state: "error", error: r.error, generation: r.generation });
+    return { ok: false, error: r.error, stillRunning: !!r.stillRunning };
   }
+  if (!r.info) notify("updater:status", { state: "none", generation: r.generation });
+  return { ok: true, info: r.info };
 });
 
 ipcMain.handle("updater:download", async () => {
@@ -487,7 +477,9 @@ ipcMain.handle(
 );
 
 function notify(ch, payload) {
-  getMainWindow()?.webContents.send(ch, payload);
+  // Status events carry the check they belong to; the renderer drops older ones.
+  const generation = payload?.generation ?? sharedUpdateChecker().generation();
+  getMainWindow()?.webContents.send(ch, ch === "updater:status" ? { ...payload, generation } : payload);
 }
 
 autoUpdater.on("checking-for-update", () =>

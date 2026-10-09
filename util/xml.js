@@ -580,7 +580,11 @@ const cachedLedgerCount = (guid) => ledgerCountCache.get(guid)?.count ?? null;
  * Typed discovery result. `status: "ok"` is the only positive evidence about which
  * companies are open; anything else means "unknown" and must not change the selection.
  */
-const discoverCompanies = async () => {
+/**
+ * `ledgerCountsFor`: GUIDs whose display-only ledger count should be refreshed (on demand,
+ * e.g. the Companies view's Refresh). Status polling passes nothing and exports no ledgers.
+ */
+const discoverCompanies = async ({ ledgerCountsFor = null } = {}) => {
   const observedAt = new Date().toISOString();
   const response = await getData("Companies.xml");
   if (!response.status) {
@@ -595,7 +599,10 @@ const discoverCompanies = async () => {
   if (currentGuid != null) {
     for (const c of result.companies) c.isCurrentCompany = c.guid == String(currentGuid);
   }
-  refreshLedgerCounts(result.companies).catch(() => {});
+  if (Array.isArray(ledgerCountsFor) && ledgerCountsFor.length) {
+    const wanted = new Set(ledgerCountsFor.map(String));
+    refreshLedgerCounts(result.companies.filter((c) => wanted.has(String(c.guid)))).catch(() => {});
+  }
   return result;
 };
 

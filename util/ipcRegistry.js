@@ -230,7 +230,8 @@ ipcMain.handle("tally:connected", () => tallyConnectedStatus());
  * lists. The renderer keeps its selection unchanged for anything else.
  */
 let discoveryInFlight = null;
-ipcMain.handle("tally:companies", async () => {
+ipcMain.handle("tally:companies", async (_event, opts = {}) => {
+  const ledgerCountsFor = Array.isArray(opts?.ledgerCountsFor) ? opts.ledgerCountsFor.filter((g) => typeof g === "string").slice(0, 50) : null;
   if (!tallyConnectStatus) {
     return { status: "unavailable", reason: "tally_not_connected", companies: [], observedAt: new Date().toISOString() };
   }
@@ -241,6 +242,15 @@ ipcMain.handle("tally:companies", async () => {
       : { status: "unavailable", reason: "tally_busy", companies: [], observedAt: new Date().toISOString() };
   }
 
+  // A user-requested refresh (with counts) is not merged into a background poll.
+  if (ledgerCountsFor?.length) {
+    const result = await discoverCompanies({ ledgerCountsFor }).catch((err) => {
+      error(err?.message, "tally:companies");
+      return { status: "unavailable", reason: "discovery_failed", companies: [], observedAt: new Date().toISOString() };
+    });
+    if (result.status === "ok" || result.status === "partial") lastDiscovery = result;
+    return result;
+  }
   if (!discoveryInFlight) {
     discoveryInFlight = discoverCompanies()
       .catch((err) => {

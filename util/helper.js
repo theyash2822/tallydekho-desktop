@@ -293,7 +293,8 @@ async function checkForUpdates(mainWindow) {
 
   let update;
   try {
-    update = await autoUpdater.checkForUpdates();
+    // Shares the one in-flight check with Settings → Check for updates.
+    update = await require("./updateCheck").sharedUpdateChecker().start().promise;
   } catch (e) {
     error("[updater] check failed:", e?.message || String(e));
     return null;

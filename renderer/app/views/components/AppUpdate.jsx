@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Card from "./Card";
 
 export default function AppUpdate({
@@ -12,6 +12,8 @@ export default function AppUpdate({
   const [isDownloadStarted, setIsDownloadStarted] = useState(false);
   const [error, setError] = useState("");
   const [releaseNotes, setReleaseNotes] = useState("");
+  // Highest update-check generation seen; events from an older check are ignored.
+  const generationRef = useRef(0);
 
   useEffect(() => {
     if (isVersionUpdateModalOpen || forceUpdate) {
@@ -28,7 +30,11 @@ export default function AppUpdate({
   }, [isVersionUpdateModalOpen, forceUpdate]);
 
   useEffect(() => {
-    const offStatus = window.updater.onStatus(({ state: s, info, error }) => {
+    const offStatus = window.updater.onStatus(({ state: s, info, error, generation }) => {
+      if (Number.isInteger(generation)) {
+        if (generation < generationRef.current) return;
+        generationRef.current = generation;
+      }
       if (info?.releaseNotes) {
         setReleaseNotes(info.releaseNotes);
       } else {

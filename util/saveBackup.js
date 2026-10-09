@@ -1,4 +1,5 @@
 const { ipcMain } = require("electron");
+const { boundActivity } = require("./activityHistory");
 const path = require("path");
 const fse = require("fs-extra");
 const { spawn } = require("child_process");
@@ -151,7 +152,7 @@ async function runBackup(windowContent) {
   });
   windowContent.send("window:listener", {
     key: "backupAndRestoreActivity",
-    value: newActivity,
+    value: boundActivity(newActivity),
   });
 
   const options = {
@@ -288,11 +289,12 @@ async function runBackup(windowContent) {
       date: new Date(),
       message: `Backup ${status ? `completed ✓` : `failed X`}`,
     });
+    const activity = boundActivity(newActivity);
     windowContent.send("window:listener", {
       key: "backupAndRestoreActivity",
-      value: newActivity,
+      value: activity,
     });
-    store.set("backupAndRestoreActivity", newActivity);
+    store.set("backupAndRestoreActivity", activity);
   }
 }
 

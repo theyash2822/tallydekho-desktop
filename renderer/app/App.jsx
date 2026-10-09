@@ -704,8 +704,6 @@ export default function App() {
       autoFirstSyncStartedForBindRef.current = bindKey;
       updateState("pendingFirstSyncAfterPair", false);
       updateState("pairingClaimed", null);
-      updateState("isSyncing", true);
-      updateState("syncMode", "normal");
       updateState("syncMessage", "First sync after pairing…");
       updateState("syncProgress", 0);
 
@@ -791,9 +789,6 @@ export default function App() {
     if (!state.isTallyOnline || !state.isOnline) {
       return;
     }
-    updateState("isSyncing", true);
-    updateState("syncMessage", "");
-    updateState("syncMode", "hard");
     const { status, data, code, message } = await window.tally.startSync({
       companies: selectedCompanies,
       isHardSync: true,

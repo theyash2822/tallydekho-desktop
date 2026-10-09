@@ -778,7 +778,16 @@ ipcMain.handle("companySelection:resolve", (_event, keep) => {
 
 ipcMain.handle("companies:remove", async (_event, guids) => {
   const { removeCompanies } = require("./companyRemoval");
-  const result = await removeCompanies(guids);
+  // Admitted like any job: refused while a sync, hard sync, restore, Tally restart or
+  // another removal runs, without touching that job.
+  const run = await coordinator.run("company_removal", { trigger: "manual" }, async () => {
+    const r = await removeCompanies(guids);
+    return { state: r.ok ? "succeeded" : "failed", result: r };
+  });
+  if (!run.accepted) {
+    return { ok: false, code: run.code, message: run.message, activeJob: run.activeJob || null };
+  }
+  const result = run.result || { ok: false, code: "REMOVE_FAILED", message: "Could not remove the company. Try again." };
   if (result.ok) {
     info(`[companies] removed ${result.removed.length} company(ies)${result.localOnly ? " locally (unpaired)" : " from workspace"}`);
   } else {

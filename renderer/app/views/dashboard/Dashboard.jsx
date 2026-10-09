@@ -30,9 +30,9 @@ export default function Dashboard({ hardSync }) {
   const [isHardSyncModalOpen, setIsHardSyncModalOpen] = useState(false);
 
   const onManualSync = async (companies) => {
+    // isSyncing / syncMode come from the coordinator's job events, never from this click:
+    // a refused start must not relabel or clear the job that is actually running.
     const syncStatus = isSyncing;
-
-    updateState("syncMode", "normal");
 
     if (syncStatus) {
       // Stop is a request; the job releases itself at a safe point and the job event clears isSyncing.
@@ -40,8 +40,6 @@ export default function Dashboard({ hardSync }) {
       if (result?.ok) updateState("syncMessage", "Stopping…");
       refreshJobState();
     } else {
-      updateState("isSyncing", true);
-      updateState("syncMessage", "");
       const result = await window.tally.startSync({ companies });
       if (result?.data?.code == "tally_not_connected") {
         updateTallyStatus();

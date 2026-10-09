@@ -60,7 +60,8 @@ stub("util/xml.js", {
   discoverCompanies: async () => ({ status: "ok", companies: [] }),
   syncTallyData: async () => { engine.syncs++; return { status: true, data: { uploadId: "u-1", companies: [] } }; },
   isSyncRunning: () => false,
-  stopTallySyncHandler: () => ({ ok: true }),
+  // Same one-liner as util/xml.js.
+  stopTallySyncHandler: (code) => require(path.join(ROOT, "util/jobCoordinator")).coordinator.requestCancel({ types: ["sync", "hard_sync"], code: code || "manually_stopped" }),
   fetchAndIngestSingleVouchers: async () => { engine.singleVoucher++; return { status: true, count: 1 }; },
   postToTally: async () => { throw new Error("no Tally writes in this test"); },
 });
@@ -176,4 +177,51 @@ test("13: headless runs return outcomes that map to exit codes", async () => {
   const held = coordinator.admit("sync", { trigger: "manual" });
   assert.equal(headlessExitCode(await ipc.startAutoSyncHeadless(() => null)), EXIT.deferred, "another sync covers it");
   coordinator.finish?.(held.job, { state: "succeeded", result: null });
+});
+
+// R1 / 09: company removal goes through admission; a refused action leaves the running job alone.
+test("09: company removal is refused while a sync or a restore runs, and that job is untouched", async () => {
+  for (const type of ["sync", "restore"]) {
+    reset();
+    mem.set("boundWorkspaceId", "ws-1");
+    const held = coordinator.admit(type, { trigger: "manual" });
+    assert.equal(held.accepted, true);
+    const r = await handlers.get("companies:remove")({ sender: {} }, ["g-1"]);
+    assert.equal(r.ok, false);
+    assert.equal(r.code, "JOB_CONFLICT", `${type} blocks removal`);
+    assert.equal(r.activeJob?.id, held.job.id, "the refusal names the running job");
+    assert.ok(!backend.some(([, url]) => url === "/desktop/companies/remove"), "nothing sent to the server");
+    const active = coordinator.snapshot().active;
+    assert.deepEqual(active.map((j) => [j.id, j.cancelRequested]), [[held.job.id, false]]);
+    coordinator.finish(held.job, { state: "succeeded", result: null });
+  }
+});
+
+test("09: a removal with no other job runs once and is recorded with its real outcome", async () => {
+  reset();
+  mem.set("boundWorkspaceId", "ws-1");
+  const r = await handlers.get("companies:remove")({ sender: {} }, ["g-1"]);
+  assert.equal(r.ok, true);
+  assert.equal(backend.filter(([, url]) => url === "/desktop/companies/remove").length, 1);
+  assert.equal(coordinator.snapshot().recent[0].type, "company_removal");
+  assert.equal(coordinator.snapshot().recent[0].state, "succeeded");
+});
+
+// R1 / 12: health checks own their signals; Stop is an explicit, scoped request.
+test("12: status probes never cancel a job; manual Stop cancels only the sync", async () => {
+  reset();
+  const backupJob = coordinator.admit("backup", { trigger: "manual" });
+  // A backup reads files, not Tally, so the probe is a real observation; it still stops nothing.
+  await handlers.get("tally:connected")({ sender: {} });
+  assert.equal(backupJob.job.cancelRequested, false, "a probe during a backup stops nothing");
+  coordinator.finish(backupJob.job, { state: "succeeded", result: null });
+
+  const syncJob = coordinator.admit("sync", { trigger: "headless" });
+  for (let i = 0; i < 5; i++) assert.equal(await handlers.get("tally:connected")({ sender: {} }), null);
+  assert.equal(syncJob.job.cancelRequested, false);
+  const stop = await handlers.get("tally:stop_sync")({ sender: {} }, "manually_stopped");
+  assert.equal(stop.ok, true);
+  assert.deepEqual(stop.jobs.map((j) => j.id), [syncJob.job.id]);
+  assert.equal(syncJob.job.cancelCode, "manually_stopped");
+  coordinator.finish(syncJob.job, { state: "cancelled", result: null });
 });

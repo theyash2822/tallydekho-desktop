@@ -28,7 +28,8 @@ function mapPairedDevice(pairing) {
   return {
     name: pairing.USER_NAME || pairing.NAME || pairing.MOBILE || "Paired Account",
     os: pairing.IS_ANDROID ? "Android" : pairing.IS_PAIRED ? "Mobile" : "Unknown",
-    last: pairing.LAST_SYNC_AT,
+    // Last verified sync (epoch seconds from the server), never the heartbeat time.
+    last: require("./registerResponse").toIsoDate(pairing.LAST_SYNC_AT),
     mobile: pairing.MOBILE || "",
   };
 }

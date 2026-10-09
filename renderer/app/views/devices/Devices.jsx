@@ -90,7 +90,7 @@ export default function Devices() {
                   Status: {badgeLabel}
                 </div>
                 <div className="text-xs text-[#9A9A97]">
-                  Last sync: {lastSync ? new Date(lastSync).toLocaleString() : (pairedDevice.last || "never")}
+                  Last sync: {lastSync ? new Date(lastSync).toLocaleString() : (pairedDevice.last ? new Date(pairedDevice.last).toLocaleString() : "never")}
                 </div>
                 {userProfile?.lastCloudBackupAt && (
                   <div className="text-xs text-[#9A9A97]">

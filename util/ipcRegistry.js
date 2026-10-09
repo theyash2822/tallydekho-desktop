@@ -230,9 +230,9 @@ ipcMain.handle("tally:tdl_select_path", async () => {
 ipcMain.handle("tally:connected", () => tallyConnectedStatus());
 
 /**
- * Typed discovery: { status: "ok" | "unavailable", companies, observedAt, cached? }.
- * Only "ok" is evidence of which companies are open; the renderer keeps its
- * selection unchanged for anything else.
+ * Typed discovery: { status: "ok" | "partial" | "unavailable", companies, observedAt, cached? }.
+ * "ok" is evidence of which companies are open; "partial" only of the companies it
+ * lists. The renderer keeps its selection unchanged for anything else.
  */
 let discoveryInFlight = null;
 ipcMain.handle("tally:companies", async () => {
@@ -257,7 +257,7 @@ ipcMain.handle("tally:companies", async () => {
       });
   }
   const result = await discoveryInFlight;
-  if (result.status === "ok") lastDiscovery = result;
+  if (result.status === "ok" || result.status === "partial") lastDiscovery = result;
   return result;
 });
 

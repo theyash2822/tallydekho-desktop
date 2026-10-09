@@ -229,8 +229,10 @@ async function registerDevice() {
   }
 
   {
+    // The server reports its last verified sync (or nothing); it never moves the local time back.
     const serverLastSync = toIsoDate(response.data?.lastSync);
-    if (serverLastSync) store.set("lastSync", serverLastSync);
+    const localLastSync = toIsoDate(store.get("lastSync"));
+    if (serverLastSync && (!localLastSync || serverLastSync > localLastSync)) store.set("lastSync", serverLastSync);
 
     // Do not persist register pairingCode — codes are session-bound and temporary.
     // Fresh code comes from GET /desktop/pairing-code after startup.

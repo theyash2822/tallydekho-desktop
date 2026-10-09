@@ -20,7 +20,7 @@ const { checkTdlHealth, looksLikeCompanyNotOpen } = require("./tdlHealth");
 const { planChunks } = require("./uploadChunks");
 const { runTallyExclusive, xmlText } = require("./tallyQueue");
 const { coordinator } = require("./jobCoordinator");
-const { toDiscoveredCompany, buildDiscovery } = require("./companyDiscovery");
+const { toDiscoveredCompany, discoveryFromResponse } = require("./companyDiscovery");
 const {
   checkVoucherListResponse,
   buildVoucherListSummary,
@@ -586,15 +586,15 @@ const discoverCompanies = async () => {
   if (!response.status) {
     return { status: "unavailable", reason: "tally_request_failed", observedAt, companies: [] };
   }
-  let list;
-  try {
-    const node = parser.parse(response.data)?.ENVELOPE?.BODY?.DATA?.COLLECTION?.COMPANY ?? [];
-    list = Array.isArray(node) ? node : [node].filter(Boolean);
-  } catch (_) {
-    return { status: "unavailable", reason: "parse_failed", observedAt, companies: [] };
+  const result = discoveryFromResponse(response.data, (t) => parser.parse(t), null, {
+    observedAt,
+    ledgerCountFor: cachedLedgerCount,
+  });
+  if (result.status === "unavailable") return result;
+  const currentGuid = (await getCurrentCompany())?.GUID;
+  if (currentGuid != null) {
+    for (const c of result.companies) c.isCurrentCompany = c.guid == String(currentGuid);
   }
-  const currentCompany = await getCurrentCompany();
-  const result = buildDiscovery(list, currentCompany?.GUID, { observedAt, ledgerCountFor: cachedLedgerCount });
   refreshLedgerCounts(result.companies).catch(() => {});
   return result;
 };

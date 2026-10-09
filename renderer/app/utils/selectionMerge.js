@@ -51,7 +51,8 @@ function withNewYears(selectedYears, allYears) {
  */
 export function mergeDiscovery({ selected = [], discovery, clearedByUser = false }) {
   const current = Array.isArray(selected) ? selected : [];
-  if (!discovery || discovery.status !== "ok" || !Array.isArray(discovery.companies)) {
+  const partial = discovery?.status === "partial";
+  if (!discovery || (discovery.status !== "ok" && !partial) || !Array.isArray(discovery.companies)) {
     return {
       selection: current,
       companies: null,
@@ -71,7 +72,8 @@ export function mergeDiscovery({ selected = [], discovery, clearedByUser = false
   if (current.length > 0) {
     selection = current.map((company) => {
       const fresh = byId.get(company.id) || byId.get(company.guid);
-      if (!fresh) return { ...company, available: false };
+      // A partial list is no evidence that an unlisted company is closed.
+      if (!fresh) return partial ? company : { ...company, available: false };
       return {
         ...company,
         name: fresh.name,
@@ -94,7 +96,7 @@ export function mergeDiscovery({ selected = [], discovery, clearedByUser = false
   }
 
   const identityConflicts = [];
-  for (const company of current) {
+  for (const company of partial ? [] : current) {
     if (!company.isSynced || byId.has(company.id) || byId.has(company.guid)) continue;
     const sameName = data.find((d) => normName(d.name) === normName(company.name) && d.guid !== company.guid);
     if (sameName) {

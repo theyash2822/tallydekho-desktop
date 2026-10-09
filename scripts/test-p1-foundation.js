@@ -109,7 +109,8 @@ test("discovery skips entries without identity or dates instead of failing all",
     "g1",
     { observedAt: "2026-10-08T00:00:00.000Z", ledgerCountFor: (g) => (g === "g1" ? 42 : null) }
   );
-  assert.equal(result.status, "ok");
+  // Unreadable entries make the list partial: an unlisted company may still be open.
+  assert.equal(result.status, "partial");
   assert.equal(result.companies.length, 1);
   assert.equal(result.skipped, 2);
   const [a] = result.companies;

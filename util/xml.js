@@ -700,6 +700,15 @@ function computeFinancialYear(fromDate) {
   return `${year}-${year + 1}`;
 }
 
+// Companies whose Tally source requests failed in the current run (guid → report names).
+// Such a company is not uploaded or marked synced; the other companies continue.
+let companySourceFailures = new Map();
+const noteCompanySourceFailure = (companyGuid, xml) => {
+  if (!companyGuid) return;
+  if (!companySourceFailures.has(companyGuid)) companySourceFailures.set(companyGuid, new Set());
+  companySourceFailures.get(companyGuid).add(xml);
+};
+
 const syncHelper = async ({ xml, companyName, alterId, companyGuid }) => {
   const response = await getData(xml, [
     {
@@ -712,7 +721,15 @@ const syncHelper = async ({ xml, companyName, alterId, companyGuid }) => {
     },
   ]);
 
+  // An empty master list is indistinguishable from "nothing changed", so a failed
+  // request must be recorded rather than read as no data.
   if (!response.status) {
+    if (!response.cancelled) noteCompanySourceFailure(companyGuid, xml);
+    return [];
+  }
+  const text = String(response.data ?? "");
+  if (/<LINEERROR>/i.test(text) || looksLikeCompanyNotOpen(text)) {
+    noteCompanySourceFailure(companyGuid, xml);
     return [];
   }
 
@@ -730,7 +747,12 @@ const syncHelper = async ({ xml, companyName, alterId, companyGuid }) => {
   //   )[0]
   // );
 
-  return normalizeEnvelope(json.ENVELOPE).map((item) => ({
+  const rows = normalizeEnvelope(json.ENVELOPE);
+  if (companyGuid && rows.some((r) => hasForeignTallyGuid(JSON.stringify(r), companyGuid))) {
+    noteCompanySourceFailure(companyGuid, xml);
+    return [];
+  }
+  return rows.map((item) => ({
     ...item,
     COMPANY_NAME:    companyName,
     XML:             xml,
@@ -995,9 +1017,11 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
   }
 
   totalVouchers = 0;
+  companySourceFailures = new Map();
   const sendProgress = createTallySyncProgressSender(windowContent);
   const sendMessage = tallySyncMessageSender(windowContent);
 
+  if (jobStopCode()) return stoppedResult(null);
   // Keep the TDL file on disk current. Sync never closes or restarts Tally: a TDL that is
   // not active shows up per company in the bill snapshot and keeps that company's bills.
   try {
@@ -1016,7 +1040,11 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
   // companies that are open right now, under their current Tally name.
   // init-sync still gets every selected company: it marks companies missing from the list
   // inactive, and a company closed in Tally for one sync must not disappear from the apps.
+  // Stop is honoured before every step with a server-side effect (init-sync can consume a
+  // Hard Sync approval; sync-run/start opens a run).
+  if (jobStopCode()) return stoppedResult(null);
   const open = await getOpenCompanies();
+  if (jobStopCode()) return stoppedResult(null);
   companies = planJobScope(companies, open);
   const selectedCompanies = companies;
   const openCompanies = open?.names || null;
@@ -1051,6 +1079,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
   sendProgress(0);
   sendMessage("Initializing");
 
+  if (jobStopCode()) return stoppedResult(null);
   let syncedData = await initSync(selectedCompanies, isHardSync);
 
   info("[sync] data", summarizeSyncState(syncedData));
@@ -1067,6 +1096,7 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
   syncedData = syncedData.data;
 
   // After init-sync so a first-sync company already exists on the server and gets a run ID.
+  if (jobStopCode()) return stoppedResult(null);
   try {
     const firstCompanyGuid = companies[0]?.guid || companies[0]?.id;
     if (firstCompanyGuid) {
@@ -1378,7 +1408,10 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
       const yearId = yearIds[companyGuid][year.finYear];
 
       const voucherAlterId = alterIds[company.guid].voucher[year.finYear];
-      const markFailed = () => (failedVoucherYears[companyGuid] ||= new Set()).add(year.finYear);
+      const markFailed = (xml) => {
+        (failedVoucherYears[companyGuid] ||= new Set()).add(year.finYear);
+        noteCompanySourceFailure(companyGuid, xml);
+      };
 
       info(`[sync] Year Function`, { year, voucherAlterId });
 
@@ -1560,10 +1593,23 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
   // skips the companies after it; cancellation, auth and an unreachable backend do.
   const ofCompany = (rows, guid) => rows.filter((r) => r?.COMPANY_GUID === guid);
   const outcomes = [];
+  for (const c of selectedCompanies) {
+    if (!companies.some((x) => x.guid === c.guid)) {
+      outcomes.push({ guid: c.guid, name: c.name, status: "skipped", code: "company_not_open" });
+    }
+  }
   let globalFailure = null;
   for (const c of companies) {
     if (globalFailure) {
       outcomes.push({ guid: c.guid, name: c.name, status: "not_attempted", code: globalFailure.code || null });
+      continue;
+    }
+    const sourceFailed = companySourceFailures.get(c.guid);
+    if (sourceFailed) {
+      const reports = [...sourceFailed];
+      info("[sync] company source failed; not uploaded", { companyGuid: c.guid, reports });
+      const shown = reports.slice(0, 3).join(", ") + (reports.length > 3 ? ` and ${reports.length - 3} more` : "");
+      outcomes.push({ guid: c.guid, name: c.name, status: "failed", code: "tally_source_failed", message: `Tally could not provide ${shown}` });
       continue;
     }
     let response;
@@ -1619,7 +1665,8 @@ const syncTallyDataUnlocked = async (windowContent, companies, isHardSync) => {
   }
 
   const uploaded = outcomes.filter((o) => o.status === "uploaded");
-  const failed = outcomes.filter((o) => o.status !== "uploaded");
+  // "skipped" (not open in Tally) is reported but does not fail the run.
+  const failed = outcomes.filter((o) => o.status === "failed" || o.status === "not_attempted");
   const lastUploadId = uploaded.length ? uploaded[uploaded.length - 1].uploadId : null;
 
   if (failed.length) {

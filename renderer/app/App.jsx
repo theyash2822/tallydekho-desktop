@@ -367,6 +367,8 @@ export default function App() {
             sendLogs: true,
           });
         }
+      } else if (key == "syncedCompanies") {
+        markUploadedCompanies(value);
       } else if (key == "syncMessage" && (value == "Data Synced" || value == "Sync Complete")) {
         resetSyncStates(true);
         openAlertModal("Data synced successfully");
@@ -498,23 +500,15 @@ export default function App() {
       const date = new Date();
       window.api.setPref("lastSync", date);
       updateState("lastSync", date);
-
-      // Mark every synced company as isSynced: true
-      updateState("selectedCompanies", (prev) =>
-        (prev || []).map((c) => ({ ...c, isSynced: true, lastSyncedAt: date.toISOString() }))
-      );
-      // Persist updated companies with sync flags
-      window.api.getPref("selectedCompanies").then((stored) => {
-        const updated = (stored || []).map((c) => ({ ...c, isSynced: true, lastSyncedAt: date.toISOString() }));
-        window.api.setPref("selectedCompanies", updated);
-      });
+      // Per-company sync flags come from the "syncedCompanies" outcome list, not from here:
+      // a company skipped or failed in this run keeps its older success time.
     }
     updateState("syncMessage", "");
     updateState("syncProgress", 0);
     refreshJobState();
   };
 
-  /** Partial upload: only the companies the server accepted count as synced. */
+  /** Only the companies the server accepted in this run count as synced. */
   const markUploadedCompanies = (outcomes) => {
     const uploaded = new Set(
       (outcomes || []).filter((o) => o?.status === "uploaded").map((o) => o.guid)
@@ -525,7 +519,9 @@ export default function App() {
       (list || []).map((c) =>
         uploaded.has(c.guid || c.id) ? { ...c, isSynced: true, lastSyncedAt: at } : c
       );
+    selectedCompaniesRef.current = mark(selectedCompaniesRef.current);
     updateState("selectedCompanies", mark);
+    window.api.getPref("selectedCompanies").then((stored) => window.api.setPref("selectedCompanies", mark(stored)));
   };
 
   const updateState = (key, value) => {

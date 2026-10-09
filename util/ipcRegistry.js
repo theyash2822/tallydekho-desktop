@@ -94,6 +94,8 @@ const reportSyncResult = (target, syncStatus) => {
     store.set("lastSync", date.toISOString());
     store.set("myLastSyncEpoch", Math.floor(Date.now() / 1000));
     sendTo(target, "window:listener", { key: "lastSync", value: date });
+    // Before "Sync Complete": only these companies may be marked synced.
+    sendTo(target, "window:listener", { key: "syncedCompanies", value: syncStatus.data?.companies || [] });
     sendTo(target, "window:listener", { key: "syncMessage", value: "Sync Complete" });
   } else if (syncStatus) {
     sendTo(target, "window:listener", {

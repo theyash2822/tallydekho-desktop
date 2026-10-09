@@ -409,14 +409,25 @@ const getData = async (filePath, replacer = []) => {
   }
 };
 
+// Connection-level failures where the request bytes never left this machine,
+// so Tally cannot have imported anything. Every other failure (timeout, reset,
+// hang-up, truncated reply) may follow a successful import.
+const TALLY_WRITE_NOT_SENT_CODES = new Set([
+  "ECONNREFUSED", "ENOTFOUND", "EHOSTUNREACH", "ENETUNREACH", "EADDRNOTAVAIL", "EAI_AGAIN",
+]);
+
+let tallyWritePost = (url, body, opts) => axios.post(url, body, opts);
+
 // postToTally - send a write XML directly to Tally's HTTP port
 // Used for data entry: create vouchers, masters etc.
+// Returns outcomeUnknown:true (never re-posts) when Tally may have accepted the
+// entry without the reply reaching us.
 const postToTally = async (xmlBody) => {
   const TALLY_URL = tallyUrl();
   let attempt = 0;
   while (true) {
     try {
-      const response = await runTallyExclusive(() => axios.post(TALLY_URL, xmlBody, {
+      const response = await runTallyExclusive(() => tallyWritePost(TALLY_URL, xmlBody, {
         headers: {
           "Content-Type": "text/xml",
           Accept: "application/xml, text/xml, */*",
@@ -487,12 +498,22 @@ const postToTally = async (xmlBody) => {
       return { status: true, message: 'Entry created in Tally', data, tallyId, voucherNumber, created, altered, exceptions };
     } catch (err) {
       error(err?.message, 'postToTally');
+      if (!TALLY_WRITE_NOT_SENT_CODES.has(err?.code) || err?.response) {
+        return {
+          status: false,
+          outcomeUnknown: true,
+          code: 'TALLY_WRITE_OUTCOME_UNKNOWN',
+          message: 'Tally did not confirm this entry. It may already be saved in Tally — check before entering it again.',
+        };
+      }
       if (++attempt >= 2) {
         return {
           status: false,
-          message: err?.code === 'ECONNREFUSED'
+          notSent: true,
+          code: 'TALLY_WRITE_NOT_SENT',
+          message: err.code === 'ECONNREFUSED'
             ? `Cannot connect to Tally at ${tallyUrl()}. Is Tally Prime running?`
-            : err?.message || 'Tally not reachable',
+            : 'Tally not reachable',
         };
       }
       await new Promise((r) => setTimeout(r, 500));
@@ -500,7 +521,9 @@ const postToTally = async (xmlBody) => {
   }
 };
 
-module.exports.postToTally = postToTally;
+const __setTallyWritePostForTests = (fn) => {
+  tallyWritePost = fn || ((url, body, opts) => axios.post(url, body, opts));
+};
 
 const getCompanyDestinations = async () => {
   const response = await getData("TallyDestination.xml");
@@ -1784,6 +1807,7 @@ module.exports = {
   postToTally,
   fetchAndIngestSingleVouchers,
   getOpenCompanies,
+  __setTallyWritePostForTests,
 };
 
 // console.dir(json, { depth: null, colors: true, maxArrayLength: null });

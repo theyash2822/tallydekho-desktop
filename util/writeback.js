@@ -76,6 +76,10 @@ async function processCompanyWriteback(companyGuid, { limit = DEFAULT_LIMIT } = 
       if (!item.outboxId || handled.has(item.outboxId)) continue;
       handled.add(item.outboxId);
 
+      // Once the XML has gone to Tally, a failure here says nothing about whether
+      // Tally imported it, so it must never be reported as a retryable failure.
+      let sentToTally = false;
+      let report = null;
       try {
         const claimRes = await axiosInstance.post(
           `/tally/desktop/writeback/${item.outboxId}/claim`,
@@ -88,28 +92,52 @@ async function processCompanyWriteback(companyGuid, { limit = DEFAULT_LIMIT } = 
         }
         result.claimed += 1;
 
+        sentToTally = true;
         const tallyResult = await postToTally(claimData.xml);
+        if (tallyResult?.notSent) sentToTally = false;
         const success = tallyResult?.status === true;
+        const outcomeUnknown = !success && tallyResult?.outcomeUnknown === true;
 
-        await axiosInstance.post(`/tally/desktop/writeback/${item.outboxId}/result`, {
+        report = {
           success,
+          outcomeUnknown,
+          notSent: tallyResult?.notSent === true,
           tallyVoucherNumber: tallyResult?.voucherNumber || null,
           tallyVoucherGuid: tallyResult?.tallyId || null,
           tallyAlterId: tallyResult?.alterId || null,
-          errorCode: success ? null : "TALLY_ERROR",
+          errorCode: success ? null : outcomeUnknown ? "OUTCOME_UNKNOWN" : tallyResult?.notSent ? "TALLY_NOT_SENT" : "TALLY_ERROR",
           errorMessage: success ? null : tallyResult?.message || "Tally posting failed",
-        });
+        };
+        await axiosInstance.post(`/tally/desktop/writeback/${item.outboxId}/result`, report);
 
         if (success) result.posted += 1;
+        else if (outcomeUnknown) result.unknown = (result.unknown || 0) + 1;
         else result.failed += 1;
-        info(`[writeback] entry ${item.outboxId} → ${success ? "posted" : "failed"}`);
+        info(`[writeback] entry ${item.outboxId} → ${success ? "posted" : outcomeUnknown ? "outcome_unknown" : "failed"}`);
       } catch (entryErr) {
-        result.failed += 1;
         error(entryErr?.message, `writeback.entry.${item.outboxId}`);
-        // Report the failure so the backend releases its claim for a later retry.
+        if (sentToTally) {
+          // Tally may have the entry. Re-send the same result once (or record
+          // unknown); never a failure. If this also fails the row stays
+          // 'processing' and no claim or retry path will pick it up again.
+          result.unknown = (result.unknown || 0) + 1;
+          const again = report || {
+            success: false,
+            outcomeUnknown: true,
+            errorCode: "OUTCOME_UNKNOWN",
+            errorMessage: "Desktop lost track of this entry after sending it to Tally",
+          };
+          try {
+            await axiosInstance.post(`/tally/desktop/writeback/${item.outboxId}/result`, again);
+          } catch (_) {}
+          continue;
+        }
+        result.failed += 1;
+        // Nothing reached Tally: report the failure so the backend releases its claim.
         try {
           await axiosInstance.post(`/tally/desktop/writeback/${item.outboxId}/result`, {
             success: false,
+            notSent: true,
             errorCode: "DESKTOP_ERROR",
             errorMessage: entryErr?.message,
           });

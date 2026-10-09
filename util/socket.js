@@ -315,7 +315,8 @@ module.exports = (window, socket) => {
       }
     } catch (err) {
       error(err?.message, "tally:write");
-      const response = { status: false, message: err?.message, jobId };
+      // postToTally may already have handed the XML to Tally.
+      const response = { status: false, outcomeUnknown: true, code: "TALLY_WRITE_OUTCOME_UNKNOWN", message: err?.message, jobId };
       if (typeof callback === "function") callback(response);
       socket.emit("tally:write:result", response);
     }

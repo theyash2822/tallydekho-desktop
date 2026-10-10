@@ -1,5 +1,16 @@
 # CHANGELOG_AGENT.md — td-desktop
 
+## 2026-10-09 — TDV01 remediation RM01 (branch `tdv01-remediation`)
+
+- Tally writes are re-sent only when the connection was never made; any uncertain reply is reported as outcome unknown.
+- Opening the window during a scheduled job joins it (no stop); settings load once per process before registration; `cloudBackups` and the legacy credential survive restarts; config versioned and written atomically.
+- Typed company discovery (ok / partial / unavailable); company-scoped Tally failures skip only that company; closed companies reported skipped, never marked synced; one server sync run per company; Stop checked before every server side effect.
+- One version policy for every trigger (incl. socket single-voucher); unknown cross-device status never counts as clear (scheduled/headless defer); explicit launch intents; truthful headless exit codes (0/1/2/3).
+- Hydration-safe port save; single-flight update check; redacted, bounded logs; completion-driven polling with no ledger export; privileged IPC only from the app page; backup sources confined to Tally data roots.
+- Backups never copy company files while Tally is open or its state is unknown (D-005); backend epoch-second timestamps read correctly; Tally setup launches `tally.exe` directly; stock lines carry `_LINE_ORDINAL`; core voucher list no longer needs the Bill Outstanding add-on.
+- Hard Sync button disabled until the staged design ships. Owner capture script: `scripts/tally-capture/capture.js` (read-only).
+- Tests: `npm test` 274/274, `npm run test:renderer` 5/5 (needs `TD_JSDOM_PATH`).
+
 Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---

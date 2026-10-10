@@ -262,6 +262,8 @@ const COMPLETE_TIMEOUT_MS = 10 * 60_000;
 // Server will refuse these the same way every time.
 const NON_RETRYABLE_CHUNK_CODES = new Set([
   "NDJSON_INVALID",
+  "CHUNK_EMPTY",
+  "RECORD_INVALID",
   "CHUNK_TOO_LARGE",
   "CHUNK_CONTENT_CONFLICT",
   "UPLOAD_OWNERSHIP_DENIED",

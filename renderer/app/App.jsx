@@ -801,6 +801,11 @@ export default function App() {
       openAlertModal("Waiting for Owner/Admin approval. Approve Hard Sync in Web → Settings → Tally Sync.");
       return;
     }
+    if (code === "HARD_SYNC_UNAVAILABLE" || data?.code === "HARD_SYNC_UNAVAILABLE") {
+      refreshJobState();
+      openAlertModal(message || CODE_ERROR_MESSAGE.HARD_SYNC_UNAVAILABLE);
+      return;
+    }
     if (code === "HARD_SYNC_IN_FLIGHT" || data?.code === "HARD_SYNC_IN_FLIGHT") {
       refreshJobState();
       openAlertModal(message || CODE_ERROR_MESSAGE.HARD_SYNC_IN_FLIGHT);

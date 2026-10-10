@@ -225,3 +225,13 @@ test("12: status probes never cancel a job; manual Stop cancels only the sync", 
   assert.equal(syncJob.job.cancelCode, "manually_stopped");
   coordinator.finish(syncJob.job, { state: "cancelled", result: null });
 });
+
+test("Hard Sync is refused with an explanation and starts no job (off until the staged design ships)", async () => {
+  reset();
+  const r = await handlers.get("tally:start_sync")({ sender: {} }, { companies: [COMPANY], isHardSync: true });
+  assert.equal(r.code, "HARD_SYNC_UNAVAILABLE");
+  assert.match(r.message, /temporarily unavailable/);
+  assert.equal(engine.syncs, 0);
+  assert.ok(!backend.some(([, url]) => url === "/desktop/hard-sync/request"));
+  assert.equal(coordinator.snapshot().active.length, 0);
+});

@@ -16,6 +16,8 @@ export const CODE_ERROR_MESSAGE = {
   HARD_SYNC_REJECTED: "Hard Sync was rejected by Owner/Admin.",
   HARD_SYNC_EXPIRED: "Hard Sync request expired. Request approval again.",
   HARD_SYNC_IN_FLIGHT: "A sync is already in progress on this Desktop.",
+  HARD_SYNC_UNAVAILABLE:
+    "Hard Sync is temporarily unavailable while it is rebuilt to prepare data separately before replacing it. Normal sync keeps your books up to date.",
   TALLY_DATA_MISMATCH:
     "This Tally data does not match the workspace. Use Restore or Reset Workspace.",
   JOB_ALREADY_RUNNING: "A sync is already in progress on this Desktop.",

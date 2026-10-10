@@ -1,4 +1,5 @@
 import React, { useContext, useMemo, useState } from "react";
+import { CODE_ERROR_MESSAGE } from "../../utils/helper";
 import { formatDateTime } from "../../utils/datetime";
 import AddCompaniesModal from "./modals/AddCompaniesModal";
 import EditYearsModal from "./modals/EditYearsModal";
@@ -334,12 +335,10 @@ export default function Companies({
           </button>
           <button
             onClick={startHardSyncHandler}
-            className={`px-3 py-1.5 rounded-md border ${
-              disableSyncButton || isSyncing
-                ? "bg-[#F0EFE9] text-[#AEACA8] cursor-not-allowed border-[#E9E8E3]"
-                : "text-[#787774] hover:bg-[#FDECEA] hover:text-[#C0392B] border-[#EDBBB8]"
-            }`}
-            disabled={disableSyncButton || isSyncing}
+            // Off on this branch until the staged Hard Sync ships.
+            title={CODE_ERROR_MESSAGE.HARD_SYNC_UNAVAILABLE}
+            className="px-3 py-1.5 rounded-md border bg-[#F0EFE9] text-[#AEACA8] cursor-not-allowed border-[#E9E8E3]"
+            disabled
           >
             Hard Sync
           </button>

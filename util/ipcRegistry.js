@@ -59,6 +59,8 @@ coordinator.onChange(() => {
 });
 
 const { versionPolicy } = require("./syncPolicy");
+const HARD_SYNC_UNAVAILABLE_MESSAGE =
+  "Hard Sync is temporarily unavailable while it is rebuilt to prepare data separately before replacing it. Normal sync keeps your books up to date.";
 
 /** Send to a window or webContents that may be missing (headless) or already destroyed. */
 const sendTo = (target, channel, payload) => {
@@ -481,6 +483,11 @@ const registerTallySync = (windowContent) => {
           code: "COMPANY_SELECTION_PENDING",
           message: "Confirm the company list for this workspace first.",
         };
+      }
+
+      if (isHardSync) {
+        // Off on this branch until the staged Hard Sync ships; the backend refuses it too.
+        return { status: false, rejected: true, code: "HARD_SYNC_UNAVAILABLE", message: HARD_SYNC_UNAVAILABLE_MESSAGE };
       }
 
       // Synchronous admission: a second start is refused here and never touches the running job.

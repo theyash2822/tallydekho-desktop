@@ -17,9 +17,21 @@ const EARLY_SLACK_MS = 6 * 60 * 60 * 1000;
 const MISSED_GRACE_MS = DAY_MS;
 const MISSED_TRIGGER_COOLDOWN_MS = 60 * 60 * 1000;
 
+/**
+ * Backend timestamps are epoch seconds (number or digit string); the desktop's own are ISO
+ * strings or epoch ms. Numbers and digit strings are read by magnitude, never Date.parse'd.
+ */
 const toMs = (v) => {
   if (v == null || v === "") return null;
-  const n = typeof v === "number" ? v : Date.parse(v);
+  let n;
+  if (typeof v === "number" || (typeof v === "string" && /^\d+(\.\d+)?$/.test(v.trim()))) {
+    const num = Number(v);
+    n = num < 1e12 ? num * 1000 : num;
+  } else if (v instanceof Date) {
+    n = v.getTime();
+  } else {
+    n = Date.parse(String(v));
+  }
   return Number.isFinite(n) && n > 0 ? n : null;
 };
 
@@ -90,4 +102,5 @@ function readScheduleState(store) {
   return Object.fromEntries(STATE_KEYS.map((k) => [k, store.get(k)]));
 }
 
-module.exports = { backupDue, outcomePatch, lastVerifiedBackupAt, readScheduleState, INTERVAL_DAYS };
+module.exports = {
+  toMs, backupDue, outcomePatch, lastVerifiedBackupAt, readScheduleState, INTERVAL_DAYS };

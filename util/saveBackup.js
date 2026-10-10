@@ -111,7 +111,18 @@ function createZip({
  * Every backup trigger (button, scheduled task, headless) is admitted by the job
  * coordinator first, so a backup never overlaps a sync, restore or another backup.
  */
-async function startBackup(windowContent, { trigger = "manual" } = {}) {
+// D-005: company files are copied only while Tally is confirmed closed. Scheduled runs defer;
+// a manual attempt is told why. Checked before admission, so nothing has started yet.
+const TALLY_OPEN_MESSAGE = "Close TallyPrime, then back up again — TallyDekho does not copy company files while Tally is open.";
+const TALLY_UNKNOWN_MESSAGE = "TallyDekho could not confirm that TallyPrime is closed, so the backup did not start. Close Tally and try again.";
+
+async function startBackup(windowContent, { trigger = "manual", tallyState = require("./tallyProcess").tallyProcessState } = {}) {
+  const tally = await tallyState();
+  if (tally.state !== "closed") {
+    const code = tally.state === "running" ? "TALLY_RUNNING" : "TALLY_STATE_UNKNOWN";
+    info(`[backup] not started: ${code}`, { trigger });
+    return { status: false, data: null, deferred: trigger !== "manual", code, message: tally.state === "running" ? TALLY_OPEN_MESSAGE : TALLY_UNKNOWN_MESSAGE };
+  }
   const { coordinator } = require("./jobCoordinator");
   const run = await coordinator.run("backup", { trigger }, () => runBackup(windowContent));
   if (!run.accepted) {

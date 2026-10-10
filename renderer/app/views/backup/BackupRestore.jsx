@@ -56,7 +56,7 @@ export default function BackupRestore() {
     if (isBackingUp || isSyncing) return;
 
     const result = await window.tally.startBackup();
-    if (result?.code === "JOB_CONFLICT" || result?.code === "JOB_ALREADY_RUNNING") {
+    if (["JOB_CONFLICT", "JOB_ALREADY_RUNNING", "TALLY_RUNNING", "TALLY_STATE_UNKNOWN"].includes(result?.code)) {
       openAlertModal?.(result.message || CODE_ERROR_MESSAGE[result.code]);
     } else if (result && !result.status && result.message) {
       openAlertModal?.(`Backup did not complete: ${result.message}`);

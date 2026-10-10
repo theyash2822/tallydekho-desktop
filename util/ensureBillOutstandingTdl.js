@@ -278,7 +278,11 @@ function planTallyLaunch({ platform, tallyDir, exeExists, tdlExists, running, co
   }
   if (!exeExists) return { ok: false, code: "TALLY_EXE_MISSING", message: `tally.exe not found in ${tallyDir}` };
   if (!tdlExists) return { ok: false, code: "TDL_MISSING", message: "TDL file missing — run setup first" };
-  if (running) {
+  // R5 / 18: an unconfirmed process state is not "closed" — never start a second Tally on a guess.
+  if (running === "unknown") {
+    return { ok: false, code: "TALLY_STATE_UNKNOWN", message: "TallyDekho could not confirm whether Tally is open. Close Tally if it is open, then click Retry setup." };
+  }
+  if (running === true || running === "running") {
     return {
       ok: false,
       code: "TALLY_CLOSE_REQUIRED",
@@ -307,7 +311,7 @@ function companiesNotOpen(expected, open) {
  */
 async function activateTdlByRestartingTally(tallyDir, destTdl, opts = {}) {
   const exe = tallyDir ? path.join(tallyDir, "tally.exe") : null;
-  const running = process.platform === "win32" ? !!(await runningTallyExe()) : false;
+  const running = process.platform === "win32" ? (await require("./tallyProcess").tallyProcessState()).state : "closed";
   const plan = planTallyLaunch({
     platform: process.platform,
     tallyDir,
@@ -326,12 +330,10 @@ async function activateTdlByRestartingTally(tallyDir, destTdl, opts = {}) {
   info("[tdl] setup: starting Tally with /TDL", { exe, args, destTdl, companyNumber });
 
   try {
-    // cmd `start` is the reliable way to launch a GUI Tally from Electron
-    const child = spawn(
-      process.env.ComSpec || "cmd.exe",
-      ["/c", "start", "", "/D", tallyDir, "tally.exe", ...args],
-      { detached: true, stdio: "ignore", windowsHide: true }
-    );
+    // The validated tally.exe itself with an argument array — no shell re-parses anything.
+    // Its folder is the working directory, which resolves the short /TDL:<filename>.
+    const child = spawn(exe, args, { cwd: tallyDir, detached: true, stdio: "ignore", windowsHide: false, shell: false });
+    child.on("error", (e) => info("[tdl] setup: Tally start failed", { message: e?.message }));
     child.unref();
   } catch (e) {
     return { status: false, message: e?.message || "Failed to start Tally" };

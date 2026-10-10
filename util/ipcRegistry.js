@@ -705,7 +705,7 @@ const startAutoBackupHeadless = async (getWindow) => {
   );
 
   if (response.status) return { state: "succeeded" };
-  const busy = response.code === "JOB_ALREADY_RUNNING" || response.code === "JOB_CONFLICT";
+  const busy = response.code === "JOB_ALREADY_RUNNING" || response.code === "JOB_CONFLICT" || response.deferred;
   return { state: busy ? "deferred" : "failed", code: response.code || null };
 };
 

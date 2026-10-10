@@ -32,16 +32,6 @@ export function toSelectionEntry(company) {
   };
 }
 
-/** Selected FYs plus any FY that starts after every selected one (a new year opened in Tally). */
-function withNewYears(selectedYears, allYears) {
-  if (!allYears || selectedYears.length === 0) return selectedYears;
-  const selectedNames = new Set(selectedYears.map((y) => y.finYear));
-  const maxEnd = selectedYears.reduce((max, y) => (y.end > max ? y.end : max), "");
-  if (!maxEnd) return selectedYears;
-  const fresh = allYears.filter((y) => !selectedNames.has(y.finYear) && y.begin > maxEnd);
-  return fresh.length ? [...selectedYears, ...fresh] : selectedYears;
-}
-
 /**
  * @param {object} args
  * @param {Array} args.selected        current saved selection
@@ -79,7 +69,8 @@ export function mergeDiscovery({ selected = [], discovery, clearedByUser = false
         allYears: fresh.allYears,
         ledgersCount: fresh.ledgersCount ?? company.ledgersCount ?? null,
         path: fresh.path ?? company.path ?? null,
-        years: withNewYears(company.years || [], fresh.allYears),
+        // A new year in Tally is offered in Edit Years (allYears), never selected here.
+        years: company.years || [],
         available: true,
         lastSeenAt: observedAt,
       };

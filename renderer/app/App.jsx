@@ -89,6 +89,7 @@ export default function App() {
   const hardSyncRequestIdRef = useRef(null);
   const lineageMismatchRef = useRef(null);
   const autoFirstSyncInFlightRef = useRef(false);
+  const tallyProbeInFlightRef = useRef(false);
   const autoFirstSyncClaimTokenRef = useRef(null);
   /** Once first soft sync has been kicked for this bind, ignore late duplicate pairingClaimed. */
   const autoFirstSyncStartedForBindRef = useRef(null);
@@ -111,7 +112,6 @@ export default function App() {
         const reachable = await window.api.pingBackend();
         updateState("isOnline", reachable);
         window.api?.setPref("isOnline", reachable);
-        if (!reachable && isSyncingRef.current) stopSync("internet_is_offline");
       } catch {}
     };
 
@@ -149,7 +149,6 @@ export default function App() {
           if (failCount >= 2) {
             updateState("isOnline", false);
             window.api?.setPref("isOnline", false);
-            if (isSyncingRef.current) stopSync("internet_is_offline");
           }
         }
       } catch {
@@ -163,8 +162,17 @@ export default function App() {
 
   useEffect(() => {
     if (isInitCompleted.current && window.api) {
-      window.api.setPref("selectedCompanies", selectedCompanies);
       selectedCompaniesRef.current = selectedCompanies;
+      // While paired the main process keeps the server-confirmed companies/years and
+      // returns them; a local auto-selection or stale echo is replaced by that list.
+      Promise.resolve(window.api.setPref("selectedCompanies", selectedCompanies)).then((effective) => {
+        if (!Array.isArray(effective)) return;
+        const shape = (l) => (l || []).map((c) => `${c.guid || c.id}:${(c.years || []).map((y) => y.finYear).join(",")}`).join("|");
+        if (shape(effective) !== shape(selectedCompaniesRef.current)) {
+          selectedCompaniesRef.current = effective;
+          updateState("selectedCompanies", effective);
+        }
+      }).catch(() => {});
     }
   }, [selectedCompanies]);
 
@@ -431,6 +439,9 @@ export default function App() {
         updateState("resetWaitMessage", "Workspace was reset. Pair again after new Tally setup, or restore a backup.");
         updateState("pairedDevice", null);
         updateState("workspace", null);
+        // A reset clears the list on purpose; the Tally refresh must not auto-select again.
+        selectionClearedByUserRef.current = true;
+        window.api.setPref("selectionClearedByUser", true);
         updateState("selectedCompanies", []);
         updateState("pairingCode", null);
         updateState("pairingClaimed", null);
@@ -540,18 +551,19 @@ export default function App() {
     });
   };
 
+  // Probes only report status. A running job owns its own transport failures, so a
+  // cached or momentary "not connected" here never cancels it.
   const updateTallyStatus = async () => {
+    if (tallyProbeInFlightRef.current) return;
+    tallyProbeInFlightRef.current = true;
     try {
       const status = await window.tally.connected();
       updateState("isTallyOnline", status);
-
-      if (status) {
-        fetchCompanies();
-      } else if (isSyncingRef.current) {
-        stopSync("tally_is_not_connected");
-      }
+      if (status && !isSyncingRef.current) fetchCompanies();
     } catch (err) {
       updateState("isTallyOnline", false);
+    } finally {
+      tallyProbeInFlightRef.current = false;
     }
   };
 
@@ -576,6 +588,17 @@ export default function App() {
   const removeSelectedCompanies = (guids) => {
     const drop = new Set(guids);
     const next = (selectedCompaniesRef.current || []).filter((c) => !drop.has(c.guid || c.id));
+    if (next.length === 0) {
+      selectionClearedByUserRef.current = true;
+      window.api.setPref("selectionClearedByUser", true);
+    }
+    selectedCompaniesRef.current = next;
+    updateState("selectedCompanies", next);
+  };
+
+  /** List the main process confirmed (server-accepted while paired). */
+  const applyConfirmedSelection = (list) => {
+    const next = Array.isArray(list) ? list : [];
     if (next.length === 0) {
       selectionClearedByUserRef.current = true;
       window.api.setPref("selectionClearedByUser", true);
@@ -890,6 +913,7 @@ export default function App() {
           fetchCompanies,
           removeSelectedCompanies,
           markCompaniesAdded,
+          applyConfirmedSelection,
           updatePort,
           openAlertModal,
           refreshJobState,

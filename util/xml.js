@@ -1,7 +1,6 @@
 const { createTallyParser } = require("./tallyXmlParser");
 const { decodeTallyBytes, TallyEncodingError } = require("./tallyDecode");
-const { yearsFromCompanyNodes, planFiscalScope, applyPlannedYears } = require("./fiscalPlanner");
-const { getSelectedCompanies, setSelectedCompanies } = require("./companySelection");
+const { yearsFromCompanyNodes, planFiscalScope } = require("./fiscalPlanner");
 const path = require("path");
 const { readFile } = require("fs").promises;
 const axios = require("axios");
@@ -304,6 +303,11 @@ async function sendOneChunk(client, uploadId, streamName, idx, body, gzip, compa
 
 const initSync = async (companies, isHardSync = false) => {
   let response;
+  const selectionSync = require("./selectionSync");
+  const confirmed = await selectionSync.ensureSelectionConfirmed();
+  if (!confirmed.ok) {
+    return { status: false, message: confirmed.message || "Company selection could not be confirmed with the server." };
+  }
 
   try {
     // isHardSync → backend consumes the approval and opens jobs; stale rows are removed only
@@ -313,11 +317,18 @@ const initSync = async (companies, isHardSync = false) => {
       isHardSync: !!isHardSync,
       // We send voucherWatermarks and fetch opening balances / stock items in full.
       watermarkSync: true,
+      // The server refuses a plan made under an older selection (removed companies stay removed).
+      selectionRevision: confirmed.revision,
     }, { timeout: 10 * 60_000 });
     response = response.data;
   } catch (err) {
     info("[sync] data error", err);
-    return { status: false, message: err?.response?.data?.message };
+    const data = err?.response?.data;
+    if (data?.code === "SELECTION_STALE") {
+      await selectionSync.refreshConfirmedRevision().catch(() => {});
+      return { status: false, code: "SELECTION_STALE", message: "The company list changed. Sync again to use the latest list." };
+    }
+    return { status: false, message: data?.message };
   }
 
   return response;
@@ -409,6 +420,9 @@ const getData = async (filePath, replacer = []) => {
   }
 };
 
+/** Connection errors that prove the request never reached Tally. */
+const NEVER_SENT_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EADDRNOTAVAIL', 'EHOSTUNREACH', 'ENETUNREACH']);
+
 // postToTally - send a write XML directly to Tally's HTTP port
 // Used for data entry: create vouchers, masters etc.
 const postToTally = async (xmlBody) => {
@@ -487,9 +501,19 @@ const postToTally = async (xmlBody) => {
       return { status: true, message: 'Entry created in Tally', data, tallyId, voucherNumber, created, altered, exceptions };
     } catch (err) {
       error(err?.message, 'postToTally');
+      // Once the request may have reached Tally, Tally may have imported it even
+      // though no answer came back. Resending could post the entry twice.
+      if (!NEVER_SENT_CODES.has(err?.code)) {
+        return {
+          status: false,
+          outcomeUnknown: true,
+          message: 'Tally did not confirm the entry. Check Tally before posting again.',
+        };
+      }
       if (++attempt >= 2) {
         return {
           status: false,
+          notSent: true,
           message: err?.code === 'ECONNREFUSED'
             ? `Cannot connect to Tally at ${tallyUrl()}. Is Tally Prime running?`
             : err?.message || 'Tally not reachable',
@@ -953,16 +977,9 @@ const getOpenCompanies = async () => {
 
 /** Every run (window, scheduled, headless, socket) gets its fiscal scope here, then keeps it. */
 const planJobScope = (companies, open) => {
-  const { companies: planned, added } = planFiscalScope(companies, open?.years || null);
-  if (added.length) {
-    info("[sync] new financial year(s) added to scope", added);
-    try {
-      const next = applyPlannedYears(getSelectedCompanies(), added, planned);
-      if (next) setSelectedCompanies(next);
-    } catch (e) {
-      info("[sync] could not persist planned years (scope still applies to this run):", e?.message);
-    }
-  }
+  const { companies: planned, discovered } = planFiscalScope(companies, open?.years || null);
+  // New years become choices in Edit Years; selecting them is the user's action (DC-10).
+  if (discovered.length) info("[sync] new financial year(s) available, not selected", discovered);
   return planned;
 };
 

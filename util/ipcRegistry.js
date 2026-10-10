@@ -726,9 +726,16 @@ ipcMain.handle("companySelection:resolve", (_event, keep) => {
   return { companies };
 });
 
-ipcMain.handle("companies:remove", async (_event, guids) => {
+ipcMain.handle("selection:publish", async (_event, companies) => {
+  const { publishSelection } = require("./selectionSync");
+  const result = await publishSelection(Array.isArray(companies) ? companies : []);
+  if (!result.ok) error(`${result.code}: ${result.message}`, "selection:publish");
+  return result;
+});
+
+ipcMain.handle("companies:remove", async (_event, guids, mode) => {
   const { removeCompanies } = require("./companyRemoval");
-  const result = await removeCompanies(guids);
+  const result = await removeCompanies(guids, mode === "complete" ? "complete" : "deactivate");
   if (result.ok) {
     info(`[companies] removed ${result.removed.length} company(ies)${result.localOnly ? " locally (unpaired)" : " from workspace"}`);
   } else {

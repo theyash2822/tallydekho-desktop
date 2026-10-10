@@ -4,6 +4,15 @@ Format: Date | Task | Files Changed | Behavior Changed | Tested | Risks
 
 ---
 
+## 2026-10-10 — Desktop core C1–C7 (branch `10-10-2026`, TD-DESKTOP-CORE-2026-10-10-v1)
+
+- **C1:** `util/selectionSync.js` publishes Add/Edit Years/Remove as server-confirmed selection operations (persisted, resent with the same id after a lost answer, refused during Hard Sync). Removal dialog: Deactivate (30 days) vs Completely Remove. New years are discovered, never selected.
+- **C2:** `postToTally` retries only connection-refused errors; anything else is reported as outcome unknown, never re-sent. The outbox holds work during Hard Sync without claiming, re-sends lost acknowledgements as the same answer, and releases held work when the Hard Sync settles. Tally/backend probes no longer stop a sync and do not overlap.
+- **C7:** Settings port field shows the stored port after it loads; "Saved and applied" only after a successful save (S1). One in-flight update check (S2).
+- **Tests:** `npm test` 222/222 (new `test-selection-sync`, `test-writeback-outcome`); renderer build OK. No renderer component tests exist for S1/S2.
+- **Needs Windows:** real Tally outcome-unknown behaviour, signed build.
+
+
 ## 2026-10-09 — Fix: sync failed with "not valid UTF-8/UTF-16" (branch `8-10-2026`)
 
 - **Cause:** our report templates emit `$$StrByCharCode:241` as the empty-date marker (9 templates, e.g. `StockOpeningBalance.xml` ManfDate, vouchers). Tally writes it as a raw `0xF1` byte. The P3 strict decoder rejected the whole response (`tally_encoding_unsupported`), so every sync failed on a real Tally.

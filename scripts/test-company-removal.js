@@ -18,19 +18,24 @@ let paired;
 let bound;
 let syncBusy;
 let respond;
+let selected;
 
+// The paired path publishes the remaining list through util/selectionSync (tested in
+// test-selection-sync.js); here `publish` stands in for it.
 beforeEach(() => {
   calls = [];
   dropped = [];
   paired = true;
   bound = "ws-1";
   syncBusy = false;
-  respond = async (_url, body) => ({ data: { status: true, data: { removed: body.guids, notFound: [] } } });
+  selected = [{ guid: "A", years: [] }, { guid: "B", years: [] }, { guid: "C", years: [] }];
+  respond = async () => ({ ok: true, list: [], removed: [] });
   __setDepsForTests({
-    post: (url, body) => {
-      calls.push({ url, body });
-      return respond(url, body);
+    publish: (list, opts) => {
+      calls.push({ list: list.map((c) => c.guid), opts });
+      return respond(list, opts);
     },
+    getSelected: () => selected,
     isPaired: () => paired,
     getBoundWorkspaceId: () => bound,
     isSyncBusy: () => syncBusy,
@@ -40,11 +45,21 @@ beforeEach(() => {
 
 afterEach(() => __setDepsForTests(null));
 
-test("paired: tells the backend first, then drops the companies from the saved list", async () => {
-  const result = await removeCompanies(["A", "A", " B "]);
-  assert.deepEqual(calls, [{ url: "/desktop/companies/remove", body: { guids: ["A", "B"] } }]);
-  assert.deepEqual(result, { ok: true, localOnly: false, removed: ["A", "B"], notFound: [] });
-  assert.deepEqual(dropped, [["A", "B"]]);
+test("paired: publishes the remaining list with the chosen mode; nothing dropped locally first", async () => {
+  const result = await removeCompanies(["A", "A", " B ", "Z"], "complete");
+  assert.deepEqual(calls, [{ list: ["C"], opts: { removalModes: { A: "complete", B: "complete", Z: "complete" }, confirmEmpty: false } }]);
+  assert.equal(result.ok, true);
+  assert.equal(result.mode, "complete");
+  assert.deepEqual(result.removed, ["A", "B"]);
+  assert.deepEqual(result.notFound, ["Z"]);
+  assert.deepEqual(dropped, [], "the confirmed list is written by selectionSync, not by a local drop");
+});
+
+test("default mode is Deactivate; removing the last company confirms the empty list", async () => {
+  selected = [{ guid: "A", years: [] }];
+  await removeCompanies(["A"]);
+  assert.deepEqual(calls[0].opts, { removalModes: { A: "deactivate" }, confirmEmpty: true });
+  assert.deepEqual(calls[0].list, []);
 });
 
 test("unpaired: removes locally without calling the backend", async () => {
@@ -82,9 +97,9 @@ test("a sync is busy from admission on: start_sync claims the slot before its fi
 
 test("in-flight flag blocks a second removal and is cleared afterwards", async () => {
   let release;
-  respond = (_url, body) =>
+  respond = () =>
     new Promise((resolve) => {
-      release = () => resolve({ data: { status: true, data: { removed: body.guids, notFound: [] } } });
+      release = () => resolve({ ok: true, list: [], removed: [] });
     });
   const first = removeCompanies(["A"]);
   assert.equal(isRemovalInFlight(), true);
@@ -94,37 +109,17 @@ test("in-flight flag blocks a second removal and is cleared afterwards", async (
   assert.equal(isRemovalInFlight(), false);
 });
 
-test("server unreachable or slow: refused with a retry message, list untouched", async () => {
-  respond = async () => {
-    throw Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
-  };
+test("server unreachable, slow or refusing: the refusal and its message pass through, list untouched", async () => {
+  respond = async () => ({ ok: false, code: "NETWORK", message: "Couldn't reach the server." });
   let result = await removeCompanies(["A"]);
-  assert.equal(result.ok, false);
-  assert.equal(result.code, "NETWORK");
-  assert.match(result.message, /Couldn't reach the server/);
-
-  respond = async () => {
-    throw Object.assign(new Error("timeout of 15000ms exceeded"), { code: "ECONNABORTED" });
-  };
+  assert.deepEqual(result, { ok: false, code: "NETWORK", message: "Couldn't reach the server.", pending: false });
+  respond = async () => ({ ok: false, code: "TIMEOUT", message: "will confirm", pending: true });
   result = await removeCompanies(["A"]);
-  assert.equal(result.code, "TIMEOUT");
-  assert.match(result.message, /try again/);
+  assert.equal(result.pending, true);
+  respond = async () => ({ ok: false, code: "DEVICE_NOT_ACTIVE", message: "Only the paired desktop can change the company selection" });
+  assert.equal((await removeCompanies(["A"])).code, "DEVICE_NOT_ACTIVE");
   assert.equal(dropped.length, 0);
   assert.equal(isRemovalInFlight(), false);
-});
-
-test("server error: refused with the server's message", async () => {
-  respond = async () => {
-    throw Object.assign(new Error("403"), {
-      response: { status: 403, data: { status: false, code: "DEVICE_NOT_PAIRED", message: "Device is not paired to a workspace." } },
-    });
-  };
-  const result = await removeCompanies(["A"]);
-  assert.deepEqual(result, { ok: false, code: "DEVICE_NOT_PAIRED", message: "Device is not paired to a workspace." });
-
-  respond = async () => ({ data: { status: false, message: "nope" } });
-  assert.equal((await removeCompanies(["A"])).ok, false);
-  assert.equal(dropped.length, 0);
 });
 
 test("nothing to remove: refused before any call", async () => {
@@ -155,7 +150,7 @@ test("Remove goes through the warning and the backend; empty list stays empty", 
   const remove = companiesSrc.slice(companiesSrc.indexOf("const removeCompanyHandler"), companiesSrc.indexOf("const closeRemoveConfirm"));
   assert.doesNotMatch(remove, /updateState\("selectedCompanies"|removeSelectedCompanies\(/, "Remove must not drop companies before confirming");
   const confirm = companiesSrc.slice(companiesSrc.indexOf("const confirmRemoveHandler"));
-  assert.ok(confirm.indexOf("isSyncing") < confirm.indexOf("window.api.removeCompanies"), "sync re-checked on confirm");
+  assert.ok(confirm.indexOf("isSyncing") < confirm.indexOf("window.api.removeCompanies(guids, mode)"), "sync re-checked on confirm");
   assert.ok(
     confirm.indexOf("window.api.removeCompanies") < confirm.indexOf("removeSelectedCompanies("),
     "backend must be told before the local list changes"
@@ -165,4 +160,6 @@ test("Remove goes through the warning and the backend; empty list stays empty", 
   assert.match(appSrc, /mergeDiscovery\(\{ selected: current, discovery, clearedByUser \}\)/);
   const mergeSrc = fs.readFileSync(path.join(__dirname, "../renderer/app/utils/selectionMerge.js"), "utf8");
   assert.match(mergeSrc, /\} else if \(!clearedByUser\) \{/, "auto-select must respect the cleared flag");
+  const resetBlock = appSrc.slice(appSrc.indexOf('key == "workspaceReset"'), appSrc.indexOf("return;", appSrc.indexOf('key == "workspaceReset"')));
+  assert.match(resetBlock, /selectionClearedByUserRef\.current = true/, "a reset must not lead to auto-selection");
 });

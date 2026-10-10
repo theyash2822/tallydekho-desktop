@@ -1,8 +1,8 @@
 /**
  * Fiscal scope for one sync job, decided in main so headless, scheduled and socket-triggered runs
- * pick up a newly opened financial year without the window. Policy is the existing renderer rule
- * (renderer/app/utils/selectionMerge.js): keep the user's years and append only years that start
- * after every selected one. Deselected older years stay deselected; nothing is ever removed.
+ * use exactly the years the desktop user selected (DC-10). A newly opened financial year is
+ * reported as discovered — it becomes available to choose in Edit Years — but is never selected
+ * automatically. `withNewYears` only identifies those discovered years.
  */
 const createFinancialYears = require("./createFinancialYears");
 
@@ -31,22 +31,23 @@ function yearsFromCompanyNodes(list) {
 /**
  * @param {Array} companies     selection for this job
  * @param {Map|null} freshYears guid → years from Tally (null = discovery unavailable)
- * @returns {{ companies: Array, added: Array<{ guid: string, finYears: string[] }> }}
- *          `companies` are deep-frozen copies: the job's scope cannot change mid-run.
+ * @returns {{ companies: Array, added: [], discovered: Array<{ guid: string, finYears: string[] }> }}
+ *          `companies` are deep-frozen copies: the job's scope cannot change mid-run. `added`
+ *          stays empty: years are never added to the selection here.
  */
 function planFiscalScope(companies, freshYears) {
-  const added = [];
+  const discovered = [];
   const planned = (companies || []).map((company) => {
     const fresh = freshYears?.get(String(company?.guid));
     const years = Array.isArray(company?.years) ? company.years : [];
     if (!fresh) return { ...company, years: [...years] };
     const next = withNewYears(years, fresh);
     if (next.length > years.length) {
-      added.push({ guid: company.guid, finYears: next.slice(years.length).map((y) => y.finYear) });
+      discovered.push({ guid: company.guid, finYears: next.slice(years.length).map((y) => y.finYear) });
     }
-    return { ...company, years: [...next], allYears: fresh };
+    return { ...company, years: [...years], allYears: fresh };
   });
-  return { companies: planned.map(deepFreeze), added };
+  return { companies: planned.map(deepFreeze), added: [], discovered };
 }
 
 function deepFreeze(value) {

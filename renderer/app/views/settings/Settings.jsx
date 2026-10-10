@@ -27,7 +27,14 @@ export default function Settings() {
   } = useContext(TallyContext);
 
   const [port, setPort] = useState(defaultPort);
+  const portDirty = useRef(false);
   const [saved, setSaved] = useState(false);
+  const [portSaving, setPortSaving] = useState(false);
+
+  // The stored port loads after first render; show it unless the user is editing.
+  useEffect(() => {
+    if (!portDirty.current) setPort(defaultPort);
+  }, [defaultPort]);
   const [tdlHealth, setTdlHealth] = useState(null);
   const [tdlBusy, setTdlBusy] = useState(false);
   const [tdlNote, setTdlNote] = useState(null);
@@ -122,7 +129,10 @@ export default function Settings() {
             Port
             <input
               value={port}
-              onChange={(e) => setPort(Number(e.target.value || 0))}
+              onChange={(e) => {
+                portDirty.current = true;
+                setPort(e.target.value);
+              }}
               type="number"
               className="ml-auto border rounded-md px-2 py-1 w-28"
               style={{ borderColor: "#E9E8E3" }}
@@ -149,12 +159,21 @@ export default function Settings() {
         </div>
         <div className="flex items-center justify-end mt-3">
           <button
-            onClick={() => {
-              if (isSyncing || forceUpdate) {
+            disabled={portSaving}
+            onClick={async () => {
+              if (isSyncing || forceUpdate || portSaving) {
                 return;
               }
-              setSaved(true);
-              updatePort(port);
+              setPortSaving(true);
+              try {
+                const ok = await updatePort(port);
+                if (ok) {
+                  portDirty.current = false;
+                  setSaved(true);
+                }
+              } finally {
+                setPortSaving(false);
+              }
             }}
             className={`px-3 py-1.5 rounded-md border text-[#1A1A1A] hover:bg-[#F0EFE9] hover:text-[#1A1A1A] ${
               forceUpdate ? "cursor-not-allowed" : ""

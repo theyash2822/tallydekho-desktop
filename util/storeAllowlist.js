@@ -37,6 +37,8 @@ const RENDERER_FORBIDDEN_PREFS = [
   "deviceSecretEnc",
   "boundWorkspaceId",
   "selectedCompaniesWorkspaceId",
+  "selectedCompaniesRevision",
+  "selectionPendingOperation",
   "workspace",
   "pairingCode",
   "claimToken",

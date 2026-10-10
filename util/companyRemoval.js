@@ -1,25 +1,18 @@
 /**
- * Desktop "Remove company": tell the backend first so the company disappears
- * from mobile/web right away, and only then drop it from the local selection.
- * If the backend can't be reached the removal is refused, so the desktop and
- * mobile never disagree. While unpaired there is no workspace to update, so
- * the removal is local only.
- *
- * Removal and sync exclude each other: a sync carrying the company would
- * reactivate it on the server (init-sync marks every company it sends active).
+ * Desktop "Remove company": Deactivate (copied data kept 30 days) or Completely Remove
+ * (copied data deleted now). While paired the removal is one confirmed selection change
+ * on the server (util/selectionSync.js), so mobile/web lose access at once and a sync
+ * planned earlier cannot bring the company back. The local list changes only after the
+ * server confirms; if it cannot be reached the company stays. Unpaired: local only.
  */
-const REQUEST_TIMEOUT_MS = 15000;
-const NETWORK_MESSAGE = "Couldn't reach the server. Check your internet connection and try again.";
-const TIMEOUT_MESSAGE = "The server took too long to answer. The company may already be hidden on mobile — try again.";
-
 let deps = null;
 let inFlight = false;
 
 function getDeps() {
   if (deps) return deps;
   const selection = require("./companySelection");
+  const selectionSync = require("./selectionSync");
   return {
-    post: (url, body) => require("./helper.js").axiosInstance.post(url, body, { timeout: REQUEST_TIMEOUT_MS }),
     isPaired: () => selection.isDevicePaired(),
     getBoundWorkspaceId: () => selection.getBoundWorkspaceId(),
     // A sync is admitted synchronously, before its first await, so there is no
@@ -27,12 +20,14 @@ function getDeps() {
     isSyncBusy: () =>
       require("./jobCoordinator").coordinator.isActive(["sync", "hard_sync"]) ||
       require("./xml.js").isSyncRunning(),
+    getSelected: () => selection.getSelectedCompanies(),
     dropFromSelection: (guids) => {
       const drop = new Set(guids);
       selection.setSelectedCompanies(
         selection.getSelectedCompanies().filter((c) => !drop.has(c?.guid || c?.id))
       );
     },
+    publish: (list, opts) => selectionSync.publishSelection(list, opts),
   };
 }
 
@@ -50,11 +45,12 @@ function normaliseGuids(raw) {
   return [...new Set(raw.filter((g) => typeof g === "string").map((g) => g.trim()).filter(Boolean))];
 }
 
-async function removeCompanies(rawGuids) {
+async function removeCompanies(rawGuids, mode = "deactivate") {
   const guids = normaliseGuids(rawGuids);
   if (!guids.length) {
     return { ok: false, code: "INVALID_GUIDS", message: "No company selected to remove." };
   }
+  const removalMode = mode === "complete" ? "complete" : "deactivate";
 
   const d = getDeps();
   if (inFlight) {
@@ -75,29 +71,23 @@ async function removeCompanies(rawGuids) {
 
   inFlight = true;
   try {
-    const response = await d.post("/desktop/companies/remove", { guids });
-    const body = response?.data || {};
-    if (!body.status) {
-      return { ok: false, code: body.code || "REMOVE_FAILED", message: body.message || "Could not remove the company. Try again." };
+    const current = d.getSelected();
+    const drop = new Set(guids);
+    const present = current.filter((c) => drop.has(c?.guid || c?.id)).map((c) => c.guid || c.id);
+    const presentSet = new Set(present);
+    const next = current.filter((c) => !drop.has(c?.guid || c?.id));
+    const removalModes = Object.fromEntries(guids.map((g) => [g, removalMode]));
+    const result = await d.publish(next, { removalModes, confirmEmpty: next.length === 0 });
+    if (!result.ok) {
+      return { ok: false, code: result.code || "REMOVE_FAILED", message: result.message || "Could not remove the company. Try again.", pending: !!result.pending };
     }
-    // Before the in-flight flag clears, so a sync can never start with the old list.
-    d.dropFromSelection(guids);
     return {
       ok: true,
       localOnly: false,
-      removed: body.data?.removed || [],
-      notFound: body.data?.notFound || [],
-    };
-  } catch (err) {
-    if (!err?.response) {
-      const timedOut = err?.code === "ECONNABORTED" || err?.code === "ETIMEDOUT";
-      return { ok: false, code: timedOut ? "TIMEOUT" : "NETWORK", message: timedOut ? TIMEOUT_MESSAGE : NETWORK_MESSAGE };
-    }
-    const data = err.response.data || {};
-    return {
-      ok: false,
-      code: data.code || `HTTP_${err.response.status}`,
-      message: data.message || "Could not remove the company. Try again.",
+      mode: removalMode,
+      removed: present,
+      notFound: guids.filter((g) => !presentSet.has(g)),
+      removals: result.removed || [],
     };
   } finally {
     inFlight = false;

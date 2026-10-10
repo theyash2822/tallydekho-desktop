@@ -80,6 +80,12 @@ const SYNC_JOB_TYPES = ["sync", "hard_sync"];
 coordinator.onChange((job, snapshot) => {
   const win = getMainWindow();
   if (win) win.webContents.send("job:changed", { job, snapshot });
+  // Entries held during a Hard Sync are released once it settles, whatever the outcome;
+  // the backend re-checks each entry's eligibility before handing it out.
+  if (job?.type === "hard_sync" && job.finishedAt) {
+    require("./util/writeback").reconcilePendingWriteback("hard-sync-settled")
+      .catch((e) => console.warn("[writeback] release after hard sync failed:", e?.message));
+  }
 });
 
 const gotLock = app.requestSingleInstanceLock();
@@ -446,8 +452,8 @@ ipcMain.handle("store:set", (_event, key, value) => {
     return false;
   }
   if (key === "selectedCompanies") {
-    setSelectedCompanies(value);
-    return true;
+    // Paired: adding/removing companies or years goes through selection:publish.
+    return require("./util/selectionSync").mergeRendererSelection(value);
   }
   if (key === "port") {
     const port = Number(value);
@@ -489,26 +495,35 @@ const withTimeout = (promise, ms, message) =>
     new Promise((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
   ]);
 
+// Repeated clicks share one check instead of racing several against the feed.
+let updateCheckInFlight = null;
+
 ipcMain.handle("updater:check", async () => {
   const refusal = updaterRefusal();
   if (refusal) {
     notify("updater:status", { state: "error", error: refusal });
     return { ok: false, error: refusal };
   }
-  try {
-    info("[updater:check] called");
-    const r = await withTimeout(
-      autoUpdater.checkForUpdates(),
-      UPDATE_CHECK_TIMEOUT_MS,
-      "The update server did not answer. Try again later."
-    );
-    if (!r) notify("updater:status", { state: "none" });
-    return { ok: true, info: r };
-  } catch (e) {
-    const message = e?.message || String(e);
-    notify("updater:status", { state: "error", error: message });
-    return { ok: false, error: message };
-  }
+  if (updateCheckInFlight) return updateCheckInFlight;
+  updateCheckInFlight = (async () => {
+    try {
+      info("[updater:check] called");
+      const r = await withTimeout(
+        autoUpdater.checkForUpdates(),
+        UPDATE_CHECK_TIMEOUT_MS,
+        "The update server did not answer. Try again later."
+      );
+      if (!r) notify("updater:status", { state: "none" });
+      return { ok: true, info: r };
+    } catch (e) {
+      const message = e?.message || String(e);
+      notify("updater:status", { state: "error", error: message });
+      return { ok: false, error: message };
+    } finally {
+      updateCheckInFlight = null;
+    }
+  })();
+  return updateCheckInFlight;
 });
 
 ipcMain.handle("updater:download", async () => {

@@ -52,11 +52,11 @@ test("Tally open with no companies marks everything unavailable, removes nothing
   assert.equal(r.selection[0].available, false);
 });
 
-test("FY selection is kept and only later years are auto-added", async () => {
+test("FY selection is kept exactly; a later year is offered in allYears, not selected (DC-10)", async () => {
   const { mergeDiscovery } = await load();
   const selected = [{ id: "g1", guid: "g1", name: "A", years: [fy(2023)] }];
   const r = mergeDiscovery({ selected, discovery: ok([found("g1", "A renamed", [fy(2022), fy(2023), fy(2024)])]) });
-  assert.deepEqual(r.selection[0].years.map((y) => y.finYear), ["2023-2024", "2024-2025"]);
+  assert.deepEqual(r.selection[0].years.map((y) => y.finYear), ["2023-2024"]);
   assert.equal(r.selection[0].name, "A renamed");
   assert.equal(r.selection[0].allYears.length, 3);
 });

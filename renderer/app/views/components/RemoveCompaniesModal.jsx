@@ -1,6 +1,9 @@
+import { useState } from "react";
+
 const border = { borderColor: "#E9E8E3" };
 
 const RemoveCompaniesModal = ({ companies = [], paired, busy, errorMessage, onClose, onConfirm }) => {
+  const [mode, setMode] = useState("deactivate");
   const count = companies.length;
   const title =
     count === 1 ? `Remove "${companies[0]?.name || "this company"}"?` : `Remove ${count} companies?`;
@@ -30,10 +33,43 @@ const RemoveCompaniesModal = ({ companies = [], paired, busy, errorMessage, onCl
               </ul>
             )}
             {paired ? (
-              <p>
-                {count === 1 ? "It" : "They"} will disappear from the mobile app and web portal right
-                away. Synced data is kept — add {it} again any time to bring {it} back.
-              </p>
+              <>
+                <p>
+                  {count === 1 ? "It" : "They"} will disappear from the mobile app and web portal right away.
+                </p>
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="removeMode"
+                    className="mt-1"
+                    checked={mode === "deactivate"}
+                    disabled={busy}
+                    onChange={() => setMode("deactivate")}
+                  />
+                  <span>
+                    <span className="font-medium">Deactivate</span> — data copied from Tally is kept for 30
+                    days. Add {it} again within 30 days to continue where you left off.
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="removeMode"
+                    className="mt-1"
+                    checked={mode === "complete"}
+                    disabled={busy}
+                    onChange={() => setMode("complete")}
+                  />
+                  <span>
+                    <span className="font-medium">Completely Remove</span> — data copied from Tally is deleted
+                    now. Adding {it} again later starts a fresh import.
+                  </span>
+                </label>
+                <p className="text-[#787774]">
+                  Entries made in TallyDekho, invoice numbers, e-invoice / e-way bill details, your Tally files
+                  and backups are not deleted.
+                </p>
+              </>
             ) : (
               <p>
                 This Desktop is not paired, so {it} will only be removed here. The mobile app and web
@@ -55,7 +91,7 @@ const RemoveCompaniesModal = ({ companies = [], paired, busy, errorMessage, onCl
               <button
                 className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#FDECEA] hover:text-[#C0392B] disabled:opacity-50"
                 style={{ borderColor: "#EDBBB8" }}
-                onClick={onConfirm}
+                onClick={() => onConfirm(paired ? mode : "deactivate")}
                 disabled={busy}
               >
                 {busy ? "Removing…" : errorMessage ? "Try again" : "Remove"}

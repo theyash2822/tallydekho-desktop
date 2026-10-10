@@ -63,6 +63,7 @@ export default function Companies({
     fetchCompanies,
     removeSelectedCompanies,
     markCompaniesAdded,
+    applyConfirmedSelection,
   } = useContext(TallyContext);
 
   const handleRefresh = async () => {
@@ -97,6 +98,7 @@ export default function Companies({
   };
 
   const openAddCompaniesModal = () => {
+    if (isSyncing) return;
     if (!isTallyOnline) {
       setAlertModalData({
         isOpen: true,
@@ -165,9 +167,15 @@ export default function Companies({
     onHardSync();
   };
 
-  const updateSelectedCompanies = (selected) => {
+  // Saved only once the server confirms (or locally while unpaired).
+  const updateSelectedCompanies = async (selected) => {
+    const result = await window.api.publishSelection([...selectedCompanies, ...selected]);
+    if (!result?.ok) {
+      setAlertModalData({ isOpen: true, message: result?.message || "Could not add the company. Try again." });
+      return;
+    }
     markCompaniesAdded();
-    updateState("selectedCompanies", (prev) => [...prev, ...selected]);
+    applyConfirmedSelection(result.list);
     setIsAddCompanyModalOpen(false);
   };
 
@@ -198,9 +206,8 @@ export default function Companies({
     });
   };
 
-  const updateYearsHandler = (years) => {
-    const newSelectedCompanies = [...selectedCompanies];
-    const idx = newSelectedCompanies.findIndex(
+  const updateYearsHandler = async (years) => {
+    const idx = selectedCompanies.findIndex(
       (company) => company.id == editYearModalData.companyId
     );
 
@@ -208,9 +215,13 @@ export default function Companies({
       return;
     }
 
-    newSelectedCompanies[idx].years = years;
-    updateState("selectedCompanies", newSelectedCompanies);
-
+    const next = selectedCompanies.map((c, i) => (i === idx ? { ...c, years } : c));
+    const result = await window.api.publishSelection(next);
+    if (!result?.ok) {
+      setAlertModalData({ isOpen: true, message: result?.message || "Could not save the years. Try again." });
+      return;
+    }
+    applyConfirmedSelection(result.list);
     closeEditYearsModal();
   };
 
@@ -239,7 +250,7 @@ export default function Companies({
     setRemoveConfirm(null);
   };
 
-  const confirmRemoveHandler = async () => {
+  const confirmRemoveHandler = async (mode = "deactivate") => {
     if (!removeConfirm || removeConfirm.busy) return;
     if (isSyncing) {
       setRemoveConfirm((prev) => prev && { ...prev, error: "Wait for the sync to finish before removing a company." });
@@ -250,7 +261,7 @@ export default function Companies({
 
     let result;
     try {
-      result = await window.api.removeCompanies(guids);
+      result = await window.api.removeCompanies(guids, mode);
     } catch (_) {
       result = { ok: false, message: "Could not remove the company. Try again." };
     }
@@ -315,7 +326,9 @@ export default function Companies({
         <div className="flex items-center gap-2">
           <button
             onClick={openAddCompaniesModal}
-            className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#F0EFE9] hover:text-[#1A1A1A]"
+            disabled={isSyncing}
+            title={isSyncing ? "Companies can't be changed while a sync is running" : undefined}
+            className="px-3 py-1.5 rounded-md border text-[#787774] hover:bg-[#F0EFE9] hover:text-[#1A1A1A] disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ borderColor: "#E9E8E3" }}
           >
             Add Companies
@@ -479,8 +492,9 @@ export default function Companies({
                   <td className="py-2 px-2">
                     <div className="flex gap-2">
                       <button
-                        className="px-2 py-1 rounded-md border text-[#787774] hover:bg-[#F5F4EF] hover:text-[#1A1A1A] w-[80px]"
+                        className="px-2 py-1 rounded-md border text-[#787774] hover:bg-[#F5F4EF] hover:text-[#1A1A1A] w-[80px] disabled:opacity-50 disabled:cursor-not-allowed"
                         style={{ borderColor: "#E9E8E3" }}
+                        disabled={isSyncing}
                         onClick={() => {
                           openEditYearsModal(
                             company.years,

@@ -20,10 +20,12 @@ const DEFAULT_LIMIT = 10;
 
 let axiosGetter = () => require("./helper").axiosInstance;
 let postToTallyFn = null;
+let hardSyncActiveFn = null;
 
 function __setDepsForTests(overrides = {}) {
   if (overrides.axiosInstance) axiosGetter = () => overrides.axiosInstance;
   if (overrides.postToTally) postToTallyFn = overrides.postToTally;
+  if (overrides.isHardSyncActive) hardSyncActiveFn = overrides.isHardSyncActive;
 }
 
 function resetDepsForTests() {
@@ -31,6 +33,7 @@ function resetDepsForTests() {
     throw new Error("writeback axios not injected");
   };
   postToTallyFn = null;
+  hardSyncActiveFn = null;
   inFlightCompanies.clear();
   reconcileInFlight = false;
 }
@@ -48,14 +51,52 @@ function companyGuidsFromSelection() {
   return guids;
 }
 
+function isHardSyncActive() {
+  if (hardSyncActiveFn) return hardSyncActiveFn();
+  try {
+    return require("./jobCoordinator").coordinator.isActive(["hard_sync"]);
+  } catch (_) {
+    return false;
+  }
+}
+
+/** What the backend is told about one Tally post. */
+function resultReport(tallyResult) {
+  const success = tallyResult?.status === true;
+  if (success) {
+    return {
+      success: true,
+      tallyVoucherNumber: tallyResult.voucherNumber || null,
+      tallyId: tallyResult.tallyId || null,
+    };
+  }
+  if (tallyResult?.outcomeUnknown) {
+    return {
+      success: false,
+      outcomeUnknown: true,
+      errorCode: "OUTCOME_UNKNOWN",
+      errorMessage: tallyResult.message || "Tally did not confirm the entry",
+    };
+  }
+  return {
+    success: false,
+    errorCode: tallyResult?.notSent ? "TALLY_UNREACHABLE" : "TALLY_ERROR",
+    errorMessage: tallyResult?.message || "Tally posting failed",
+  };
+}
+
 /**
  * Drain pending writeback entries for one company.
- * @returns {Promise<{claimed:number, posted:number, failed:number}>}
+ * @returns {Promise<{claimed:number, posted:number, failed:number, unknown:number, held:number, unreported:number}>}
  */
 async function processCompanyWriteback(companyGuid, { limit = DEFAULT_LIMIT } = {}) {
-  const result = { claimed: 0, posted: 0, failed: 0 };
+  const result = { claimed: 0, posted: 0, failed: 0, unknown: 0, held: 0, unreported: 0 };
   if (!companyGuid) return result;
   if (inFlightCompanies.has(companyGuid)) return result;
+  if (isHardSyncActive()) {
+    info(`[writeback] holding entries for ${companyGuid} while Hard Sync runs`);
+    return result;
+  }
 
   inFlightCompanies.add(companyGuid);
   try {
@@ -75,7 +116,13 @@ async function processCompanyWriteback(companyGuid, { limit = DEFAULT_LIMIT } = 
     for (const item of items) {
       if (!item.outboxId || handled.has(item.outboxId)) continue;
       handled.add(item.outboxId);
+      // A Hard Sync that starts mid-drain holds the rest without claiming them.
+      if (isHardSyncActive()) {
+        result.held += 1;
+        continue;
+      }
 
+      let report = null;
       try {
         const claimRes = await axiosInstance.post(
           `/tally/desktop/writeback/${item.outboxId}/claim`,
@@ -89,31 +136,26 @@ async function processCompanyWriteback(companyGuid, { limit = DEFAULT_LIMIT } = 
         result.claimed += 1;
 
         const tallyResult = await postToTally(claimData.xml);
-        const success = tallyResult?.status === true;
+        report = resultReport(tallyResult);
+        await axiosInstance.post(`/tally/desktop/writeback/${item.outboxId}/result`, report);
 
-        await axiosInstance.post(`/tally/desktop/writeback/${item.outboxId}/result`, {
-          success,
-          tallyVoucherNumber: tallyResult?.voucherNumber || null,
-          tallyVoucherGuid: tallyResult?.tallyId || null,
-          tallyAlterId: tallyResult?.alterId || null,
-          errorCode: success ? null : "TALLY_ERROR",
-          errorMessage: success ? null : tallyResult?.message || "Tally posting failed",
-        });
-
-        if (success) result.posted += 1;
+        if (report.success) result.posted += 1;
+        else if (report.outcomeUnknown) result.unknown += 1;
         else result.failed += 1;
-        info(`[writeback] entry ${item.outboxId} → ${success ? "posted" : "failed"}`);
+        info(`[writeback] entry ${item.outboxId} → ${report.success ? "posted" : report.outcomeUnknown ? "outcome unknown" : "failed"}`);
       } catch (entryErr) {
-        result.failed += 1;
         error(entryErr?.message, `writeback.entry.${item.outboxId}`);
-        // Report the failure so the backend releases its claim for a later retry.
-        try {
-          await axiosInstance.post(`/tally/desktop/writeback/${item.outboxId}/result`, {
-            success: false,
-            errorCode: "DESKTOP_ERROR",
-            errorMessage: entryErr?.message,
-          });
-        } catch (_) {}
+        if (report) {
+          // Tally already answered; only the report was lost. Send the same answer again,
+          // never a failure that would let the entry be posted twice.
+          result.unreported += 1;
+          await axiosInstance
+            .post(`/tally/desktop/writeback/${item.outboxId}/result`, report)
+            .catch((e) => error(e?.message, `writeback.report.${item.outboxId}`));
+          continue;
+        }
+        if (entryErr?.response?.status === 409) continue;
+        result.failed += 1;
       }
     }
     return result;
@@ -157,6 +199,7 @@ async function reconcilePendingWriteback(reason = "reconcile") {
 
 module.exports = {
   processCompanyWriteback,
+  resultReport,
   reconcilePendingWriteback,
   companyGuidsFromSelection,
   __setDepsForTests,

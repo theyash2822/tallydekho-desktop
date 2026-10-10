@@ -25,7 +25,12 @@ module.exports = (window, socket) => {
     const { reconcileBinding, handleResume } = require("./pairingRuntime");
     handleResume(reason);
     reconcileBinding(reason).then((result) => {
-      if (result.paired) reconcilePendingWriteback(reason);
+      if (!result.paired) return;
+      reconcilePendingWriteback(reason);
+      // A company change whose answer was lost is settled with its original operationId.
+      require("./selectionSync").reconcilePendingSelection()
+        .then((r) => { if (r && !r.ok && !r.pending) info(`[selection] ${r.code}: ${r.message}`); })
+        .catch((e) => info("[selection] reconcile failed:", e?.message));
     });
   };
 
@@ -278,8 +283,9 @@ module.exports = (window, socket) => {
   // startup and on every connectivity restore.
   socket.on("pending_tally_writeback_available", async (payload) => {
     const { companyGuid, count } = payload || {};
-    if (!companyGuid || !count) return;
-    await processCompanyWriteback(companyGuid);
+    if (!count) return;
+    if (companyGuid) await processCompanyWriteback(companyGuid);
+    else await reconcilePendingWriteback("wake-up");
   });
 
   socket.on("tally:write", async (payload, callback) => {
@@ -288,6 +294,18 @@ module.exports = (window, socket) => {
 
     if (!xml) {
       const result = { status: false, message: "No XML provided", jobId };
+      if (typeof callback === "function") callback(result);
+      socket.emit("tally:write:result", result);
+      return;
+    }
+
+    if (coordinator.isActive(["hard_sync"])) {
+      const result = {
+        status: false,
+        held: "HARD_SYNC_HOLD",
+        message: "Entry saved. It will be sent to Tally after the Hard Sync finishes.",
+        jobId,
+      };
       if (typeof callback === "function") callback(result);
       socket.emit("tally:write:result", result);
       return;

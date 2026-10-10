@@ -304,6 +304,14 @@
     "selectionClearedByUser": {
       "type": "boolean",
       "default": false
+    },
+    "selectedCompaniesRevision": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "selectionPendingOperation": {
+      "type": ["object", "null"]
     }
   },
   "required": [
